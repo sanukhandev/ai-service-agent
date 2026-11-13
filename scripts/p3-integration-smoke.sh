@@ -36,5 +36,20 @@ count=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM ticket_messages WHERE ticket_id='$ticket_id' AND role='customer'")
 test "$count" = 1
 
+# Run the real Node intent registry against the same agent-scoped ticket.
+# Both source message IDs are persisted through the public API first.
+first_id=$(printf '%s' "$first" | python3 -c 'import json,sys;print(json.load(sys.stdin)["messageId"])')
+correction_request=$(python3 -c 'import uuid;print(uuid.uuid4())')
+correction_body=$(printf '{"requestId":"%s","text":"Correction: I need two visas, not one."}' "$correction_request")
+correction=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
+  -d "$correction_body" "http://localhost/api/v1/tickets/$ticket_id/messages")
+correction_id=$(printf '%s' "$correction" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["status"]=="accepted";print(d["messageId"])')
+docker compose exec -T \
+  -e P3_OFFLINE_SMOKE=1 \
+  -e P3_TEST_TICKET="$ticket_id" \
+  -e P3_TEST_MESSAGE1="$first_id" \
+  -e P3_TEST_MESSAGE2="$correction_id" \
+  api node dist/runtime/intent-smoke.js
+
 printf '%s\n' 'P3 offline integration smoke PASS: guest session, ticket, 202, dedupe, ownership, SSE, ledger'
 printf '%s\n' 'Live Foundry and browser certification remain BLOCKED without credentials.'
