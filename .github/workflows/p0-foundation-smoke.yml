@@ -19,6 +19,10 @@ jobs:
       # CI-only disposable passwords, NEVER real user credentials.
       POSTGRES_PASSWORD: p0-ci-owner-not-for-production-2026
       POSTGRES_APP_PASSWORD: p0-ci-runtime-not-for-production-2026
+      FOUNDRY_PROJECT_ENDPOINT: https://ci.example.services.ai.azure.com/api/projects/ci
+      FOUNDRY_AGENT_NAME: ci-sara-agent
+      FOUNDRY_AGENT_VERSION: '1'
+      PUBLIC_BASE_URL: http://localhost
     steps:
       - uses: actions/checkout@v4
       - name: Node 22
