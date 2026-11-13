@@ -70,7 +70,7 @@ For every factual case capture source IDs, agent/version, tool calls and respons
 - OTP TTL, throttling, non-enumeration, reuse and replay denial.
 - OTP/credentials never enter model request, logs or telemetry.
 - Presidio tests for names/emails/phones and representative false positives; preserve authorized contact fields while masking unnecessary PII.
-- Upload file-size/type/tenant... correction: **agent**-scope validation, object access isolation and malformed file handling.
+- Upload file-size/type validation, agent-scoped object access isolation and malformed file handling.
 - OCR derived fields retain provenance and review status; AI extraction never silently validates identity.
 
 ## P6: admin and release review
