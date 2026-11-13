@@ -4,6 +4,7 @@ import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessag
 import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord } from "../repositories/types.js";
 import { TurnQueue } from "./turn-queue.js";
 import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
+import { QuotationOperations } from "./quotation-operations.js";
 
 function ticketView(ticket:TicketRecord,agentKey:string) {
   return {id:ticket.id,number:String(ticket.ticketNumber),agentKey,
@@ -61,6 +62,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const messages=new TicketMessageRepository(db);
   const events=new TicketEventRepository(db);
   const leads=new LeadOperations(db);
+  const quotes=new QuotationOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -138,6 +140,43 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const scope=await scopeFromCookie(db,request);
     const ticketId=idParam(request);
     return {enabled:leadDispatchEnabled(),operations:await leads.list(scope,ticketId)};
+  });
+
+  // Customer-owned, explicitly acknowledged, pinned-price quotation requests.
+  app.get("/api/v1/tickets/:ticketId/quotation-options",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return quotes.options(scope,idParam(request));
+  });
+
+  app.post("/api/v1/tickets/:ticketId/quotations",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await quotes.submit(scope,idParam(request),request.body);
+    return reply.code(result.duplicated?200:202).send(result);
+  });
+
+  app.get("/api/v1/tickets/:ticketId/quotations",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return {quotation:await quotes.get(scope,idParam(request))};
+  });
+
+  app.get("/api/v1/tickets/:ticketId/quotations/:quotationId/pdf",async(request,reply)=>{
+    const scope=await scopeFromCookie(db,request);
+    const ticketId=idParam(request);
+    const params=request.params as Record<string,unknown>;
+    const quotationId=params["quotationId"];
+    if(typeof quotationId!=="string"||!/^[0-9a-f]{8}-[0-9a-f-]{27,}$/i.test(quotationId)){
+      throw new PersistenceError("NOT_FOUND","Quotation PDF unavailable");
+    }
+    const doc=await quotes.pdf(scope,ticketId,quotationId);
+    return reply.code(200)
+      .header("Content-Type","application/pdf")
+      .header("Content-Disposition",`attachment; filename="${doc.documentNumber}.pdf"`)
+      .header("Cache-Control","private, no-store")
+      .header("X-Content-Type-Options","nosniff")
+      .header("Content-Security-Policy","sandbox")
+      .header("Content-Length",String(doc.bytes.length))
+      .send(doc.bytes);
   });
 
   app.get("/api/events/tickets/:ticketId",async(request,reply)=>{
