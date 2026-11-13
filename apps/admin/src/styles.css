@@ -1,0 +1,12 @@
+@import "tailwindcss";
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/600.css";
+
+:root {
+  color-scheme: light;
+  font-family: Inter, Arial, sans-serif;
+}
+
+html, body { min-height: 100%; }
+body { margin: 0; background: #f8fafc; color: #0f172a; }
+button, input, textarea { font: inherit; }
