@@ -77,13 +77,13 @@ Do not implicitly provision, mutate or delete Foundry agent versions, knowledge 
 3. Keep service modules cohesive; prefer replacing an obsolete module over adding wrappers or dead branches.
 4. Freeze API/tool/event contracts before parallel frontend/backend/workflow development.
 5. Use additive migration files **after** the new fresh baseline; do not edit migrations already used by a persistent environment. Never run volume deletion/migration resets against a populated database without explicit approval.
-6. Each change must include targeted tests and documentation updates. CI should run formatting, lint, type checking, Python tests, database integration tests, builds and relevant E2E gates.
+6. For P0-P7, prioritize implementing the working POC with accurate documentation, successful builds/migrations and minimal live smoke verification. Defer dedicated unit/contract/integration/E2E suites, benchmarking and comprehensive CI to H1 after POC completion; never claim unrun tests passed. Do not defer necessary agent isolation, authorization, OTP protection, action consent, validation or secret handling.
 7. Do not claim a live Azure/n8n integration passed from mock tests alone; report exact commands, environment, results, blockers and commit SHA.
 8. Never put secrets, tokens, OTPs or raw PII in fixtures, screenshots, errors, traces or PR logs.
 
 ## 8. MVP priorities
 
-P0: repo/architecture contracts -> P1: Foundry client + Node + minimal web chat -> P2: tickets, PostgreSQL and SSE -> P3: intent/offerings tools -> P4: approved n8n actions -> P5: OTP, private documents/OCR and PII -> P6: Angular admin and release certification. Keep initial scope tight; don't build speculative abstractions.
+P0: shared contracts, workspace and Compose foundation -> P1: Foundry Gateway live invocation -> P2: Node tickets, PostgreSQL, SSE and minimal Next.js chat -> P3: catalogs and read tools -> P4: approved n8n actions -> P5: OTP, private documents/OCR and Presidio -> P6: Angular admin -> P7: integrated functional POC -> H1: automated tests, security/performance hardening and full CI. Keep initial scope tight; don't build speculative abstractions.
 
 ## 9. Reference documents
 
