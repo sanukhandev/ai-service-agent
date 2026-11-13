@@ -159,10 +159,6 @@ export function seedProject() {
   if (typeof projectId !== "string" || !/^[A-Za-z0-9_-]{4,100}$/.test(projectId)) {
     throw new Error("n8n returned invalid project ID");
   }
-  if (outcome.alreadySeeded) {
-    console.log("Project " + PROJECT_NAME + " already contains the expected resources; imports skipped.");
-    return;
-  }
   console.log("Project " + PROJECT_NAME + " resolved as " + projectId + "; importing disabled ANCFZ assets.");
   // CLI imports use n8n's configured database and encryption key.
   // NEVER use import:entities --truncateTables or user-management:reset.
