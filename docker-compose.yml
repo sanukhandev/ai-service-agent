@@ -59,9 +59,9 @@ services:
       PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
-      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:?Set FOUNDRY_PROJECT_ENDPOINT in .env}
+      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
-      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:?Set FOUNDRY_AGENT_VERSION in .env}
+      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
     volumes:
       - ./infra/postgres:/migrations:ro
       - ./infra/bootstrap:/scripts:ro
