@@ -8,7 +8,9 @@ SET LOCAL lock_timeout = '10s';
 SELECT pg_advisory_xact_lock(hashtext('ancfz-test-catalog-publication-v1'));
 
 CREATE TEMP TABLE _ancfz_catalog_input (payload jsonb NOT NULL) ON COMMIT DROP;
-INSERT INTO _ancfz_catalog_input(payload) VALUES (:'seed_payload'::jsonb);
+-- Owner-only test publication reads the short-lived JSON file copied inside Postgres.
+-- Never pass the 90 KiB payload through docker.exe arguments on Windows.
+INSERT INTO _ancfz_catalog_input(payload) VALUES (pg_read_file(:'seed_file')::jsonb);
 
 -- PSQL variables are SQL-escaped by :'<variable>'; do not interpolate
 -- untrusted shell strings into a DO block.
