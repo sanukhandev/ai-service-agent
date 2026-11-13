@@ -51,6 +51,12 @@ docker compose exec -T \
   -e P3_TEST_MESSAGE2="$correction_id" \
   api node dist/runtime/intent-smoke.js
 
+# P4 database integration: queue one authorized lead without contacting n8n.
+docker compose exec -T \
+  -e P4_OFFLINE_SMOKE=1 \
+  -e P3_TEST_TICKET="$ticket_id" \
+  api node dist/runtime/lead-smoke.js
+
 printf '%s\n' 'P3 offline integration smoke PASS: guest session, ticket, 202, dedupe, ownership, SSE, ledger'
 # The P4 API must reject lead submission without explicit form consent.
 lead_options=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/operations")
