@@ -1,0 +1,94 @@
+name: ANCFZ published test catalog seed
+
+on:
+  pull_request:
+    paths:
+      - "infra/catalog/**"
+      - "scripts/publish-ancfz-test-catalog.sh"
+      - "services/api/src/agent/intent-tools.ts"
+      - ".github/workflows/ancfz-test-catalog-seed.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      ANCFZ_CATALOG_ENV: test
+      POSTGRES_DB: ai_service_agent
+      POSTGRES_PASSWORD: ci-ancfz-migration-owner-not-production
+      POSTGRES_APP_PASSWORD: ci-ancfz-runtime-role-not-production
+      FOUNDRY_PROJECT_ENDPOINT: https://poc.invalid/api/projects/disposable-ci
+      FOUNDRY_AGENT_NAME: sara-ci-placeholder
+      FOUNDRY_AGENT_VERSION: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Check JSON matrix and compile affected Node tool code
+        run: |
+          node --input-type=module -e '
+            import fs from "node:fs";
+            const p = JSON.parse(fs.readFileSync("infra/catalog/ancfz-test-2026.json", "utf8"));
+            const priced = p.offerings.filter(x => x.price);
+            if (p.intents.length !== 21 || p.offerings.length !== 97 || priced.length !== 55
+               || priced.find(x => x.key === "visa_1_y1")?.price.amount !== 10800
+               || priced.find(x => x.key === "visa_10_y5")?.price.amount !== 200880) {
+              throw new Error("Catalog seed source data coverage mismatch");
+            }
+            console.log("Catalog JSON validated");
+          '
+          npm install --no-audit --no-fund
+          npm run build --workspace=@ai-service-agent/api
+      - name: Bring up fresh private database
+        run: docker compose up -d --wait postgres
+      - name: Apply existing P2 forward migrations
+        run: |
+          set -euo pipefail
+          for migration in \
+            infra/postgres/003_conversation_persistence.sql \
+            infra/postgres/004_runtime_role.sql \
+            infra/postgres/005_model_conversation_continuity.sql; do
+            docker compose exec -T postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" < "$migration"
+          done
+      - name: Publish the seed, then verify second run is idempotent
+        run: |
+          bash scripts/publish-ancfz-test-catalog.sh --publish-test
+          bash scripts/publish-ancfz-test-catalog.sh --publish-test
+      - name: Verify published versions and prices
+        run: |
+          set -euo pipefail
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT count(*) FROM intents i JOIN intent_catalog_versions v ON i.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 21
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT count(*) FROM offerings o JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 97
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT count(*) FROM offering_price_revisions pr JOIN offerings o ON pr.offering_id=o.id JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 55
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT amount::integer FROM offering_price_revisions pr JOIN offerings o ON pr.offering_id=o.id JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND o.offering_key='visa_1_y1'")" = 10800
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT count(*) FROM ancfz_test_catalog_seed_receipts")" = 1
+          echo "Published test seed PASS: 21 intents, 97 offerings, 55 prices, repeated run unchanged"
+      - name: Validate restricted runtime role can read published catalog under RLS
+        run: |
+          set -euo pipefail
+          docker compose exec -T postgres sh -ec '
+            PGPASSWORD="$POSTGRES_APP_PASSWORD" psql -h 127.0.0.1 -U agent_runtime \
+              -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -At <<SQL | grep -q "^21$"
+            BEGIN;
+            SELECT set_config('\''app.agent_id'\'', (SELECT id::text FROM agents WHERE agent_key='\''ancfz'\''), true);
+            SELECT count(*) FROM intents i JOIN intent_catalog_versions v ON v.id=i.catalog_version_id WHERE v.status='\''published'\'';
+            ROLLBACK;
+          SQL
+          '
+      - name: Failure logs
+        if: failure()
+        run: docker compose logs --no-color --tail=120 postgres || true
+      - name: Stop disposable database
+        if: always()
+        run: docker compose down -v --remove-orphans || true
