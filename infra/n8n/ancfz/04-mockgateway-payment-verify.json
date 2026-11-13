@@ -23,6 +23,12 @@
         "authentication": "headerAuth",
         "responseMode": "responseNode",
         "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
       }
     },
     {
