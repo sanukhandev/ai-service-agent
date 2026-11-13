@@ -1,0 +1,74 @@
+name: P2 persistence migration smoke
+
+on:
+  pull_request:
+    paths:
+      - "infra/postgres/**"
+      - "services/api/src/database/**"
+      - "services/api/src/repositories/**"
+      - ".github/workflows/p2-persistence-smoke.yml"
+  push:
+    branches: [main]
+    paths:
+      - "infra/postgres/**"
+      - "services/api/src/database/**"
+      - "services/api/src/repositories/**"
+      - ".github/workflows/p2-persistence-smoke.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  migrations:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      POSTGRES_DB: ai_service_agent
+      POSTGRES_PASSWORD: ci-p2-superuser-disposable-not-production
+      POSTGRES_APP_PASSWORD: ci-p2-app-disposable-not-production
+    steps:
+      - uses: actions/checkout@v4
+      - name: Start disposable P0 PostgreSQL schema and restricted login
+        run: docker compose up -d --wait postgres
+      - name: Apply P2 migrations 003–005 and seed isolated agents
+        run: |
+          set -euo pipefail
+          for migration in \
+            infra/postgres/003_conversation_persistence.sql \
+            infra/postgres/004_runtime_role.sql \
+            infra/postgres/005_model_conversation_continuity.sql \
+            infra/postgres/p2-smoke.sql; do
+            docker compose exec -T postgres \
+              psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" < "$migration"
+          done
+      - name: Check runtime role and agent-scoped RLS
+        run: |
+          set -euo pipefail
+          result=$(docker compose exec -T postgres sh -ec '
+            PGPASSWORD="$POSTGRES_APP_PASSWORD" psql -h 127.0.0.1 \
+              -U agent_runtime -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -Atc "
+                SELECT CASE WHEN current_user = '\''agent_runtime'\''
+                 AND (SELECT NOT rolsuper AND NOT rolbypassrls FROM pg_roles
+                      WHERE rolname = current_user)
+                 AND (SELECT count(*) = 0 FROM tickets)
+                 THEN '\''PASS'\'' ELSE '\''FAIL'\'' END"
+          ')
+          test "$result" = PASS
+          scoped=$(docker compose exec -T postgres sh -ec '
+            PGPASSWORD="$POSTGRES_APP_PASSWORD" psql -h 127.0.0.1 \
+              -U agent_runtime -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 -At <<SQL
+            BEGIN;
+            SELECT set_config('\''app.agent_id'\'', '\''aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'\'', true);
+            SELECT CASE WHEN (SELECT count(*) FROM tickets) = 1 THEN '\''PASS'\'' ELSE '\''FAIL'\'' END;
+            ROLLBACK;
+          SQL
+          ')
+          echo "$scoped" | grep -q '^PASS$'
+          echo "P2 migration and forced RLS smoke passed"
+      - name: Logs on failure
+        if: failure()
+        run: docker compose logs --no-color --tail=120 postgres || true
+      - name: Remove disposable state
+        if: always()
+        run: docker compose down -v --remove-orphans || true
