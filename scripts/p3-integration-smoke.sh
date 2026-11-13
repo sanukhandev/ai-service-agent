@@ -52,4 +52,10 @@ docker compose exec -T \
   api node dist/runtime/intent-smoke.js
 
 printf '%s\n' 'P3 offline integration smoke PASS: guest session, ticket, 202, dedupe, ownership, SSE, ledger'
+# The P4 API must reject lead submission without explicit form consent.
+lead_options=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/operations")
+printf '%s' "$lead_options" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["enabled"] is False;assert d["operations"]==[]'
+lead_denied=$(curl --silent -o /dev/null -w '%{http_code}' -b "$jar" -H 'Content-Type: application/json' -d '{"requestId":"11111111-1111-4111-8111-111111111111","consent":true}' "http://localhost/api/v1/tickets/$ticket_id/operations/salesforce-lead")
+test "$lead_denied" = 400
+
 printf '%s\n' 'Live Foundry and browser certification remain BLOCKED without credentials.'
