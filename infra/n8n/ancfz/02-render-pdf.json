@@ -1,0 +1,156 @@
+{
+  "name": "ANCFZ | PDF Quotation or Invoice",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Receive Authorized Document",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/render-pdf",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "html",
+      "name": "Prepare Escaped HTML",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const b=$input.first().json.body ?? {};\nif(b.agentKey!=='ancfz'||!['quotation','invoice'].includes(b.documentType)) throw new Error('Invalid ANCFZ document type');\nconst esc=(s)=>String(s??'').replace(/[&<>\"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','\"':'&quot;',\"'\":'&#39;'}[c]));\nfunction money(v){if(typeof v!=='number'||!Number.isFinite(v)||v<0)throw new Error('Invalid amount');return v.toFixed(2);}\nif(!Array.isArray(b.lines)||b.lines.length<1||b.lines.length>40)throw new Error('Invalid lines');\nconst currency=String(b.currency??'');\nif(!/^[A-Z]{3}$/.test(currency))throw new Error('Invalid currency');\nconst rows=b.lines.map(line=>'<tr><td>'+esc(String(line.label??'').slice(0,200))+'</td><td style=\"text-align:right\">'+esc(currency)+' '+money(line.amount)+'</td></tr>').join('');\nconst total=b.lines.reduce((sum,line)=>sum+Number(line.amount),0);\nif(Math.abs(total-Number(b.total))>0.001)throw new Error('Total mismatch');\nif(b.documentType==='invoice' && b.paymentVerified!==true)throw new Error('Invoice requires verified test payment');\nconst heading=b.documentType==='invoice'?'TEST PAYMENT INVOICE':'QUOTATION';\nconst note=b.documentType==='invoice'?'Sandbox payment confirmed. Not proof of real funds.':'This quotation is subject to ANCFZ approval and documented conditions.';\nconst html='<!doctype html><html><head><meta charset=\"UTF-8\"><style>body{font:15px Arial,sans-serif;margin:36px;color:#172333}h1{color:#155db3}table{border-collapse:collapse;width:100%;margin-top:25px}th,td{border-bottom:1px solid #ccc;padding:10px;text-align:left}.muted{color:#536073;font-size:12px}</style></head><body><h1>ANCFZ</h1><h2>'+heading+'</h2><p>Document: '+esc(String(b.documentNumber??'').slice(0,100))+'</p><p>Customer: '+esc(String(b.customerName??'').slice(0,200))+'</p><table><tr><th>Description</th><th style=\"text-align:right\">Amount</th></tr>'+rows+'</table><h3 style=\"text-align:right\">Total: '+esc(currency)+' '+money(total)+'</h3><p class=\"muted\">'+note+'</p></body></html>';\nreturn [{json:{documentType:b.documentType,documentNumber:String(b.documentNumber??''),ticketId:String(b.ticketId??'')},binary:{html:{data:Buffer.from(html,'utf8').toString('base64'),mimeType:'text/html',fileName:'index.html'}}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "render",
+      "name": "Gotenberg Private PDF Renderer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "http://gotenberg:3000/forms/chromium/convert/html",
+        "sendBody": true,
+        "contentType": "multipart-form-data",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "parameterType": "formBinaryData",
+              "name": "files",
+              "inputDataFieldName": "html"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "file",
+              "outputPropertyName": "data"
+            }
+          },
+          "timeout": 45000
+        }
+      }
+    },
+    {
+      "id": "binary",
+      "name": "Package PDF Result",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const pdf=await this.helpers.getBinaryDataBuffer(0,'data');\nif(pdf.length<100 || pdf.length>5242880 || pdf.subarray(0,5).toString()!=='%PDF-')throw new Error('Invalid PDF bytes');\nconst original=$('Prepare Escaped HTML').first().json;\nreturn [{json:{status:'generated',documentType:original.documentType,documentNumber:original.documentNumber,ticketId:original.ticketId,mimeType:'application/pdf',pdfBase64:pdf.toString('base64')}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Authorized Document": {
+      "main": [
+        [
+          {
+            "node": "Prepare Escaped HTML",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare Escaped HTML": {
+      "main": [
+        [
+          {
+            "node": "Gotenberg Private PDF Renderer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Gotenberg Private PDF Renderer": {
+      "main": [
+        [
+          {
+            "node": "Package PDF Result",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Package PDF Result": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
