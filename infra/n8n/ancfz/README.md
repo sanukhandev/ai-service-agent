@@ -4,9 +4,23 @@
 
 This pack is intentionally **ANCFZ-specific**. The core agent-centric Node/PostgreSQL platform remains reusable, but these workflow names, Salesforce fields, invoice copy, gateway and verification rules belong only to the `ancfz` agent.
 
-## Bootstrap the n8n owner and ANZFC workspace
+## Bootstrap the n8n owner and default workspace
 
-For new local Docker installations, follow [ANZFC project/database bootstrap](SEEDING.md). It initializes the instance owner as admin@techcarrot.ae with a bcrypt-hashed runtime-supplied password, creates a project named exactly `anzfc`, and imports all four credential placeholders and all five **inactive** workflow templates with project-scoped n8n CLI commands. It never mutates internal n8n database tables directly. Project support and an owner API key are required. Do not commit or hardcode the initial password.
+For the single-operator POC, follow [n8n local seeding](SEEDING.md).
+The importer now targets the **existing owner's personal workspace by default**
+and does **not** call the Projects API or require a Projects license.
+Once the owner account and owner API key exist, run:
+
+```powershell
+# N8N_API_KEY must be supplied privately as described in SEEDING.md
+node scripts/seed-n8n-anzfc.mjs --stage=import --workspace=personal
+```
+
+This imports four credential placeholders and five **inactive** workflow
+templates without modifying n8n SQL tables or existing credentials. It fails
+closed on duplicate resources. A separate `anzfc` project is optional on
+instances with Projects support via `--workspace=project`; it is no longer
+required by this POC. Never hardcode owner passwords or API keys.
 
 ## Credentials import (NEW — four reusable n8n credentials)
 
