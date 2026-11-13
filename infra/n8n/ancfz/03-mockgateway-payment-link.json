@@ -23,6 +23,12 @@
         "authentication": "headerAuth",
         "responseMode": "responseNode",
         "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
       }
     },
     {
@@ -71,6 +77,12 @@
         "jsonBody": "={{ JSON.stringify({ Currency: $('Validate Authorized Payment').first().json.currency, Items: [{ Price: { UnitNetPrice: $('Validate Authorized Payment').first().json.amount } }], ExternalReference: $('Validate Authorized Payment').first().json.externalReference, BillingDetails: { FirstName: $('Validate Authorized Payment').first().json.firstName, Email: $('Validate Authorized Payment').first().json.email, CountryCode: $('Validate Authorized Payment').first().json.countryCode }, PaymentDetails: { Type: 'CC' } }) }}",
         "options": {
           "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4d9487aa-e07b-4bfd-92b9-a9699ffb5e45",
+          "name": "ANCFZ - MockGateway Demo X-API-Key"
         }
       }
     },
