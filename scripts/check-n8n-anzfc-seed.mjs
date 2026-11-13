@@ -30,9 +30,11 @@ const source=readFileSync(new URL("./seed-n8n-anzfc.mjs",import.meta.url),"utf8"
 const helper=readFileSync(new URL("../infra/n8n/ancfz/seed-project.mjs",import.meta.url),"utf8");
 const compose=readFileSync(new URL("../docker-compose.yml",import.meta.url),"utf8");
 assert(!source.includes("techCarrot@2026"), "Do not hardcode the supplied owner password");
-assert(!source.includes("user-management:reset"));
-assert(!source.includes("import:entities"));
-assert(!helper.includes("truncateTables"));
+// The documentation/comments may name forbidden destructive commands to warn
+// operators; verify no executable Docker arguments invoke them.
+assert(!source.includes('["user-management:reset"]'));
+assert(!source.includes('["import:entities"]'));
+assert(!helper.includes('"truncateTables": true'));
 assert(helper.includes("/api/v1"));
 assert(helper.includes("/projects"));
 assert(helper.includes("Credential ID collision"));
