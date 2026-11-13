@@ -27,11 +27,38 @@ fi
 
 # Uses postgres solely for owner-authorized catalog administration. The Node
 # runtime remains agent_runtime (RLS enforced). No database port is published.
-docker compose exec -T postgres \
+#
+# Windows / Git Bash cannot pass the ~90 KiB JSON as one docker.exe argument.
+# Copy the catalog to the PostgreSQL container and read it server-side.
+container_id="$(docker compose ps -q postgres)"
+if [[ -z "$container_id" ]]; then
+  echo "PostgreSQL service is not running. Start with docker compose up -d." >&2
+  exit 1
+fi
+
+seed_basename="ancfz-test-seed-$(date +%s)-$$-${RANDOM}.json"
+seed_path="/tmp/$seed_basename"
+cleanup() {
+  MSYS_NO_PATHCONV=1 docker compose exec -T postgres rm -f "$seed_path" >/dev/null 2>&1 || true
+}
+trap cleanup EXIT
+
+# Relative path for Docker Desktop; do not convert the container's /tmp path.
+MSYS_NO_PATHCONV=1 docker cp \
+  "./infra/catalog/ancfz-test-2026.json" \
+  "${container_id}:${seed_path}"
+
+# Do not depend on NTFS file mode bits.
+MSYS_NO_PATHCONV=1 docker compose exec -T postgres chmod 0644 "$seed_path"
+
+# Only short arguments cross Windows -> Docker Desktop. The JSON data remains
+# inside Postgres' private container, and is never passed via an environment
+# variable or a host process argument.
+MSYS_NO_PATHCONV=1 docker compose exec -T postgres \
   psql -v ON_ERROR_STOP=1 \
        --username postgres \
        --dbname "${POSTGRES_DB:-ai_service_agent}" \
-       --set=seed_payload="$(cat "$ROOT/infra/catalog/ancfz-test-2026.json")" \
+       --set=seed_file="$seed_path" \
        --set=foundry_endpoint="$FOUNDRY_PROJECT_ENDPOINT" \
        --set=foundry_name="$FOUNDRY_AGENT_NAME" \
        --set=foundry_version="$FOUNDRY_AGENT_VERSION" \
