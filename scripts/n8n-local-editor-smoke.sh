@@ -3,7 +3,21 @@
 set -euo pipefail
 
 status() { curl --silent --output /dev/null --write-out '%{http_code}' "$1"; }
-test "$(status http://localhost/api/health)" = 200
+
+# Docker Compose "started" does not mean Fastify/Nginx are accepting requests.
+# Wait for healthy service routing before asserting n8n-specific behavior.
+api_ready=false
+for attempt in $(seq 1 90); do
+  if [ "$(status http://localhost/api/health)" = 200 ]; then
+    api_ready=true
+    break
+  fi
+  sleep 2
+done
+if [ "$api_ready" != true ]; then
+  echo "Node API did not become ready behind Nginx" >&2
+  exit 1
+fi
 test "$(status http://localhost/n8n)" = 308
 test "$(status http://localhost/n8n/webhook/ancfz/salesforce-lead)" = 404
 test "$(status http://localhost/n8n/webhook-test/ancfz/test)" = 404
