@@ -15,7 +15,7 @@ Status: **approved architecture and partial Node scaffolding**. The Node functio
 | CRM, quotes, external integration effects | n8n after **Node authorization** | Direct model tool call |
 | User-interface chat, consent, OTP and documents | Next.js through Node API | Foundry playground |
 
-No direct model-exposed `execute_workflow`, arbitrary URL, CRM mutation or `n8n_trigger`. Even `propose_operation` only creates a non-executing proposal in Node.
+No direct model-exposed `execute_workflow`, arbitrary URL, CRM mutation or `n8n_trigger`. Docker additionally places n8n on the Node-only backend network, not the customer web network. Even `propose_operation` only creates a non-executing proposal in Node.
 
 ## Four categories of turns
 
