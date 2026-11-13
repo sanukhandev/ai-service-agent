@@ -51,6 +51,7 @@ services:
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/001_core.sql:/docker-entrypoint-initdb.d/001_core.sql:ro
+      - ./infra/postgres/002_intents_and_ticket_facts.sql:/docker-entrypoint-initdb.d/002_intents_and_ticket_facts.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-ai_service_agent}"]
       interval: 5s
