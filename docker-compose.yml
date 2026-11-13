@@ -53,6 +53,7 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ai_service_agent}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in a local .env file}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/001_core.sql:/docker-entrypoint-initdb.d/001_core.sql:ro
