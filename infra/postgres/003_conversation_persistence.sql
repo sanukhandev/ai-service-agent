@@ -2,6 +2,12 @@
 -- Existing ticket messages are given stable ordinals before the NOT NULL constraint.
 BEGIN;
 
+-- The baseline uses FORCE RLS. A migration owner that does not bypass RLS
+-- must still backfill existing rows across all agents; hold DDL locks and
+-- temporarily disable these policies within this single atomic migration.
+ALTER TABLE tickets DISABLE ROW LEVEL SECURITY;
+ALTER TABLE ticket_messages DISABLE ROW LEVEL SECURITY;
+
 ALTER TABLE tickets
   ADD COLUMN intent_catalog_version_id uuid,
   ADD COLUMN offering_catalog_version_id uuid,
@@ -66,5 +72,8 @@ ALTER TABLE ticket_fact_events
 CREATE INDEX ticket_intents_current_lookup
   ON ticket_intents(agent_id, ticket_id, selected_at DESC)
   WHERE status = 'active';
+
+ALTER TABLE ticket_messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE tickets ENABLE ROW LEVEL SECURITY;
 
 COMMIT;
