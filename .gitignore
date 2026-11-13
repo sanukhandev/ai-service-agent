@@ -1,0 +1,47 @@
+# Dependencies and generated outputs
+node_modules/
+**/node_modules/
+.next/
+.angular/
+dist/
+build/
+out/
+coverage/
+*.tsbuildinfo
+*.log
+.pytest_cache/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# Local editor / OS
+.DS_Store
+Thumbs.db
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Local secrets and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+.azure/
+**/.azure/
+*.pem
+*.key
+secrets/
+*.secret
+*.local
+
+# Runtime volumes, artifacts and temporary files
+postgres-data/
+redis-data/
+n8n-data/
+data/
+tmp/
+temp/
+.cache/
+*.sqlite
+*.db
