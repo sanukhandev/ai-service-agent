@@ -15,7 +15,8 @@ export interface TrustedToolContext {
   readonly ticketId: string;
   readonly principalId: string;
   readonly sourceCustomerMessageId: string;
-  readonly catalogVersion: string;
+  readonly intentCatalogRevision: string;
+  readonly offeringCatalogRevision: string;
   readonly authorizedToolNames: ReadonlySet<RegisteredToolName>;
 }
 
