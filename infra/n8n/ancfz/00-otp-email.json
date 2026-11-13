@@ -1,0 +1,115 @@
+{
+  "name": "ANCFZ | Deliver Payment OTP (Node Generated)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "otp-wh",
+      "name": "Receive OTP Delivery",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/otp-email",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "otp-valid",
+      "name": "Validate OTP Delivery",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const b=$input.first().json.body??{};\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||!/^[0-9a-f-]{36}$/i.test(b.ticketId))throw new Error('Invalid ticket scope');\nif(typeof b.email!=='string'||b.email.length>254||!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(b.email))throw new Error('Invalid email');\nif(typeof b.otp!=='string'||!/^\\d{6}$/.test(b.otp))throw new Error('Invalid OTP format');\nreturn [{json:{email:b.email,otp:b.otp}}];"
+      }
+    },
+    {
+      "id": "smtp",
+      "name": "Send ANCFZ OTP Email",
+      "type": "n8n-nodes-base.emailSend",
+      "typeVersion": 2.1,
+      "position": [
+        720,
+        320
+      ],
+      "parameters": {
+        "fromEmail": "={{ $env.ANCFZ_OTP_FROM_EMAIL }}",
+        "toEmail": "={{ $('Validate OTP Delivery').first().json.email }}",
+        "subject": "ANCFZ payment approval verification",
+        "emailFormat": "text",
+        "text": "={{ 'Your ANCFZ payment approval code is ' + $('Validate OTP Delivery').first().json.otp + '. It expires in 5 minutes. Never share this code in chat.' }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "otp-reply",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        970,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'email_dispatched' }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive OTP Delivery": {
+      "main": [
+        [
+          {
+            "node": "Validate OTP Delivery",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate OTP Delivery": {
+      "main": [
+        [
+          {
+            "node": "Send ANCFZ OTP Email",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send ANCFZ OTP Email": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
