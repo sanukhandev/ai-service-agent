@@ -1,38 +1,35 @@
 # P2 persistence integration contract
 
 This folder owns additive migrations 003, 004 and 005; the pre-existing 001 and
-002 are unchanged. Apply 001 -> 002 -> 003 -> 004 -> 005 to a fresh disposable
+002 are unchanged. Apply 001 -> 002, then P0 role bootstrap, then 003 -> 004 -> 005 to a fresh disposable
 database, or apply ONLY unapplied numbered scripts to an existing database.
 Never rerun 001/002 or reset a persistent volume. Use a migration ledger and
 content checksums in the integration owner's deployment orchestration.
 
 ## Runtime account
 
-004 creates the NOLOGIN permission group ai_service_runtime. The operator
-must provision a separate LOGIN role with a strong generated secret, grant it
-membership in ai_service_runtime, and configure the API's DATABASE_URL to use
-that login. The migration owner and postgres superuser must NEVER be used by
-the Node API. The runtime role has no CREATE/DDL and no BYPASSRLS privileges.
+P0 bootstrap creates the restricted `agent_runtime` LOGIN with an isolated
+`POSTGRES_APP_PASSWORD`. Migration 004 reuses that role and reduces its broad
+bootstrap table grants to the operations actually required by these repositories.
+Migration 005 grants the additional provider conversation table access.
 
-Example operator steps (replace secret using a protected credential channel;
-do not commit credentials):
+Use the P0 Compose `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER=agent_runtime`,
+`PGPASSWORD` environment settings. An optional `DATABASE_URL` may override
+the PG* connection parameters. The application runtime starts by calling
+`db.assertSafeRuntimeRole()` and rejects any user other than `agent_runtime`
+or one with superuser / BYPASSRLS privileges.
 
-  CREATE ROLE ai_service_app LOGIN NOSUPERUSER NOCREATEDB NOCREATEROLE
-    NOREPLICATION NOBYPASSRLS PASSWORD '<set-via-secret-manager>';
-  GRANT ai_service_runtime TO ai_service_app;
-
-The application runtime starts by calling db.assertSafeRuntimeRole() and
-must fail closed on an unsafe role. Every private data operation executes in
-a transaction with SET LOCAL app.agent_id, using an agent ID resolved from
-backend-authenticated context. PostgreSQL RLS is additional defense in depth,
-not a replacement for authentication.
+No new `ai_service_runtime` group or second app login is necessary. The
+`postgres` migration owner must never serve application requests. All
+agent-private SQL runs in a transaction after Node applies trusted
+`SET LOCAL app.agent_id`; RLS supplements, not replaces, ticket ownership checks.
 
 ## Integration patch required outside Track B ownership
 
 1. Docker Compose owner: mount the new SQL files under
    /docker-entrypoint-initdb.d for FRESH databases; run the new migrations
-   separately in existing databases. Add an API DATABASE_URL secret pointing
-   to the restricted LOGIN role. Do not supply POSTGRES_USER=postgres to API.
+   separately in existing databases. Keep the P0 API PG* connection variables pointing
+   to the restricted agent_runtime login (or configure DATABASE_URL explicitly). Do not supply POSTGRES_USER=postgres to API.
 2. Fastify owner: create ONE PersistenceDatabase on startup, await
    assertSafeRuntimeRole(), and onClose await db.close(). Construct
    AgentRepository, GuestSessionRepository, TicketRepository,
@@ -75,10 +72,10 @@ catalog revision when continuing an existing ticket.
 
 ## Manual disposable database smoke checklist
 
-- Apply migrations 001-005 in order with ON_ERROR_STOP=1.
+- Apply migrations 001/002, P0 role bootstrap, then 003/004/005 with ON_ERROR_STOP=1.
 - Seed two agents with active, published versions and published intent and
   offering catalogs; create one verified account in each agent.
-- Login using ai_service_app, not postgres. Confirm SELECT without
+- Login using agent_runtime, not postgres. Confirm SELECT without
   SET LOCAL app.agent_id returns zero scoped rows.
 - In agent A transaction, insert/read an authorized ticket and message; verify
   the same IDs are invisible under agent B. Test both SELECT and UPDATE.
