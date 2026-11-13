@@ -57,7 +57,7 @@ export class PersistenceDatabase {
     try { client = await this.pool.connect(); } catch (error) { throw dbError(error); }
     try {
       const result = await client.query<{ rolsuper: boolean; rolbypassrls: boolean; member: boolean }>(
-        "SELECT r.rolsuper, r.rolbypassrls, pg_has_role(current_user, 'ai_service_runtime', 'member') AS member FROM pg_roles r WHERE r.rolname = current_user",
+        "SELECT r.rolsuper, r.rolbypassrls, pg_has_role(current_user, 'ai_service_runtime', 'USAGE') AS member FROM pg_roles r WHERE r.rolname = current_user",
       );
       const row = result.rows[0];
       if (!row || row.rolsuper || row.rolbypassrls || !row.member) {
