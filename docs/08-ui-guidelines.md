@@ -1,13 +1,13 @@
 # Simple customer UI — Next.js only (POC)
 
-The **Angular Admin Portal is deferred beyond this POC**. Do not recreate \`apps/admin/\`, an Angular build stage or \`/admin/\` routing now.
+The **Angular Admin Portal is deferred beyond this POC**. Do not recreate `apps/admin/`, an Angular build stage or `/admin/` routing now.
 
 ## Stack
 
 - Next.js, React, TypeScript, Tailwind CSS v4.
-- Google Font **Inter**, delivered through bundled/self-hosted \`@fontsource/inter\` assets.
+- Google Font **Inter**, delivered through bundled/self-hosted `@fontsource/inter` assets.
 - Use semantic HTML and lightweight local components. Avoid heavy UI component kits, dashboards, animation frameworks or speculative shared UI packages.
-- Browser accesses the same-origin Node API through Nginx only (\`/api/\` and \`/api/events/\`). Do not call Foundry, n8n, Redis or PostgreSQL from the browser.
+- Browser accesses the same-origin Node API through Nginx only (`/api/` and `/api/events/`). Do not call Foundry, n8n, Redis or PostgreSQL from the browser.
 
 ## Minimal screens
 
@@ -35,4 +35,4 @@ Use native buttons, form controls, simple tables and dialogs where suitable, wit
 
 ## Acceptance (POC smoke only)
 
-After the runtime is built: page loads under \`/\`, same-origin \`/api/\` routing works, basic mobile and desktop layouts are readable, and no internal ports or credentials are browser-visible. Full browser/a11y E2E suites are deferred to H1.
+After the runtime is built: page loads under `/`, same-origin `/api/` routing works, basic mobile and desktop layouts are readable, and no internal ports or credentials are browser-visible. Full browser/a11y E2E suites are deferred to H1.
