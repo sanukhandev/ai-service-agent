@@ -3,7 +3,7 @@ import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessageRepository, TicketEventRepository } from "../repositories/index.js";
 import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord } from "../repositories/types.js";
 import { TurnQueue } from "./turn-queue.js";
-import { LeadOperations } from "./lead-operations.js";
+import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 
 function ticketView(ticket:TicketRecord,agentKey:string) {
   return {id:ticket.id,number:String(ticket.ticketNumber),agentKey,
@@ -137,7 +137,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   app.get("/api/v1/tickets/:ticketId/operations",async(request)=>{
     const scope=await scopeFromCookie(db,request);
     const ticketId=idParam(request);
-    return {operations:await leads.list(scope,ticketId)};
+    return {enabled:leadDispatchEnabled(),operations:await leads.list(scope,ticketId)};
   });
 
   app.get("/api/events/tickets/:ticketId",async(request,reply)=>{
