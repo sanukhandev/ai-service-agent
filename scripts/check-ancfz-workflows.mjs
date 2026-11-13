@@ -10,6 +10,8 @@ const expected = {
   "04-mockgateway-payment-verify.json": "ancfz/payment-verify",
 };
 const errors = [];
+// n8n Code Nodes support top-level await: validate as async function bodies.
+const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
 const allPaths = new Set();
 for (const [filename, path] of Object.entries(expected)) {
   let workflow;
@@ -20,7 +22,7 @@ for (const [filename, path] of Object.entries(expected)) {
   const names = new Set(workflow.nodes.map(node => node.name));
   for(const node of workflow.nodes){
     if(node.type==="n8n-nodes-base.code"){
-      try { new Function("$input", "$", "Buffer", "URL", node.parameters?.jsCode ?? ""); }
+      try { new AsyncFunction("$input", "$", "Buffer", "URL", node.parameters?.jsCode ?? ""); }
       catch(e){ errors.push(filename+": invalid Code Node JS in "+node.name+": "+e.message); }
     }
   }
