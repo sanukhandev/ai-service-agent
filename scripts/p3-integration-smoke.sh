@@ -51,6 +51,10 @@ docker compose exec -T \
   -e P3_TEST_MESSAGE2="$correction_id" \
   api node dist/runtime/intent-smoke.js
 
+# Private operation status requires an authenticated ticket-owner session.
+unauthorized_operation=$(curl --silent -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$ticket_id/operations")
+test "$unauthorized_operation" = 404
+
 # Check the customer-facing API's fail-closed state before authorizing the offline operation.
 lead_options=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/operations")
 printf '%s' "$lead_options" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["enabled"] is False;assert d["operations"]==[]'
