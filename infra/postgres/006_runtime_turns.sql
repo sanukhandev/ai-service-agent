@@ -2,6 +2,9 @@
 -- Migration 006 runs with migration-owner privileges, after 005.
 BEGIN;
 
+-- Foundry Responses uses a previous-response cursor, not a fabricated conversation ID.
+ALTER TABLE ticket_model_sessions DROP COLUMN external_conversation_id;
+
 CREATE TABLE ticket_turns (
   id uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   agent_id uuid NOT NULL,
