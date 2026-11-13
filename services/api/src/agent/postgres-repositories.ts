@@ -8,7 +8,7 @@
 import type { Pool, PoolClient } from "pg";
 import type {
   CatalogRepository, IntentEntry, IntentRequirement, OfferingEntry,
-  TicketFact, TicketFactRepository,
+  TicketFact, TicketFactRepository, TicketIntentRepository,
 } from "./intent-tools.js";
 
 type ScopedWork<T> = (client: PoolClient) => Promise<T>;
@@ -262,5 +262,54 @@ export class PgTicketFactRepository implements TicketFactRepository {
       verification: row.verification_status,
       updatedAt: row.updated_at.toISOString(),
     };
+  }
+}
+
+
+/** Save one current business goal for the ticket without any external side effect. */
+export class PgTicketIntentRepository implements TicketIntentRepository {
+  constructor(private readonly db: AgentScopedDatabase) {}
+
+  async selectIntent(
+    agentId: string,
+    ticketId: string,
+    catalogVersion: string,
+    intentKey: string,
+  ): Promise<{ intentKey: string; status: string }> {
+    return this.db.withinAgent(agentId, async (client) => {
+      const resolved = await client.query<{ id: string }>(
+        `
+        SELECT i.id
+        FROM intents i JOIN intent_catalog_versions v
+          ON v.agent_id = i.agent_id AND v.id = i.catalog_version_id
+        WHERE i.agent_id = $1 AND v.revision::text = $2
+          AND v.status IN ('published', 'retired') AND i.intent_key = $3
+        LIMIT 1
+        `,
+        [agentId, catalogVersion, intentKey],
+      );
+      const target = resolved.rows[0];
+      if (!target) throw new Error("Unsupported intent or catalog revision");
+
+      // A ticket can later add multiple goals; the POC has one active goal.
+      await client.query(
+        `
+        UPDATE ticket_intents SET status = 'superseded'
+        WHERE agent_id = $1 AND ticket_id = $2 AND status = 'active'
+          AND intent_id <> $3
+        `,
+        [agentId, ticketId, target.id],
+      );
+      await client.query(
+        `
+        INSERT INTO ticket_intents (agent_id, ticket_id, intent_id, status)
+        VALUES ($1, $2, $3, 'active')
+        ON CONFLICT (agent_id, ticket_id, intent_id)
+        DO UPDATE SET status = 'active', selected_at = now()
+        `,
+        [agentId, ticketId, target.id],
+      );
+      return { intentKey, status: "active" };
+    });
   }
 }
