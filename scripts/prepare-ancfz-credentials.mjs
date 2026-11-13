@@ -32,7 +32,7 @@ const required = (name, minLength = 1) => {
 const creds = JSON.parse(readFileSync(template, "utf8"));
 if (!Array.isArray(creds) || creds.length !== 4) throw new Error("Unexpected credentials template");
 const webhook = creds.find(c => c.name === "ANCFZ - Node to n8n Webhook Header");
-const sf = creds.find(c => c.name === "ANCFZ - Salesforce OAuth2 Sandbox");
+const sf = creds.find(c => c.name === "ANCFZ - Salesforce Client Credentials Sandbox");
 const smtp = creds.find(c => c.name === "ANCFZ - SMTP OTP Delivery");
 const gateway = creds.find(c => c.name === "ANCFZ - MockGateway Demo X-API-Key");
 if (![webhook, sf, smtp, gateway].every(Boolean)) throw new Error("Missing ANCFZ credential type in template");
