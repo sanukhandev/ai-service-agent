@@ -91,15 +91,16 @@ export class TicketRepository {
       throw new PersistenceError("NOT_FOUND", "Verified account required");
     }
     const take = pageSize(limit);
+    const accountId = requireUuid(scope.owner.accountId, "accountId");
     return this.db.withAgent(scope.agentId, async (client) => {
       const checked = await client.query(
         "SELECT 1 FROM agent_accounts WHERE agent_id = $1 AND id = $2 AND email_verified_at IS NOT NULL",
-        [scope.agentId, requireUuid(scope.owner.accountId, "accountId")],
+        [scope.agentId, accountId],
       );
       if (checked.rowCount !== 1) throw new PersistenceError("NOT_FOUND", "Verified account not found");
       const result = await client.query<Record<string, unknown>>(
         "SELECT * FROM tickets WHERE agent_id = $1 AND account_id = $2 ORDER BY created_at DESC, id DESC LIMIT $3",
-        [scope.agentId, scope.owner.accountId, take],
+        [scope.agentId, accountId, take],
       );
       return result.rows.map(ticketFromRow);
     });
