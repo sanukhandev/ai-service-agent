@@ -17,7 +17,10 @@ psql -v ON_ERROR_STOP=1 -c "
 for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql; do
   name=$(basename "$file")
   checksum=$(sha256sum "$file" | cut -d ' ' -f 1)
-  current=$(psql -At -v ON_ERROR_STOP=1 -v file_name="$name" -c "SELECT checksum FROM public.schema_migrations WHERE name = :'file_name'")
+  current=$(psql -At -v ON_ERROR_STOP=1 -v file_name="$name" <<'SQL'
+SELECT checksum FROM public.schema_migrations WHERE name = :'file_name';
+SQL
+)
   if [ -n "$current" ]; then
     if [ "$current" != "$checksum" ]; then
       echo "Migration checksum changed: $name (database=$current, source=$checksum)" >&2
