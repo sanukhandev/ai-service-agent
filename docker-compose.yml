@@ -28,6 +28,8 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: "4000"
       AZURE_CONFIG_DIR: /home/app/.azure
+      APP_ENV: ${APP_ENV:-development}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
       FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
       FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
@@ -40,12 +42,34 @@ services:
     volumes:
       - azure-cli-auth:/home/app/.azure
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
       redis:
         condition: service_healthy
     networks: [frontend, backend]
     restart: unless-stopped
+
+  # One-off migration owner. Never give its password to the Node runtime.
+  migrate:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/scripts/apply-migrations.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
+      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
+      FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
+      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
+    volumes:
+      - ./infra/postgres:/migrations:ro
+      - ./infra/bootstrap:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
 
   postgres:
     image: postgres:16-alpine

@@ -29,3 +29,5 @@
 - Model functions never trigger n8n directly; explicit customer authorization is required for consequential operations.
 - Admin UI is deferred. During POC, controlled configuration/seed scripts handle catalogs and agent bindings.
 - All non-Nginx containers have no host \`ports:\`.
+
+- [P3 Foundry integration, runtime persistence and controlled Sara publication](p3-foundry-runtime-and-publication.md)

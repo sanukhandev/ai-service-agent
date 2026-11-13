@@ -4,7 +4,15 @@ import { PersistenceError, requireUuid } from "../database/pool.js";
 
 export type TicketOwner =
   | { readonly kind: "guest"; readonly token: string }
-  | { readonly kind: "verified_account"; readonly accountId: string };
+  | { readonly kind: "verified_account"; readonly accountId: string }
+  | { readonly kind: "internal"; readonly ticketId: string; readonly permit: symbol };
+
+const INTERNAL_TURN_PERMIT = Symbol("node-worker-ticket");
+
+/** Only the queue worker may manufacture an internal ticket scope from a DB claim. */
+export function workerTicketScope(agentId: string, ticketId: string): TicketScope {
+  return { agentId: requireUuid(agentId, "agentId"), owner: { kind: "internal", ticketId: requireUuid(ticketId, "ticketId"), permit: INTERNAL_TURN_PERMIT } };
+}
 
 // The API must construct this from a verified backend session, never from
 // a Foundry function argument or an unverified request-body account ID.
@@ -64,7 +72,8 @@ export function hashGuestToken(token: string): string {
 export function ownerParameters(scope: TicketScope): [string | null, string | null] {
   requireUuid(scope.agentId, "agentId");
   if (scope.owner.kind === "guest") return [hashGuestToken(scope.owner.token), null];
-  return [null, requireUuid(scope.owner.accountId, "accountId")];
+  if (scope.owner.kind === "verified_account") return [null, requireUuid(scope.owner.accountId, "accountId")];
+  throw new PersistenceError("NOT_FOUND", "Internal work scope is not a customer ownership claim");
 }
 
 export function cursor(value: string | undefined): string {
@@ -96,6 +105,17 @@ export async function authorizedTicket(
   lock = false,
 ): Promise<Record<string, unknown>> {
   requireUuid(ticketId, "ticketId");
+  if (scope.owner.kind === "internal") {
+    if (scope.owner.permit !== INTERNAL_TURN_PERMIT || scope.owner.ticketId !== ticketId) {
+      throw new PersistenceError("NOT_FOUND", "Ticket not found");
+    }
+    const internal = await client.query<Record<string, unknown>>(
+      `SELECT * FROM tickets WHERE agent_id = $1 AND id = $2 ${lock ? "FOR UPDATE" : ""}`,
+      [scope.agentId, ticketId],
+    );
+    if (!internal.rows[0]) throw new PersistenceError("NOT_FOUND", "Ticket not found");
+    return internal.rows[0];
+  }
   const [tokenHash, accountId] = ownerParameters(scope);
   const result = await client.query<Record<string, unknown>>(
     [

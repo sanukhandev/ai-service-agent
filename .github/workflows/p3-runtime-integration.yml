@@ -1,0 +1,53 @@
+name: P3 runtime integration smoke
+
+on:
+  pull_request:
+    paths:
+      - "services/api/**"
+      - "apps/web/**"
+      - "infra/**"
+      - "docker-compose.yml"
+      - "scripts/p3-integration-smoke.sh"
+      - ".github/workflows/p3-runtime-integration.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  runtime:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      POSTGRES_DB: ai_service_agent
+      POSTGRES_PASSWORD: ci-p3-owner-disposable-only
+      POSTGRES_APP_PASSWORD: ci-p3-runtime-disposable-only
+      FOUNDRY_PROJECT_ENDPOINT: https://ci.example.services.ai.azure.com/api/projects/ci
+      FOUNDRY_AGENT_NAME: ci-sara-agent
+      FOUNDRY_AGENT_VERSION: "1"
+      PUBLIC_BASE_URL: http://localhost
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Compile API and Next.js customer UI
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Validate Compose and Nginx-only ingress
+        run: |
+          docker compose config --quiet
+          docker compose config --format json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["services"]["nginx"]["ports"])==1; assert all(not s.get("ports") for n,s in d["services"].items() if n!="nginx")'
+      - name: Start isolated integration containers
+        run: bash scripts/p0-smoke.sh
+      - name: Exercise guest ticket to durable message and SSE
+        run: bash scripts/p3-integration-smoke.sh
+      - name: Capture diagnostics on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --no-color --tail=140 migrate postgres api nginx || true
+      - name: Remove disposable database volumes
+        if: always()
+        run: docker compose down -v --remove-orphans || true
