@@ -9,18 +9,18 @@ Mark tests **mock**, **local integration**, or **live external**. Never call a m
 | Layer | What it proves |
 |---|---|
 | Unit | Contracts, parsers, authorization rules, state transitions, consent and PII adapters |
-| Contract | Node/Python request/response, Foundry tool schemas, n8n callback payloads, SSE events |
+| Contract | Node/Foundry function-call schemas and output continuation, n8n callbacks, SSE events |
 | Database integration | Fresh migrations, RLS, composite FK, transaction boundaries, idempotency and outbox locking |
-| Docker smoke | Nginx single host port, private services, health, volume persistence, Angular static, Next rendering |
+| Docker smoke | Nginx single host port, private services, health, volume persistence and Next rendering |
 | Live Foundry | Published GPT-5.4 agent, identity, native IQ retrieval, citations and real tool errors |
 | Workflow integration | n8n dispatch, approval, provider evidence, callback replay and reconciliation |
-| Browser E2E | Guest and verified customer journey, SSE recovery, document upload, admin operations |
+| Browser E2E | Guest and verified customer journey, SSE recovery, document upload and authorized actions |
 
 ## P0: repository and infrastructure
 
 - Formatting/lint/typecheck/test/build commands exist and run successfully when apps are implemented.
 - `docker compose config` passes and **only** nginx publishes `80:80`.
-- Angular static assets render at `/admin/` with deep-link refresh; Next.js renders `/`.
+- Next.js renders `/`; there is no Angular admin app or `/admin/` route in this POC.
 - All private service ports are inaccessible directly from host.
 - No real secrets, API keys, OTP or customer PII in repository or test snapshots.
 - PostgreSQL fresh migration applies with an auditable ledger and no `vector` extension.
@@ -69,13 +69,13 @@ For every factual case capture source IDs, agent/version, tool calls and respons
 
 - OTP TTL, throttling, non-enumeration, reuse and replay denial.
 - OTP/credentials never enter model request, logs or telemetry.
-- Presidio tests for names/emails/phones and representative false positives; preserve authorized contact fields while masking unnecessary PII.
+- Node privacy adapter tests for sensitive fields and representative false positives; preserve authorized contact fields while masking unnecessary PII. Azure AI Language PII is optional.
 - Upload file-size/type validation, agent-scoped object access isolation and malformed file handling.
 - OCR derived fields retain provenance and review status; AI extraction never silently validates identity.
 
-## P6: admin and release review
+## P6/P7: integrated POC and release review (H1 automation deferred)
 
-- Admin RBAC cannot access another agent's configuration without authorization.
+- Controlled POC configuration scripts cannot access another agent's settings without authorization. Admin UI is deferred beyond the POC.
 - Catalog draft/publish/version pin works, including active ticket stability.
 - Basic accessibility and responsive browser tests for both UIs.
 - Load/test p50, p95, p99 latency, tool-call budget and concurrency with representative traffic.
