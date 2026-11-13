@@ -1,0 +1,144 @@
+{
+  "name": "ANCFZ | MockGateway Test Payment Link",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Receive Authorized Payment",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/payment-link",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validated",
+      "name": "Validate Authorized Payment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const b=$input.first().json.body??{};\nif(b.agentKey!=='ancfz'||b.otpVerified!==true||b.customerConsent!==true)throw new Error('OTP/consent required from Node');\nif(!Number.isSafeInteger(b.amount)||b.amount<=0||b.amount>10000000)throw new Error('Invalid amount; template expects integer currency units');\nif(typeof b.currency!=='string'||!/^[A-Z]{3}$/.test(b.currency))throw new Error('Invalid currency');\nif(typeof b.ticketId!=='string'||!/^[0-9a-f-]{36}$/i.test(b.ticketId))throw new Error('Invalid ticket');\nif(typeof b.quotationId!=='string'||b.quotationId.length>128)throw new Error('Invalid quote');\nreturn [{json:{ticketId:b.ticketId,quotationId:b.quotationId,amount:b.amount,currency:b.currency}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "init",
+      "name": "MockGateway Init",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "={{ 'https://mockgateway.com/api/pg/' + $env.MOCKGATEWAY_SLUG + '/init' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({amount: $('Validate Authorized Payment').first().json.amount, currency: $('Validate Authorized Payment').first().json.currency}) }}",
+        "options": {
+          "timeout": 20000
+        }
+      }
+    },
+    {
+      "id": "check",
+      "name": "Validate Payment Link",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const r=$input.first().json;const id=r.payment_id??r.paymentId??r.id;const url=r.payment_url??r.paymentUrl??r.checkout_url;\nif(typeof id!=='string'||id.length<2||id.length>200||typeof url!=='string')throw new Error('Gateway response missing ID or checkout URL');\nlet u;try{u=new URL(url);}catch{throw new Error('Invalid checkout URL');}\nif(u.protocol!=='https:'||u.hostname!=='mockgateway.com')throw new Error('Unexpected checkout URL host');\nconst expected=$('Validate Authorized Payment').first().json;\nreturn [{json:{status:'link_created',provider:'mockgateway_sandbox',paymentId:id,paymentUrl:url,ticketId:expected.ticketId,quotationId:expected.quotationId,amount:expected.amount,currency:expected.currency}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Authorized Payment": {
+      "main": [
+        [
+          {
+            "node": "Validate Authorized Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Authorized Payment": {
+      "main": [
+        [
+          {
+            "node": "MockGateway Init",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MockGateway Init": {
+      "main": [
+        [
+          {
+            "node": "Validate Payment Link",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Payment Link": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
