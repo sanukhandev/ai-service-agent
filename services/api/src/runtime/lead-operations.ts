@@ -74,6 +74,10 @@ export class LeadOperations {
   async submit(scope: TicketScope, ticketId: string, input: unknown): Promise<{ operation: LeadOperationView; duplicated: boolean }> {
     requireUuid(ticketId,"ticketId");
     const {requestId,lead,digest} = parseAuthorizedLead(input);
+    if (process.env.APP_ENV === "production" &&
+        !process.env.PUBLIC_BASE_URL?.startsWith("https://")) {
+      throw new PersistenceError("NOT_CONFIGURED","HTTPS is required for customer contact sharing");
+    }
     if (!leadDispatchEnabled()) throw new PersistenceError("NOT_CONFIGURED","Salesforce lead submission is not enabled");
     return this.db.withAgent(scope.agentId,async client => {
       const ticket = await authorizedTicket(client,scope,ticketId,true);
