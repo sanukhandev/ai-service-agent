@@ -2,7 +2,7 @@
 
 A clean, generic **agent-centric business assistant** platform. Sara/ANCFZ is the first example, not business logic hardcoded into the runtime.
 
-> **Current status:** P0 foundation completion is validated by a dedicated Docker/build smoke workflow. P1 Foundry calls and P2 customer conversations remain unimplemented. Angular admin and Python Gateway are excluded. See the live GitHub Actions result for actual build status.
+> **Current status:** P3 integration is implemented on a draft PR, pending exact-head Docker smoke and **live Foundry Sara / IQ validation**. P0/A/B/C foundation components were merged before P3. Do not treat the POC as complete until the live acceptance scenario passes. Angular admin and Python Gateway are excluded.
 
 ## Active architecture
 
@@ -22,7 +22,7 @@ No Python runtime, Angular admin, LangGraph, pgvector, custom embedding service 
 apps/web/                Next.js + Tailwind v4 + self-hosted Inter
 services/api/            Node Fastify; Foundry SDK added in P1
 packages/contracts/      Public API and event contracts
-infra/postgres/          Fresh PostgreSQL schema
+infra/postgres/          Agent-scoped SQL, migration ledger, durable turn queue
 infra/nginx/             Port-80-only reverse proxy
 docs/                    Engineering contract, plan and reference
 docker-compose.yml       Local/isolated deployment
@@ -48,7 +48,9 @@ docker compose ps
 # bash scripts/p0-smoke.sh
 ```
 
-The official PostgreSQL image initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then `infra/bootstrap/003-app-runtime-role.sh` on a **fresh** data volume. It creates a restricted `agent_runtime` role for the Node service; the `postgres` migration owner must not be used for application queries. Do not delete an existing volume to re-run init scripts. Track B owns any follow-up migrations and grants for new tables.
+The official PostgreSQL image initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then `infra/bootstrap/003-app-runtime-role.sh` on a **fresh** data volume. The dedicated `migrate` service applies `003–006`, checks checksums, and idempotently seeds Sara and published catalogs before API startup. It creates a restricted `agent_runtime` role for the Node service; the `postgres` migration owner must not be used for application queries. Do not delete an existing volume to re-run init scripts. Track B owns any follow-up migrations and grants for new tables.
+
+Set the real `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_AGENT_NAME` and `FOUNDRY_AGENT_VERSION` before starting the migration service. Changes to an existing published binding require explicit version publication, not silent seed mutation. See [P3 publication](docs/p3-foundry-runtime-and-publication.md).
 
 Only Nginx publishes host port 80. `http://localhost/` is the Next.js shell, and `http://localhost/api/health` is the Node health endpoint. These commands have not been executed/verified in this repository session.
 
