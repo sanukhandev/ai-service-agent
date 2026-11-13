@@ -1,5 +1,5 @@
 {
-  "name": "ANCFZ | Salesforce Lead Upsert",
+  "name": "ANCFZ | Salesforce Apex REST AI Chatbot Lead",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -41,13 +41,13 @@
         300
       ],
       "parameters": {
-        "jsCode": "const b = $input.first().json.body ?? {};\nfunction required(v, label, max=200) { if(typeof v !== 'string' || !v.trim() || v.length>max) throw new Error('Invalid '+label); return v.trim(); }\nconst ticketId=required(b.ticketId,'ticketId',36);\nif(!/^[0-9a-f-]{36}$/i.test(ticketId) || b.agentKey !== 'ancfz' || b.consent !== true) throw new Error('Not an authorized ANCFZ lead');\nconst lastName=required(b.lastName,'lastName');\nconst company=required(b.company,'company');\nconst email=required(b.email,'email',254);\nif(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) throw new Error('Invalid email');\nconst description = typeof b.enquiry === 'string' ? b.enquiry.slice(0,2000) : 'ANCFZ customer enquiry';\nreturn [{json:{ticketId,lead:{LastName:lastName,Company:company,Email:email,Description:description,LeadSource:'ANCFZ Sara'}}}];",
+        "jsCode": "// Only the authorized Node outbox worker may call this Header Auth webhook.\n// An API caller's consent flag is NOT independent authorization evidence.\nconst b=$input.first().json.body??{};\nfunction string(v,name,max) {\n  if(typeof v!=='string'||!v.trim()||v.length>max)throw new Error('Invalid '+name);\n  return v.trim();\n}\nconst ticketId=string(b.ticketId,'ticketId',36);\nif(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ticketId))throw new Error('Invalid ticket ID');\nif(b.agentKey!=='ancfz'||b.consent!==true)throw new Error('Node-authorized ANCFZ consent required');\n// Allow existing Node facts (camelCase), or the exact Apex REST field names.\nconst lead={\n  Name:string(b.name??b.Name,'Name',120),\n  Company:string(b.company??b.Company,'Company',255),\n  Phone:string(b.phone??b.Phone,'Phone',40),\n  Email:string(b.email??b.Email,'Email',254),\n  Description:string(b.description??b.Description??b.enquiry,'Description',4000),\n};\nif(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(lead.Email))throw new Error('Invalid Email');\nif(!/^\\+?[0-9 ()-]{7,40}$/.test(lead.Phone))throw new Error('Invalid Phone');\nreturn [{json:{ticketId,lead}}];",
         "mode": "runOnceForAllItems"
       }
     },
     {
       "id": "upsert",
-      "name": "Salesforce OAuth Upsert",
+      "name": "Salesforce Apex REST Create Lead",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -55,10 +55,10 @@
         300
       ],
       "parameters": {
-        "method": "PATCH",
-        "url": "={{ $env.SALESFORCE_INSTANCE_URL + '/services/data/v62.0/sobjects/Lead/ANCFZ_Ticket_ID__c/' + encodeURIComponent($('Validate ANCFZ Lead').first().json.ticketId) }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "salesforceOAuth2Api",
+        "method": "POST",
+        "url": "https://techcarrot4--realforce.sandbox.my.salesforce.com/services/apexrest/AIChatbotLead/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "oAuth2Api",
         "sendBody": true,
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Validate ANCFZ Lead').first().json.lead) }}",
@@ -67,48 +67,23 @@
         }
       },
       "credentials": {
-        "salesforceOAuth2Api": {
+        "oAuth2Api": {
           "id": "3f71959e-3b35-4d0f-9d7e-2de8223ca1b8",
-          "name": "ANCFZ - Salesforce OAuth2 Sandbox"
-        }
-      }
-    },
-    {
-      "id": "lookup",
-      "name": "Salesforce Read Back Lead",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        970,
-        300
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ $env.SALESFORCE_INSTANCE_URL + '/services/data/v62.0/sobjects/Lead/ANCFZ_Ticket_ID__c/' + encodeURIComponent($('Validate ANCFZ Lead').first().json.ticketId) }}",
-        "authentication": "predefinedCredentialType",
-        "nodeCredentialType": "salesforceOAuth2Api",
-        "options": {
-          "timeout": 30000
-        }
-      },
-      "credentials": {
-        "salesforceOAuth2Api": {
-          "id": "3f71959e-3b35-4d0f-9d7e-2de8223ca1b8",
-          "name": "ANCFZ - Salesforce OAuth2 Sandbox"
+          "name": "ANCFZ - Salesforce Client Credentials Sandbox"
         }
       }
     },
     {
       "id": "check",
-      "name": "Verify Salesforce ID",
+      "name": "Inspect Apex REST Lead Result",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        1220,
+        970,
         300
       ],
       "parameters": {
-        "jsCode": "const r=$input.first().json;\nif(typeof r.Id !== 'string' || !/^00Q[A-Za-z0-9]{12,15}$/.test(r.Id)) throw new Error('Salesforce Lead identity not confirmed');\nreturn [{json:{status:'verified_completed',provider:'salesforce',leadId:r.Id,ticketId:$('Validate ANCFZ Lead').first().json.ticketId}}];",
+        "jsCode": "// The custom Apex REST success schema was not included in the sample.\n// Only treat a real Salesforce Lead ID returned by the endpoint as verified.\n// Do not invent an ID or claim creation on a generic HTTP 200.\nconst raw=$input.first().json;\nconst body=(raw!==null&&typeof raw==='object'&&!Array.isArray(raw))?raw:{raw};\nconst data=(body.data!==null&&typeof body.data==='object'&&!Array.isArray(body.data))?body.data:body;\nconst candidate=data.leadId??data.LeadId??data.Id??data.id;\nconst leadId=typeof candidate==='string'&&/^00Q(?:[A-Za-z0-9]{12}|[A-Za-z0-9]{15})$/.test(candidate)?candidate:null;\nconst negative=body.success===false||data.success===false||body.error===true||data.error===true;\nif(negative)throw new Error('Salesforce Apex REST reported failure');\nconst ticketId=$('Validate ANCFZ Lead').first().json.ticketId;\nreturn [{json:{status:leadId?'verified_completed':'provider_acknowledged_unverified',\n  provider:'salesforce_apex_rest',ticketId,leadId,verified:Boolean(leadId)}}];",
         "mode": "runOnceForAllItems"
       }
     },
@@ -118,7 +93,7 @@
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.1,
       "position": [
-        1470,
+        1220,
         300
       ],
       "parameters": {
@@ -146,36 +121,25 @@
       "main": [
         [
           {
-            "node": "Salesforce OAuth Upsert",
+            "node": "Salesforce Apex REST Create Lead",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Salesforce OAuth Upsert": {
+    "Salesforce Apex REST Create Lead": {
       "main": [
         [
           {
-            "node": "Salesforce Read Back Lead",
+            "node": "Inspect Apex REST Lead Result",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Salesforce Read Back Lead": {
-      "main": [
-        [
-          {
-            "node": "Verify Salesforce ID",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Verify Salesforce ID": {
+    "Inspect Apex REST Lead Result": {
       "main": [
         [
           {
