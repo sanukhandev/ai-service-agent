@@ -51,7 +51,7 @@ The script creates or finds the project through n8n's authenticated Public API, 
     n8n import:workflow --input=/workflows/ancfz/03-mockgateway-payment-link.json --projectId=PROJECT_ID --activeState=false
     n8n import:workflow --input=/workflows/ancfz/04-mockgateway-payment-verify.json --projectId=PROJECT_ID --activeState=false
 
-It checks for credential-ID and workflow-name collisions before any import and verifies all expected resources afterward. Existing partial imports stop the script rather than overwriting or duplicating credentials.
+It checks for credential-ID and workflow-name collisions before any import and verifies all expected resources afterward. Existing full or partial imports stop the script rather than overwriting or duplicating credentials, because a global name match does not prove project ownership.
 
 ## Seed outcome
 
