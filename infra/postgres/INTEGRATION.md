@@ -1,7 +1,7 @@
 # P2 persistence integration contract
 
-This folder owns additive migrations 003 and 004; the pre-existing 001 and
-002 are unchanged. Apply 001 -> 002 -> 003 -> 004 to a fresh disposable
+This folder owns additive migrations 003, 004 and 005; the pre-existing 001 and
+002 are unchanged. Apply 001 -> 002 -> 003 -> 004 -> 005 to a fresh disposable
 database, or apply ONLY unapplied numbered scripts to an existing database.
 Never rerun 001/002 or reset a persistent volume. Use a migration ledger and
 content checksums in the integration owner's deployment orchestration.
@@ -37,7 +37,7 @@ not a replacement for authentication.
    assertSafeRuntimeRole(), and onClose await db.close(). Construct
    AgentRepository, GuestSessionRepository, TicketRepository,
    TicketMessageRepository, ConversationContextRepository and
-   TicketEventRepository from it.
+   TicketEventRepository and ConversationContinuityRepository from it.
 3. Auth owner: resolve agentKey on the server, validate active/published
    configuration, verify a cookie-bound guest token or secure authenticated
    account session, then construct a TicketScope. Never accept accountId,
@@ -51,7 +51,11 @@ not a replacement for authentication.
 5. Customer acceptance: createCustomerMessage(scope, ticketId, requestId,
    text) durably commits message and event before acknowledging HTTP 202.
    Existing requestIds return duplicated=true without a new event.
-6. Foundry adapter: createAssistantMessage(scope, ticketId, requestId,
+6. Foundry adapter: use ConversationContinuityRepository.get/bind/advanceCursor
+   to persist the external provider conversation ID and compare-and-swap
+   response cursor. Continue the same provider conversation on reconnect.
+   This table holds no SDK calls, tokens or Foundry secrets. Then use
+   createAssistantMessage(scope, ticketId, requestId,
    text, verifiedSourceReferences) only after validation. Source references
    must be passed from actual Foundry output; the DB deliberately does not
    fabricate or independently verify citations.
@@ -71,7 +75,7 @@ catalog revision when continuing an existing ticket.
 
 ## Manual disposable database smoke checklist
 
-- Apply migrations 001-004 in order with ON_ERROR_STOP=1.
+- Apply migrations 001-005 in order with ON_ERROR_STOP=1.
 - Seed two agents with active, published versions and published intent and
   offering catalogs; create one verified account in each agent.
 - Login using ai_service_app, not postgres. Confirm SELECT without
@@ -85,6 +89,8 @@ catalog revision when continuing an existing ticket.
   second is returned. Repeat an outbox key and ensure one row/event.
 - Correct a fact from a second customer message, confirm old/new provenance
   is present in ticket_fact_events.
+- Bind a provider conversation; reject rebinding to a different conversation
+  and reject a stale compare-and-swap response cursor.
 - Expire guest session and verify ticket access is denied. Upgrade ticket
   after verified account authentication and confirm the old guest token
   cannot read the account-linked ticket.
