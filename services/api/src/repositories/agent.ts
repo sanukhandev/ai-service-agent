@@ -1,5 +1,6 @@
 import type { PoolClient } from "pg";
-import { PersistenceDatabase, PersistenceError, dbError, requireBounded, requireUuid } from "../database/pool.js";
+import { PersistenceDatabase, PersistenceError, dbError, requireUuid } from "../database/pool.js";
+import { authorizedTicket, type TicketScope } from "./types.js";
 
 export interface AgentIdentity {
   id: string;
@@ -112,15 +113,15 @@ export class AgentRepository {
     });
   }
 
-  async getPinnedTicketConfiguration(agentId: string, ticketVersionId: string, intentCatalogId: string | null, offeringCatalogId: string | null): Promise<AgentBinding> {
-    requireUuid(ticketVersionId, "ticketVersionId");
-    if (intentCatalogId) requireUuid(intentCatalogId, "intentCatalogId");
-    if (offeringCatalogId) requireUuid(offeringCatalogId, "offeringCatalogId");
-    return this.db.withAgent(agentId, async (client) => {
-      const found = await client.query<{
+  // The ticket is authorized first, then its immutable version/catalog foreign
+  // keys are read server-side. The caller cannot choose unrelated revisions.
+  async getPinnedForTicket(scope: TicketScope, ticketId: string): Promise<AgentBinding> {
+    return this.db.withAgent(scope.agentId, async (client) => {
+      const ticket = await authorizedTicket(client, scope, ticketId);
+      const result = await client.query<{
         id: string; version_number: number; foundry_project_endpoint: string;
-        foundry_agent_name: string; foundry_agent_version: string; knowledge_binding_ref: string | null;
-        persona_config: Record<string, unknown>;
+        foundry_agent_name: string; foundry_agent_version: string;
+        knowledge_binding_ref: string | null; persona_config: Record<string, unknown>;
         ic_revision: number | null; oc_revision: number | null;
       }>(
         [
@@ -134,21 +135,27 @@ export class AgentRepository {
           "AND oc.id = $4 AND oc.status IN ('published', 'retired')",
           "WHERE v.agent_id = $1 AND v.id = $2 AND v.published_at IS NOT NULL",
         ].join(" "),
-        [agentId, ticketVersionId, intentCatalogId, offeringCatalogId],
+        [scope.agentId, ticket["agent_version_id"],
+          ticket["intent_catalog_version_id"], ticket["offering_catalog_version_id"]],
       );
-      const row = found.rows[0];
-      if (!row || (intentCatalogId && row.ic_revision === null) || (offeringCatalogId && row.oc_revision === null)) {
+      const row = result.rows[0];
+      if (!row || (ticket["intent_catalog_version_id"] && row.ic_revision === null) ||
+        (ticket["offering_catalog_version_id"] && row.oc_revision === null)) {
         throw new PersistenceError("NOT_FOUND", "Pinned configuration unavailable");
       }
       return {
-        agentId, versionId: row.id, versionNumber: row.version_number,
+        agentId: scope.agentId, versionId: row.id, versionNumber: row.version_number,
         foundryProjectEndpoint: row.foundry_project_endpoint,
         foundryAgentName: row.foundry_agent_name,
         foundryAgentVersion: row.foundry_agent_version,
-        knowledgeBindingRef: row.knowledge_binding_ref, personaConfig: row.persona_config,
-        intentCatalogVersionId: intentCatalogId, intentCatalogRevision: row.ic_revision === null ? null : String(row.ic_revision),
-        offeringCatalogVersionId: offeringCatalogId, offeringCatalogRevision: row.oc_revision === null ? null : String(row.oc_revision),
+        knowledgeBindingRef: row.knowledge_binding_ref,
+        personaConfig: row.persona_config,
+        intentCatalogVersionId: ticket["intent_catalog_version_id"] as string | null,
+        intentCatalogRevision: row.ic_revision === null ? null : String(row.ic_revision),
+        offeringCatalogVersionId: ticket["offering_catalog_version_id"] as string | null,
+        offeringCatalogRevision: row.oc_revision === null ? null : String(row.oc_revision),
       };
     });
   }
+
 }
