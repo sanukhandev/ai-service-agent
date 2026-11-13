@@ -7,6 +7,8 @@ on:
       - 'scripts/check-ancfz-workflows.mjs'
       - 'scripts/check-ancfz-credentials.mjs'
       - 'scripts/check-ancfz-salesforce.mjs'
+      - 'scripts/check-n8n-anzfc-seed.mjs'
+      - 'scripts/seed-n8n-anzfc.mjs'
       - 'scripts/prepare-ancfz-credentials.mjs'
       - 'docker-compose.yml'
       - '.github/workflows/p4-ancfz-workflow-structure.yml'
@@ -16,6 +18,8 @@ on:
       - 'scripts/check-ancfz-workflows.mjs'
       - 'scripts/check-ancfz-credentials.mjs'
       - 'scripts/check-ancfz-salesforce.mjs'
+      - 'scripts/check-n8n-anzfc-seed.mjs'
+      - 'scripts/seed-n8n-anzfc.mjs'
       - 'scripts/prepare-ancfz-credentials.mjs'
       - 'docker-compose.yml'
       - '.github/workflows/p4-ancfz-workflow-structure.yml'
@@ -35,6 +39,8 @@ jobs:
         run: node scripts/check-ancfz-credentials.mjs
       - name: Validate Salesforce Apex REST client credentials and customer payload
         run: node scripts/check-ancfz-salesforce.mjs
+      - name: Validate ANZFC owner and project seeding script (dry-run)
+        run: node scripts/check-n8n-anzfc-seed.mjs
       - name: Validate Compose profile
         env:
           POSTGRES_PASSWORD: p4-test-migration-only
