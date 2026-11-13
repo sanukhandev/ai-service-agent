@@ -1,7 +1,7 @@
 import { PersistenceDatabase, PersistenceError, requireBounded, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "./events.js";
 import {
-  asIso, authorizedTicket, cursor, pageSize,
+  asIso, authorizedTicket, assertAgentActive, cursor, pageSize,
   type MessageRecord, type SourceReference, type TicketScope,
 } from "./types.js";
 
@@ -80,6 +80,7 @@ export class TicketMessageRepository {
         return { message: mapMessage(old), duplicated: true };
       }
       if (ticket["status"] === "closed") throw new PersistenceError("CONFLICT", "Ticket is closed");
+      await assertAgentActive(client, scope.agentId);
       const next = await client.query<{ last_message_sequence: string }>(
         "UPDATE tickets SET last_message_sequence = last_message_sequence + 1, updated_at = now() WHERE agent_id = $1 AND id = $2 RETURNING last_message_sequence",
         [scope.agentId, ticketId],
