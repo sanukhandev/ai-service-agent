@@ -6,11 +6,13 @@ services:
       context: .
       dockerfile: infra/nginx/Dockerfile
     ports:
-      - "80:80"
+      # Local POC only: editor and customer portal must not bind the LAN interface.
+      - "127.0.0.1:80:80"
     depends_on:
       - web
       - api
-    networks: [frontend]
+    # nginx must resolve n8n on the private backend network; n8n has no published ports.
+    networks: [frontend, backend]
     restart: unless-stopped
 
   web:
@@ -112,7 +114,12 @@ services:
     profiles: ["workflows"]
     image: docker.n8n.io/n8nio/n8n:stable
     environment:
-      N8N_HOST: n8n
+      N8N_HOST: localhost
+      # Public editor is /n8n/ behind Nginx; private webhooks retain root paths.
+      N8N_PATH: /n8n/
+      N8N_EDITOR_BASE_URL: http://localhost/n8n/
+      N8N_WEBHOOK_URL: http://n8n:5678/
+      N8N_PROXY_HOPS: "1"
       N8N_PORT: "5678"
       N8N_PROTOCOL: http
       N8N_SECURE_COOKIE: "false"
