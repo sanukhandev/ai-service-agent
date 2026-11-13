@@ -8,8 +8,8 @@ The four ANCFZ external business workflows are:
 
 1. `ancfz_salesforce_lead`: create/upsert a Salesforce **Lead** using approved customer details.
 2. `ancfz_render_pdf`: render either an ANCFZ **quotation** or **invoice** with Gotenberg.
-3. `ancfz_payment_link`: create a **sandbox** hosted checkout at MockGateway after explicit customer agreement and **Node-verified email OTP**.
-4. `ancfz_payment_verify`: independently verify the MockGateway transaction when the customer reports payment, or on a trusted notification. A successful verify then authorizes `ancfz_render_pdf` with `documentType=invoice`.
+3. `ancfz_payment_link`: create a **demo Orders** request against the ANCFZ-specific MockGateway API after explicit customer agreement and **Node-verified email OTP**; return a checkout link only if present in the actual response.
+4. `ancfz_payment_verify`: **not configured yet** for this demo Orders API. It must independently verify the provider transaction when a documented status endpoint is available. Only a real matched success authorizes `ancfz_render_pdf` with `documentType=invoice`.
 
 **Ticket creation is a direct Node/PostgreSQL operation only.** No n8n workflow or Foundry function may create tickets.
 
@@ -84,15 +84,28 @@ The payment operation requires both OTP verification and a separate affirmative 
 
 ## MockGateway sandbox
 
-MockGateway currently documents a custom-gateway API:
+Use the ANCFZ-specific endpoint supplied for this project:
 
 ```text
-POST https://mockgateway.com/api/pg/{gateway-slug}/init
-GET  https://mockgateway.com/api/pg/{gateway-slug}/verify/{payment-id}
-Authorization: Bearer <your configured test API key>
+POST https://mockgateway.com/api/v1/public/demo/base/ancfz-f6i0ry/rest/6.0/orders/
+X-API-Key: <private n8n HTTP Header Auth credential>
+X-Guest-ID: <configured demo guest UUID>
+Content-Type: application/json
+
+{
+  "Currency": "AED",
+  "Items": [{"Price": {"UnitNetPrice": "<approved decimal price>"}}],
+  "ExternalReference": "<stable Node-generated ANCFZ reference>",
+  "BillingDetails": {
+    "FirstName": "<authorized customer name>",
+    "Email": "<authorized email>",
+    "CountryCode": "<ISO-3166 alpha-2>"
+  },
+  "PaymentDetails": {"Type": "CC"}
+}
 ```
 
-Use account-specific `gateway-slug` and test secret stored in n8n credentials, never in workflow JSON. The actual request/response shape depends on the gateway template and must be checked against its generated Postman collection. Do not assume the Stripe demo public template is an ANCFZ merchant account.
+Keep the user-supplied key out of Git and logs. `X-Guest-ID` is provider metadata, **not customer authentication**. The actual response contract, any hosted checkout URL and the documented order-status retrieval endpoint still require a live sandbox trace. The generic `/api/pg/{slug}/init` and `/api/pg/{slug}/verify` paths are a **different** MockGateway integration and must not be used here. The fail-closed verifier always returns `verified:false` until updated and tested against this same Orders API.
 
 After the customer says **"I've paid"**, do not set `paid=true` on customer statement or redirect query parameters. Ask n8n to perform an independent server-to-server **verify** with the stored gateway payment ID. Compare confirmed success code, ID, amount and currency against the authorized quotation. A trusted webhook should trigger the same verification, not bypass it.
 
