@@ -1,0 +1,147 @@
+{
+  "schemaVersion": "poc-1",
+  "description": "Illustrative ANCFZ catalog fixture. Review and publish via Node before production use; not auto-loaded.",
+  "agentKey": "ancfz",
+  "revision": 1,
+  "intents": [
+    {
+      "key": "company_formation",
+      "name": "Start a Company",
+      "description": "Help a new business owner choose a company structure, business activity, visa allocation and workspace, and optionally prepare a verified enquiry or quotation.",
+      "examplePhrases": [
+        "I want to start a company",
+        "register my software business",
+        "help with company formation",
+        "get a business licence"
+      ],
+      "allowedActions": [
+        "create_lead",
+        "generate_quote"
+      ],
+      "requirements": [
+        {
+          "key": "business_activity",
+          "label": "What will the company do?",
+          "type": "text",
+          "requiredFor": [
+            "create_lead",
+            "generate_quote"
+          ],
+          "hint": "Ask only if not already supplied."
+        },
+        {
+          "key": "shareholder_count",
+          "label": "How many shareholders?",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "Useful for FZE vs FZC structure."
+        },
+        {
+          "key": "visa_count",
+          "label": "How many visas will be needed?",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "Ask after customer needs a visa-inclusive package comparison or quote."
+        },
+        {
+          "key": "office_preference",
+          "label": "What workspace do you prefer?",
+          "type": "choice",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "Flexi-desk/shared office/private office; confirm actual package inclusions."
+        },
+        {
+          "key": "customer_email",
+          "label": "Which email should receive the enquiry?",
+          "type": "email",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": "Only collect as part of a specifically consented lead; OTP identity handled outside model."
+        }
+      ]
+    },
+    {
+      "key": "visa_services",
+      "name": "Visa Services",
+      "description": "Explain residence visa services and help the customer request a case-specific enquiry.",
+      "examplePhrases": [
+        "I need a residency visa",
+        "employee visa application",
+        "what visa services do you offer"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "visa_count",
+          "label": "How many visas?",
+          "type": "number",
+          "requiredFor": [
+            "create_enquiry"
+          ]
+        },
+        {
+          "key": "customer_email",
+          "label": "Email for the authorised enquiry",
+          "type": "email",
+          "requiredFor": [
+            "create_enquiry"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "license_renewal",
+      "name": "License Renewal",
+      "description": "Explain the licence-renewal process and help raise a renewal request.",
+      "examplePhrases": [
+        "renew my company license",
+        "company license renewal"
+      ],
+      "allowedActions": [
+        "create_renewal_request"
+      ],
+      "requirements": [
+        {
+          "key": "existing_license_reference",
+          "label": "Existing licence reference",
+          "type": "text",
+          "requiredFor": [
+            "create_renewal_request"
+          ]
+        }
+      ]
+    },
+    {
+      "key": "banking_assistance",
+      "name": "Corporate Banking Assistance",
+      "description": "Explain partner-bank assistance. Approval is solely at the bank's discretion.",
+      "examplePhrases": [
+        "help me open a bank account",
+        "corporate banking support"
+      ],
+      "allowedActions": [
+        "create_referral"
+      ],
+      "requirements": [
+        {
+          "key": "company_status",
+          "label": "Is the company already incorporated?",
+          "type": "choice",
+          "requiredFor": [
+            "create_referral"
+          ]
+        }
+      ]
+    }
+  ],
+  "note": "No real offering prices or workflow URLs are included; they must be separately authorized and verified in Node."
+}
