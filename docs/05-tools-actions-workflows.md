@@ -2,7 +2,7 @@
 
 ## Separation of responsibilities
 
-**Foundry** decides what to say and which *registered* functions to request. **Node** determines whether a function is allowed, whether the requested data is visible and whether an operation can occur. **n8n** executes only authorized external workflow requests.
+**Foundry** decides what to say and which *registered* functions to request. The function registry and handlers are implemented **inside Node**, and the Foundry agent receives only descriptions. **Node** determines whether a function is allowed, whether the requested data is visible and whether an operation can occur. **n8n** executes only authorized external workflow requests.
 
 This POC uses **native Foundry IQ MCP** for business knowledge retrieval. It is configured on the agent, and is not duplicated as an application function. Application functions are separately defined by the platform.
 
@@ -11,12 +11,13 @@ This POC uses **native Foundry IQ MCP** for business knowledge retrieval. It is 
 | Function | Node-owned response |
 |---|---|
 | `find_intents` | Relevant published business goals matching the conversational request |
-| `get_intent_requirements` | Required, verified, missing and conditional requirements for an intent |
+| `get_intent_requirements` | Required, verified, missing and conditional requirements for an intent | 
+| `record_ticket_facts` | Save explicit current-message customer answers or corrections in Node/PostgreSQL with message provenance; customer-stated is not independently verified |
 | `get_offerings` | Current eligible services/packages and published prices with validity |
 | `get_ticket_context` | Authorized ticket facts, summary and status |
 | `get_document_data` | Selected verified and flagged OCR-extracted fields, never raw unrelated uploads |
 
-Agent-specific tools are **allowlisted** by published agent configuration. Tool contracts must include input schema, output schema, authorization rule, max payload and errors. Node derives agent/ticket/account scope from trusted context, **not tool arguments**. Read tools must not mutate business state.
+Agent-specific tools are **allowlisted** by published agent configuration. Tool contracts must include input schema, output schema, authorization rule, max payload and errors. Node derives agent/ticket/account scope from trusted context, **not tool arguments**. Read tools must not mutate business state. `record_ticket_facts` is a **separate scoped context-write tool**, not a workflow or external side effect. Node validates the source customer message and allowed requirement keys.
 
 ## Action tools
 
@@ -26,7 +27,7 @@ Agent-specific tools are **allowlisted** by published agent configuration. Tool 
 | `propose_operation` | Creates a non-executing proposal; captures intent/requirements and clear customer-facing summary |
 | `get_operation_status` | Returns only authoritative, correlated execution status and verified provider references |
 
-Actual execution occurs by **separate secure HTTP confirmation from the customer UI**. The model must not be able to authorize its own proposal. The service records the proposal fingerprint, effective scope and required consent. A proposal is not an execution result.
+**No n8n trigger or direct CRM mutation is model-visible.** Actual execution occurs by **separate secure HTTP confirmation from the customer UI**. The model must not be able to authorize its own proposal. The service records the proposal fingerprint, effective scope and required consent. A proposal is not an execution result.
 
 ## Intent and offerings catalogs
 
