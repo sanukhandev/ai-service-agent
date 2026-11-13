@@ -14,14 +14,16 @@ docker compose config --quiet
 docker compose up -d --build postgres redis api web nginx
 
 printf '%s\n' "Checking http://localhost/api/health..."
-curl --fail --silent --show-error \
+curl --fail --silent --show-error --retry-all-errors \
   --retry 30 --retry-connrefused --retry-delay 2 \
-  http://localhost/api/health | grep -q '"status":"ok"'
+  --output /tmp/p0-api-health.json http://localhost/api/health
+grep -q '"status":"ok"' /tmp/p0-api-health.json
 
 printf '%s\n' "Checking Next.js through Nginx..."
-curl --fail --silent --show-error \
+curl --fail --silent --show-error --retry-all-errors \
   --retry 30 --retry-connrefused --retry-delay 2 \
-  http://localhost/ | grep -q 'Sara'
+  --output /tmp/p0-web-home.html http://localhost/
+grep -q 'Sara' /tmp/p0-web-home.html
 
 printf '%s\n' "Checking fresh schema and restricted runtime DB role..."
 docker compose exec -T postgres sh -ec '
