@@ -86,6 +86,10 @@ CROSS JOIN offers o
 WHERE a.agent_key='ancfz'
 ON CONFLICT(agent_id,catalog_version_id,offering_key) DO NOTHING;
 
+SELECT set_config('p3.foundry_endpoint', :'foundry_endpoint', true),
+       set_config('p3.foundry_name', :'foundry_name', true),
+       set_config('p3.foundry_version', :'foundry_version', true);
+
 -- Guard against silently switching an existing published Foundry binding.
 DO $$
 BEGIN
