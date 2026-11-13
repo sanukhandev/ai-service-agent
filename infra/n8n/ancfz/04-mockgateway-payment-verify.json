@@ -1,0 +1,141 @@
+{
+  "name": "ANCFZ | Verify MockGateway Test Payment",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Receive Verification Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/payment-verify",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate",
+      "name": "Validate Verification Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const b=$input.first().json.body??{};\nif(b.agentKey!=='ancfz'||typeof b.paymentId!=='string'||!/^[A-Za-z0-9_-]{2,200}$/.test(b.paymentId))throw new Error('Invalid provider ID');\nif(!Number.isSafeInteger(b.amount)||b.amount<=0||typeof b.currency!=='string'||!/^[A-Z]{3}$/.test(b.currency))throw new Error('Invalid payment expectation');\nreturn [{json:{paymentId:b.paymentId,amount:b.amount,currency:b.currency,ticketId:String(b.ticketId??'')}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "get",
+      "name": "MockGateway Verify",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://mockgateway.com/api/pg/' + $env.MOCKGATEWAY_SLUG + '/verify/' + encodeURIComponent($('Validate Verification Request').first().json.paymentId) }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 20000
+        }
+      }
+    },
+    {
+      "id": "result",
+      "name": "Check Provider Evidence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const r=$input.first().json;const expected=$('Validate Verification Request').first().json;\nconst id=r.payment_id??r.paymentId??r.id;\nconst status=String(r.status??r.payment_status??'').toLowerCase();\nconst amount=Number(r.amount);\nconst currency=String(r.currency??'').toUpperCase();\nconst matches=String(id)===expected.paymentId&&Number.isFinite(amount)&&amount===expected.amount&&currency===expected.currency;\nconst success=['succeeded','success','paid','completed'].includes(status);\nreturn [{json:{status:matches&&success?'verified_test_payment':'not_verified',provider:'mockgateway_sandbox',paymentId:expected.paymentId,providerStatus:status,matchedIdAmountCurrency:matches,verified:matches&&success,amount:expected.amount,currency:expected.currency,ticketId:expected.ticketId}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Verification Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Verification Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Verification Request": {
+      "main": [
+        [
+          {
+            "node": "MockGateway Verify",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MockGateway Verify": {
+      "main": [
+        [
+          {
+            "node": "Check Provider Evidence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Check Provider Evidence": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
