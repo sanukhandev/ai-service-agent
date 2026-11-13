@@ -165,11 +165,11 @@ export class ConversationContextRepository {
       );
       const intentId = selected.rows[0]?.id;
       if (!intentId) throw new PersistenceError("CONFLICT", "Select a pinned intent first");
-      const permitted = await client.query<{ requirement_key: string }>(
-        "SELECT requirement_key FROM intent_requirements WHERE agent_id = $1 AND intent_id = $2",
+      const permitted = await client.query<{ requirement_key: string; value_type: string }>(
+        "SELECT requirement_key, value_type FROM intent_requirements WHERE agent_id = $1 AND intent_id = $2",
         [scope.agentId, intentId],
       );
-      const keys = new Set(permitted.rows.map((r) => r.requirement_key));
+      const keys = new Map(permitted.rows.map((r) => [r.requirement_key, r.value_type]));
       const seen = new Set<string>();
       const result: StoredFact[] = [];
       for (const fact of facts) {
@@ -179,6 +179,12 @@ export class ConversationContextRepository {
         }
         seen.add(fact.key);
         const value = fact.value;
+        const expectedType = keys.get(fact.key);
+        if ((expectedType === "number" && typeof value !== "number") ||
+          ((expectedType === "email" || expectedType === "text" || expectedType === "choice") && typeof value !== "string") ||
+          (expectedType === "email" && (typeof value !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)))) {
+          throw new PersistenceError("INVALID_INPUT", "Fact value does not match published requirement type");
+        }
         if ((typeof value !== "string" || value.length > 1000) &&
           (typeof value !== "number" || !Number.isFinite(value)) &&
           typeof value !== "boolean") {
