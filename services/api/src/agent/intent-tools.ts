@@ -254,17 +254,25 @@ export function registerIntentTools(
         // company-formation price SKUs, not just generic package summaries.
         const packageIntents = new Set(["company_formation", "package_comparison", "quotation_request"]);
         const broadPackageQuery = intentKey !== undefined && packageIntents.has(intentKey);
+        // Preserve the P3 baseline service results as well as the expanded
+        // ANCFZ package-price records. The repository's intent filter remains
+        // authoritative; do not hardcode a list of existing offering keys.
         const fetched = await catalog.listOfferings(
           ctx.agentId, ctx.offeringCatalogRevision,
-          broadPackageQuery || offeringKey ? undefined : intentKey,
+          offeringKey ? undefined : intentKey,
         );
+        if (broadPackageQuery) {
+          for (const relatedIntent of ["company_formation", "package_comparison"]) {
+            if (relatedIntent !== intentKey) {
+              const related = await catalog.listOfferings(
+                ctx.agentId, ctx.offeringCatalogRevision, relatedIntent,
+              );
+              const existing = new Set(fetched.map((item) => item.key));
+              for (const item of related) if (!existing.has(item.key)) fetched.push(item);
+            }
+          }
+        }
         const selected = fetched.filter((offer) => {
-          const packageRelated = offer.key.startsWith("visa_") ||
-            ["pay_as_you_go", "zero_visa_package", "visa_all_inclusive",
-             "executive_office_package", "retail_package", "flexi_desk",
-             "shared_office", "private_office", "fze", "fzc",
-             "foreign_branch", "local_branch"].includes(offer.key);
-          if (broadPackageQuery && !packageRelated) return false;
           if (offeringKey && offer.key !== offeringKey) return false;
           const match = /^visa_(\d+)_y([1-5])$/.exec(offer.key);
           if (visaCount !== undefined && (!match || Number(match[1]) !== visaCount)) return false;
