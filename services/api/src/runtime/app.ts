@@ -97,9 +97,8 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const scope=await scopeFromCookie(db,request);
     const id=idParam(request);
     const ticket=await tickets.get(scope,id);
-    const agent=await agents.resolvePublicKeyById?.(scope.agentId);
-    // The public alias is a safe unscoped lookup, not an authorization claim.
-    const alias=agent?.key ?? (await db.pool.query<{agent_key:string}>(
+    // Public agent aliases are unscoped; ticket content remains ownership-scoped.
+    const alias=(await db.pool.query<{agent_key:string}>(
       "SELECT agent_key FROM agents WHERE id=$1",[scope.agentId])).rows[0]?.agent_key;
     if(!alias) throw new PersistenceError("NOT_FOUND","Ticket not found");
     const history=await messages.listTicketMessages(scope,id,"0",200);
