@@ -32,8 +32,9 @@ This is **not** a complete list of the 3,500+ licensable activities: the supplie
    ```bash
    bash scripts/publish-ancfz-test-catalog.sh --publish-test
    ```
-4. Repeat the same command safely: the checksum/seed receipt detects an identical seed, leaving the catalog records unchanged.
-5. To publish changed data, use **new** `seedKey`, `intentRevision` and `offeringRevision` in the JSON. Historical published revisions are retired but remain readable by previously pinned tickets. Never update them in place.
+4. On Windows, run it from **Git Bash**, typing `bash scripts/publish-ancfz-test-catalog.sh --publish-test` without copying any decorative characters. The publisher stages the large JSON file using `docker cp` and only passes a short file path to PostgreSQL. It does not send 90 KB as a Windows/Docker command-line argument.
+5. Repeat the same command safely: the checksum/seed receipt detects an identical seed, leaving the catalog records unchanged.
+6. To publish changed data, use **new** `seedKey`, `intentRevision` and `offeringRevision` in the JSON. Historical published revisions are retired but remain readable by previously pinned tickets. Never update them in place.
 
 There is no automatic seeding at HTTP server startup. No customer-facing administration endpoint is introduced.
 
