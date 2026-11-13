@@ -26,7 +26,7 @@ Enter the requested initial password at a hidden prompt and provision the owner.
 
 The command uses a temporary httpd:2.4-alpine container to generate a salted bcrypt hash via stdin, then launches n8n with official N8N_INSTANCE_OWNER_MANAGED_BY_ENV provisioning. Plaintext does not go into the database, an environment file, Compose arguments, Git or the bcrypt-hash variable.
 
-**Existing instances:** If n8n is already running, owner bootstrap refuses to modify it. A deliberate owner change requires an n8n DB backup and the explicit --allow-owner-update option. If an owner already exists and should not be changed, SKIP owner provisioning.
+**Existing instances:** If n8n is running **or the persistent n8n-data volume already exists**, owner bootstrap refuses to modify it, even when the container is stopped. A deliberate owner change requires an n8n DB backup and the explicit --allow-owner-update option. If an owner already exists and should not be changed, SKIP owner provisioning.
 
 ## Step 2: Create workspace and import (PowerShell)
 
@@ -66,6 +66,14 @@ It checks for credential-ID and workflow-name collisions before any import and v
 | ANCFZ OTP, Salesforce, PDF, mock order and payment-check workflows | Five imported workflows, ALL INACTIVE |
 
 Editing the four credentials in the n8n UI is still mandatory. The seed does not create real provider secrets or authorize Salesforce. The payment-status workflow remains fail-closed, and Node's action authorization, OTP verification, and dispatch remain pending.
+
+## After setup: unlock the owner profile and rotate the initial password
+
+While N8N_INSTANCE_OWNER_MANAGED_BY_ENV is active, n8n locks the owner settings in the UI. After confirming the account was provisioned and you can sign in, re-create n8n **without** the temporary owner-bootstrap variables (the base Compose defaults to false):
+
+    docker compose --profile workflows up -d --force-recreate n8n
+
+This **does not delete the n8n-data volume** and does not reset the owner; it simply disables environment-managed owner updates. Change the initially provided password through n8n's private UI and enable MFA. Keep the encryption key unchanged; changing it without an approved migration will make saved credentials unreadable.
 
 ## Safe local checks
 
