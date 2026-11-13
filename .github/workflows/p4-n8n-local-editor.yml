@@ -1,0 +1,52 @@
+name: P4 localhost n8n editor proxy smoke
+
+on:
+  pull_request:
+    paths:
+      - 'docker-compose.yml'
+      - 'infra/nginx/**'
+      - 'scripts/check-n8n-local-proxy.mjs'
+      - 'scripts/n8n-local-editor-smoke.sh'
+      - '.github/workflows/p4-n8n-local-editor.yml'
+  push:
+    branches: [main]
+    paths:
+      - 'docker-compose.yml'
+      - 'infra/nginx/**'
+      - 'scripts/check-n8n-local-proxy.mjs'
+      - 'scripts/n8n-local-editor-smoke.sh'
+      - '.github/workflows/p4-n8n-local-editor.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-editor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    env:
+      POSTGRES_DB: ai_service_agent
+      POSTGRES_PASSWORD: p4-n8n-local-editor-owner-disposable
+      POSTGRES_APP_PASSWORD: p4-n8n-local-editor-runtime-disposable
+      N8N_ENCRYPTION_KEY: p4-local-editor-ci-only-012345678901234567890
+      FOUNDRY_PROJECT_ENDPOINT: https://ci.example.services.ai.azure.com/api/projects/ci
+      FOUNDRY_AGENT_NAME: ci-sara-agent
+      FOUNDRY_AGENT_VERSION: '1'
+      PUBLIC_BASE_URL: http://localhost
+    steps:
+      - uses: actions/checkout@v4
+      - name: Validate local-only n8n routing contract
+        run: node scripts/check-n8n-local-proxy.mjs
+      - name: Validate workflow-profile Compose syntax
+        run: docker compose --profile workflows config --quiet
+      - name: Start isolated local n8n and application
+        run: docker compose --profile workflows up -d --build postgres redis api web nginx n8n gotenberg
+      - name: Verify editor, WebSocket proxy routing and private webhook boundary
+        run: bash scripts/n8n-local-editor-smoke.sh
+      - name: Capture failure diagnostics
+        if: failure()
+        run: docker compose --profile workflows logs --no-color --tail=150 nginx n8n api migrate postgres || true
+      - name: Destroy disposable CI volumes
+        if: always()
+        run: docker compose --profile workflows down -v --remove-orphans || true
