@@ -1,68 +1,52 @@
-# Security, privacy, identity and PII
+# Security and privacy — Node-owned POC
 
-## Security boundaries
+## Trust boundaries
 
-There are three separate decisions:
-1. **Who is the caller?** Node authenticates guest/customer/admin/service identity.
-2. **Which Agent/ticket can they access?** Node enforces scoped authorization, backed by PostgreSQL constraints/RLS.
-3. **What can happen?** Node authorizes read tools, proposals, consent and state changes independently of model text.
+1. Node authenticates and authorizes customer/guest sessions and resolves Agent/ticket from server-controlled state.
+2. PostgreSQL is authoritative for transcript, customer facts, catalog versions, consent and authorized operation status.
+3. Foundry (Sara) is a conversational decision-maker, **not** a privileged principal. IQ snippets, function arguments, prompts and model messages must not override Node policy.
+4. n8n is a private workflow executor. Only a Node outbox worker may submit an **approved** operation, and only provider-correlated evidence may establish completion.
 
-The model is not a trusted principal. A Foundry function call, RAG excerpt, provider message or retrieved document cannot grant privileges.
+The Angular Admin Portal and Python AI Gateway are not part of this POC. Controlled scripts and versioned configuration publish catalogs/agent bindings until a separate admin milestone.
 
-## Agent isolation
+## Agent and ticket isolation
 
-- Resolve `agent_id` from a trusted route/session binding and authorized configuration, never accept cross-agent model or browser-supplied IDs without verification.
-- Apply `agent_id` to PostgreSQL, Redis keys, blobs, job records, action evidence, admin queries and ticket identifiers.
-- Keep published Foundry agent/version and knowledge source references explicitly associated with each application agent. Native IQ MCP retrieval is not mediated by Node, so enforce its isolation through Azure resource configuration and identity permissions.
-- Require service authentication between Node and Python, and signed/provider-authenticated n8n callbacks, even on the internal Docker network.
+- Scope all agent-owned rows, blob keys, jobs, Redis keys and SSE events with trusted `agent_id`.
+- Composite foreign keys/RLS block cross-agent relational references. Node must run under a **non-superuser** PostgreSQL role, without `BYPASSRLS`, with a transaction-local agent context; never use the migration owner as runtime user.
+- The Node tool registry gets trusted context from the authenticated session. It rejects model-supplied `agentId`, `ticketId`, workflow endpoints and provider credentials.
+- A function request cannot bypass tool grants, input validation or preflight. Model-controlled context is never an authorization token.
+- Native Foundry IQ retrieval is configured on the published Foundry agent; review Azure resource/identity and knowledge attachment for separation from other Agents.
 
-## Customer authentication and OTP
+## Email OTP and customer sessions (P5)
 
-- Guests can ask public questions with rate limits and scoped guest tickets.
-- Account creation/linking uses Node-controlled, agent-scoped email verification with a secure form, not chat.
-- Challenge stored hashed with TTL, attempt count and throttling; never log or pass OTP to model.
-- Respond uniformly to account existence checks to avoid enumeration.
-- Use secure, HTTP-only session cookies with same-site protection where supported; HTTPS is mandatory for public use.
-- Customer consent for lead or quote is purpose-specific, recorded and revocable where applicable. Ticket closure requires explicit customer instruction plus server validation.
+- Guest tickets use opaque scoped sessions and rate limiting.
+- Node performs email verification in a secure UI; hashed OTP challenge, expiry, attempts and replay protection. **Never send OTP, passwords or tokens to Foundry, model prompts, ticket chat or logging.**
+- Protect user existence from enumeration and bind tickets to verified owner or guest token.
+- Require meaningful customer consent for lead creation, formal quote submission, disclosure and external notifications.
+- Do not collect personal details merely to answer general information requests.
 
-## PII policy with Presidio
+## PII policy
 
-Install and configure `presidio-analyzer` and `presidio-anonymizer` in the Python gateway. This is a **detection component**, not a complete privacy boundary or guarantee.
+Since the **Python Model Gateway is removed**, don't add Presidio as a reason to reintroduce Python. Implement a small Node privacy adapter in P5; if contextual PII detection is necessary, evaluate **Azure AI Language PII** as an optional external provider. Prefer data minimization, secure structured fields, log masking and role-scoped access.
 
-- Detect names, emails, phone numbers and jurisdiction-appropriate identifiers with configured NLP rules/models.
-- Distinguish required business data from incidental PII; redact/mask incidental values before they enter model context.
-- For approved operation inputs, Node keeps authoritative structured values and controls their use. Don't destroy required contact information by indiscriminate anonymization.
-- Reversible placeholders must be scoped to one authorized ticket/session, mapped outside model-visible content, and never swapped between customers.
-- Redact logs, trace attributes, test fixtures and error messages independently of conversational PII detection.
-- Encrypt regulated/sensitive DB fields as needed and keep private customer docs in restricted blob storage.
-- Presidio does not reliably catch all PII, especially ambiguous names, IDs, multilingual text and non-text documents. Test representative content and fail safely.
+No detector catches every PII value. In particular, don't blindly remove legitimate customer contact details needed for an explicitly approved CRM operation. Do not expose sensitive identifiers in screenshots, logs, model tool outputs or customer-visible URLs.
 
-## Foundry and Azure credentials
+Private customer documents belong to authorized ticket-scoped Azure Blob Storage, not to the shared Foundry IQ RAG source. Validate file signatures, sizes, access and OCR extraction provenance.
 
-Local POC: Python uses `AzureCliCredential` and a private Linux container cache in a Docker named volume. Credentials must not appear in environment dumps, logs, git, container build layers, browser bundles or sample .env files.
+## Azure auth
 
-The agent's published version, project endpoint, knowledge source and allowed tools are **trusted admin configuration**. Validate Azure identity/RBAC and live tool calls; a created agent may still be unable to retrieve.
+Local POC uses `@azure/identity`'s `AzureCliCredential` **inside the Node API**; P1 adds Azure CLI to the Linux Node runtime image. Mount the private `azure-cli-auth` named volume only there and use `AZURE_CONFIG_DIR=/home/app/.azure`. An authenticated Azure CLI session may survive rebuilds but can require interactive renewal. Never commit cached credentials, copy them into image layers, or mount the Windows CLI cache into a Linux container. Managed identity is for deployed environments.
 
-Use managed identity or workload identity for later Azure deployments. Do not use a developer's Azure CLI login for shared or public production workloads.
+The published Foundry agent/version, configured IQ knowledge and allowed function schemas are trusted versioned configuration. Neither the browser nor the model can select an arbitrary project endpoint or update the agent.
 
-## Browser/deployment policy
+## Network
 
-- Only Nginx exposes host port 80. Backends, databases, Redis, n8n and AI gateway remain private to Docker.
-- HTTP port 80 only on localhost or a controlled test network. Do **not** transmit real passwords, OTP, PII or uploaded customer documents on publicly reachable unencrypted HTTP. Put an HTTPS load balancer/ingress upstream before external access.
-- Limit uploads by MIME allowlist, file signature, size, scanning policy, blob path and authorization; never execute uploaded content.
-- Restrict CSP where compatible with fonts/assets, use same-origin API calls, avoid broad wildcard CORS and protect admin routes with server-side RBAC.
-- Google Fonts: use bundled/self-hosted Inter to avoid third-party requests from customer browsers where feasible.
+- Only Nginx publishes port 80; every other service is Docker-internal.
+- There are no public `/admin/`, `/n8n/`, `/ai-gateway/` or database endpoints.
+- HTTP is allowed **only for localhost or isolated POC testing**; any real customer credentials, OTP, PII or uploads require upstream HTTPS before internet exposure.
+- Keep n8n credentials server-only; callback authorization/signatures and replay denial are required even on a private network.
+- Use strict same-origin browser API access, secure cookies where applicable, input-size bounds, appropriate CSP and redacted trace IDs.
 
-## Threat test checklist
+## Deferred H1 audit
 
-- Cross-agent ticket UUID and foreign-key references fail.
-- Unverified users cannot read transcripts or account existence.
-- Brute-force/rate-limited OTP and OTP replay denied.
-- Untrusted tool arguments cannot choose another agent, provider URL or ticket.
-- Prompt injection in retrieved knowledge cannot call actions or reveal secrets.
-- n8n success cannot be forged from HTTP acknowledgment; callbacks reject replay and mismatched execution IDs.
-- SSE cursors replay only authorized ticket events.
-- Raw PII and secrets absent from app logs, traces, exceptions and committed fixtures.
-- Foundry tool permissions verified in live calls, not inferred from portal labels alone.
-
-Record risks explicitly if POC tradeoffs are accepted. "Guardrails not configured" never means authentication, privacy, data isolation or action authorization are optional.
+After the working POC, automate isolation tests, customer session/OTP tests, prompt injection and PII tests, n8n callback/replay checks, RLS/revocation checks and token leakage scans. **Do not defer implementing the underlying protections** simply because test automation is postponed.
