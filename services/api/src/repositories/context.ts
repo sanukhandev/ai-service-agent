@@ -182,7 +182,7 @@ export class ConversationContextRepository {
         const expectedType = keys.get(fact.key);
         if ((expectedType === "number" && typeof value !== "number") ||
           ((expectedType === "email" || expectedType === "text" || expectedType === "choice") && typeof value !== "string") ||
-          (expectedType === "email" && (typeof value !== "string" || !/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(value)))) {
+          (expectedType === "email" && (typeof value !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)))) {
           throw new PersistenceError("INVALID_INPUT", "Fact value does not match published requirement type");
         }
         if ((typeof value !== "string" || value.length > 1000) &&
