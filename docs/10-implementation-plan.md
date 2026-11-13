@@ -1,74 +1,56 @@
-# Execution plan — POC first, hardening afterward
+# Implementation plan — POC first, testing and admin later
 
-**Current phase: P0 (foundation, in progress).** The repository began as a documentation-only clean rebuild. This plan supersedes the earlier approach that combined app development with automated test/CI hardening.
+## Current state
 
-## Delivery policy
+P0 scaffolding and architecture docs exist in `main`. The Python Model Gateway and Angular Admin Portal have been **deleted from the active repository**. Node is the only business/model integration backend. The existing Foundry Sara agent with native IQ retrieval is the selected AI runtime.
 
-- **Complete functional POC capabilities before the dedicated hardening cycle.** No large unit-test, integration-test, browser E2E, performance benchmark or full CI implementation work until H1.
-- **Do not confuse avoiding test development with skipping operational validation.** Every phase must still compile/build, boot when applicable, pass basic migration checks and demonstrate a live happy path. External Foundry/n8n success cannot be inferred from code alone.
-- Do not remove fundamental security requirements (agent authorization, scoped access, OTP isolation, explicit action approval, secret handling) merely because automated security tests are deferred.
-- No LangGraph, pgvector, Tenant entity, old V1/V2 code, alternate conversation engine or unnecessary service scaffolding.
-- Commit phase by phase with exact changed files and a truthful statement of what is running, mocked or blocked.
+**Do not claim the live Node-to-Foundry integration is working yet.** Node has a health service and P3 tool registry/repository scaffolding, but the real Foundry SDK adapter, ticket endpoints, tool wiring and n8n workflows remain integration work.
 
-## Phase breakdown
+## Phases
 
-| Phase | Work | Practical exit criteria | Dependencies |
-|---|---|---|---|
-| **P0 Foundation** | npm monorepo; shared HTTP/tool/SSE contracts; environment example; clean DB baseline; simple Docker Compose and Nginx single-port architecture | New repo has agreed contracts, boots essential local containers and exposes only Nginx port 80 | None |
-| **P1 Foundry Gateway** | Python FastAPI; AzureCliCredential with persistent Docker volume; invoke existing published GPT-5.4 Sara agent and its attached Foundry IQ | Real greeting and real package query produce responses and source references, not mock claims | P0; provisioned agent |
-| **P2 Customer Conversation** | Fastify Agent/Ticket/Message service; PostgreSQL transactions; Redis context/event cache; SSE replay; minimal Next.js Tailwind chat | Browser can open a ticket, chat with Sara, refresh/resume and see persisted history | P0, P1 |
-| **P3 Business Catalog & Tools** | Versioned intents/requirements, offerings/prices, Node tool registry; register read functions on Foundry agent without losing IQ tool | Sara identifies a business goal, retrieves requirements/offering data and asks relevant next question | P2 |
-| **P4 Authorized n8n Operations** | Action proposals, customer HTTP approval, outbox dispatch, verified n8n CRM lead and quote templates, idempotency/reconciliation | Customer-approved lead or quote completes with verified provider evidence and ticket updates | P3; workflow template can be drafted earlier |
-| **P5 Customer Services** | Agent-scoped accounts, email OTP UI/API, Presidio selective PII, private uploads, Azure Document Intelligence OCR | Customer can verify identity and submit/extract private ticket documents without exposing OTP to model | P2; can develop parallel to P3/P4 |
-| **P6 Admin Portal** | Angular + Tailwind static app at /admin/; Agent binding, persona/catalog/offerings/tool grants, workflow config, tickets | Admin can view/edit/configure another Agent with simple forms and tables | P0 + published Node admin API, can build static UI in parallel |
-| **P7 POC Integration** | Wire all services; remove placeholder paths; complete Docker route/env/startup integration; manually demonstrate full customer journey | Functional POC: knowledge, tickets, intent, quotes/lead, auth/OTP, docs/OCR and admin work together | P1-P6 |
-| **H1 Hardening (after POC)** | Unit/contract/integration/E2E tests, security review, migrations/RLS certification, load benchmarks, CI/release automation, observability tuning | Measured pass/fail gates and production readiness assessment, not an automatic production claim | P7 |
+| Phase | What is built | Success condition |
+|---|---|---|
+| **P0 Foundation** | npm workspace, contracts, minimal Next.js/Node, Nginx port 80 only, PostgreSQL baseline | Builds, containers start, migration initializes fresh DB, only Nginx exposed |
+| **P1 Foundry Direct** | `@azure/ai-projects` and `@azure/identity` in Node, container Azure CLI, existing Sara GPT-5.4 and IQ, supported function-call continuation adapter | Real greeting and cited knowledge answer via Node, IQ tool remains attached |
+| **P2 Conversation** | Node ticket/session repository, message persistence, factual memory, SSE + replay, React chat | Customer can chat, correct facts and resume ticket after refresh |
+| **P3 Intents and Offerings** | Node-owned versioned catalog, customer fact tools, published Foundry function definitions and trusted registry | Sara discovers supported services, remembers facts, asks one relevant question and reads approved offering data |
+| **P4 Authorized Workflows** | Node preflight/proposal, customer confirmation, DB outbox/worker, n8n approved lead/quote templates, verified provider evidence | Verified CRM lead/quote outcome without model-executed side effects |
+| **P5 Customer Features** | Email OTP, private document uploads, Azure Document Intelligence OCR, optional Node privacy adapter | Identity/documents operate securely through Node, never in agent tool calls as secrets |
+| **P6 Integration** | Combine independent slices; repair startup/permissions/API/UI workflow gaps | Functional services and correct bounded tool loop across customer journey |
+| **P7 POC Acceptance** | Demonstrate complete business enquiry, knowledge, catalog, action, auth/document flows | Live end-to-end POC with transparent caveats and no fictional outcomes |
+| **H1 Hardening** | Dedicated automated tests, full CI, security review, load/performance and observability | Measured production-readiness gates (after POC) |
+| **Future Admin** | Angular admin UI, catalog publication and agent management | **Separate later project**, not a POC delivery gate |
 
-Scope is driven by working user journeys. POC can use local-only HTTP on port 80; customer credentials/PII must not be transmitted on public, unencrypted HTTP.
+## Safe parallel development
 
-## Parallel development strategy
+After shared contract ownership is frozen:
+- **Track A — Foundry:** `services/api/src/foundry/`; Node SDK, AzureCliCredential and function response adapter.
+- **Track B — Data:** `infra/postgres/`, Node ticket + catalog repositories, RLS/runtime user.
+- **Track C — Customer:** `apps/web/` Next.js/Tailwind chat/ticket.
+- **Track D — Workflows:** `infra/n8n/` generic templates and Node action/approval contract.
+- **Track E — Context:** `services/api/src/agent/` tool registry, intent and fact logic (Node only).
 
-**First freeze P0 contracts** in `packages/contracts/`: agent ID and binding, ticket IDs, POST/GET endpoints, event IDs, `POST /internal/turns`, tool function contracts, error/status semantics and internal auth. Shared contracts and Compose have one owner.
+The integration owner maintains `services/api/src/index.ts`, `packages/contracts/`, `docker-compose.yml` and `infra/nginx/`. Parallel workstreams avoid concurrent writes to shared files. There is **no Angular or Python workstream**.
 
-After P0, use **five independent tracks**:
+## Key dependencies
 
-| Track | File ownership | Earliest start | Integrates when |
-|---|---|---|---|
-| A: Foundry | `services/ai-gateway/` | After P0 | P1; then application tools in P3 |
-| B: API + DB | `services/api/`, `infra/postgres/` | After P0 | P2; then P3/P4/P5 |
-| C: Customer web | `apps/web/` | After API contracts freeze | P2 |
-| D: Angular admin | `apps/admin/` | After API contracts freeze | P6 |
-| E: n8n workflows | `infra/n8n/` | After action contracts freeze | P4 |
+- Real Foundry adapter and published function definitions precede live tool calls; keep IQ MCP configured when publishing a new agent version.
+- All catalog data and facts are persisted by Node/PostgreSQL. The Foundry agent chooses dialogue/questions but never owns durable customer state.
+- A model function request can read intent/offerings data or persist sourced customer facts, but cannot invoke n8n/CRM directly.
+- Lead/quote execution requires customer-specific Node approval, durable operation/outbox and verified provider evidence.
+- The same customer can ask FAQ questions without starting a lead; only explicit requests start a business action.
+- No dedicated test-suite development until H1, but basic build/migration/live smoke verification is still required.
 
-The **integration owner alone** edits `docker-compose.yml`, `infra/nginx/`, shared `packages/contracts/`, root toolchain and cross-service configuration. Avoid parallel commits to the same file. Use isolated branches/worktrees for genuinely simultaneous writers, then merge with one coherent integration pass.
+## Starter sequence
 
-### Sequencing constraints
+1. Confirm P0 Docker build and SQL migration `001` + `002` in a fresh disposable DB.
+2. Add Azure CLI to Node API image; prove direct Sara greeting and native IQ retrieval.
+3. Build Node ticket persistence and Next chat with SSE/replay.
+4. Wire `tool-registry.ts`, `intent-tools.ts`, `function-loop.ts` and scoped repositories into the live Foundry function-response loop.
+5. Publish a Sara version with business function **definitions** and [service-employee prompt](../services/api/prompts/sara-service-employee.md), preserving existing IQ tool.
+6. Prove intent identification, customer fact corrections, helpful next questions and authorized offering data.
+7. Implement external action proposals/approvals/outbox/n8n.
+8. Implement secure OTP and private documents/OCR.
+9. Demonstrate P7; begin H1 and future Angular Admin only after POC.
 
-- Node/Python Foundry request/response boundary before building the real chat.
-- Agent identity and ticket authorization before expanding to multiple agents.
-- Structured offerings and preflight before quote generation.
-- Explicit consent and idempotency before any external side effect.
-- Admin screens may be implemented against stable API fixtures while Node routes are being developed.
-- OCR/Presidio can be built independently of n8n after data and upload contracts are frozen.
-- The integrated P7 milestone is deliberately sequential.
-
-## P0 contracts to establish now
-
-- `agent_id` is server-trusted UUID, `agent_key` is a public alias; every ticket pins its Foundry published version.
-- Minimal customer endpoints: `POST /api/v1/agents/{agentKey}/tickets`, `GET /api/v1/tickets/{ticketId}`, `POST /api/v1/tickets/{ticketId}/messages`; authenticated access is resolved server-side.
-- SSE: `GET /api/events/tickets/{ticketId}`, with event IDs, replay cursor and per-ticket access checks.
-- Internal gateway: `POST /internal/turns`, trusted agent/ticket/message/context payload, bounded validated response and typed errors.
-- Later tools: `find_intents`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation`, `get_operation_status`.
-- Storage and action flow: accepted customer message first, persisted assistant result, independent authorization and verified n8n status.
-- Host ingress: only Nginx `80:80`, internal Docker DNS for API, Python, Redis, PostgreSQL and n8n.
-- POC auth: `AzureCliCredential` in the Python Linux container; persistent private CLI token cache with renewal as needed.
-
-## MVP smoke gate per phase (not a hardening test suite)
-
-Perform the smallest real execution check that verifies the phase is usable, and capture an error when it is not. Examples: app boot, HTTP health, clean SQL migration, live Foundry greeting/knowledge query, one persisted chat, one approved n8n provider outcome. No new E2E framework or benchmark harness during P0-P7.
-
-## Reporting
-
-At every phase boundary provide: exact branch/commit, files created/changed, working path, smoke result (if executable), dependencies, open blockers and next independent tracks. Mark unimplemented components as planned.
-
-See [Testing and acceptance](09-testing-and-acceptance.md) for H1 hardening scope; P0-P7 do not claim those tests have passed.
+Report exact committed SHA, what was built, live smoke observations and blockers for each milestone. Documentation/scaffolding is not proof of runtime integration.
