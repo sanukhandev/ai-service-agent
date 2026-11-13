@@ -4,13 +4,12 @@ info:
   version: 0.1.0
   description: >
     Contract-first P0 definition. Public endpoints are browser-to-Node.
-    Internal endpoints are private Docker network service calls.
+    Node invokes the existing published Foundry agent directly.
     These endpoints are planned and not implemented yet.
 servers:
   - url: /
 tags:
   - name: public
-  - name: internal
 paths:
   /api/health:
     get:
@@ -149,36 +148,7 @@ paths:
                 type: string
         "404":
           $ref: "#/components/responses/Error"
-  /internal/turns:
-    post:
-      tags: [internal]
-      operationId: generateAgentTurn
-      description: >
-        Node to Python Gateway. Not routed through Nginx. Requires
-        an internal bearer credential and trusted server-derived context.
-      security:
-        - internalBearer: []
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/TurnRequest"
-      responses:
-        "200":
-          description: Foundry turn result (may contain typed failure).
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/TurnResponse"
-        "401":
-          $ref: "#/components/responses/Error"
 components:
-  securitySchemes:
-    internalBearer:
-      type: http
-      scheme: bearer
-      description: Secret only between Node and Python, never browser/model visible.
   parameters:
     agentKey:
       name: agentKey
@@ -252,77 +222,6 @@ components:
           type: [string, "null"]
         revision:
           type: [string, "null"]
-    TurnRequest:
-      type: object
-      additionalProperties: false
-      required: [requestId, agentId, ticketId, foundry, message, context]
-      properties:
-        requestId:
-          type: string
-          format: uuid
-        agentId:
-          type: string
-          format: uuid
-        ticketId:
-          type: string
-          format: uuid
-        foundry:
-          type: object
-          additionalProperties: false
-          required: [projectEndpoint, agentName, agentVersion]
-          properties:
-            projectEndpoint:
-              type: string
-              format: uri
-            agentName:
-              type: string
-            agentVersion:
-              type: string
-        message:
-          type: string
-          minLength: 1
-        context:
-          type: object
-          required: [recentMessages]
-          properties:
-            recentMessages:
-              type: array
-              items:
-                $ref: "#/components/schemas/ChatMessage"
-            summary:
-              type: [string, "null"]
-            verifiedFacts:
-              type: array
-              items:
-                type: object
-                required: [key, value]
-                properties:
-                  key:
-                    type: string
-                  value:
-                    type: string
-    TurnResponse:
-      type: object
-      required: [requestId, status, sourceReferences]
-      properties:
-        requestId:
-          type: string
-          format: uuid
-        status:
-          type: string
-          enum: [completed, failed]
-        text:
-          type: [string, "null"]
-        sourceReferences:
-          type: array
-          items:
-            $ref: "#/components/schemas/SourceReference"
-        foundryTraceRef:
-          type: [string, "null"]
-        error:
-          oneOf:
-            - $ref: "#/components/schemas/ErrorResponse"
-            - type: "null"
     ErrorResponse:
       type: object
       required: [code, message]
