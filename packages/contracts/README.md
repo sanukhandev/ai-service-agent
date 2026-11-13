@@ -1,6 +1,6 @@
 # POC API and event contracts — P0
 
-**Status:** contract-first; business and Foundry endpoints are not yet implemented. [HTTP specification](openapi.yaml).
+**Status:** contract-first; business and Foundry endpoints are not yet implemented. See [HTTP specification](openapi.yaml) and [frozen guest/session/SSE event contract](ticket-events.md).
 
 The customer browser calls only Node via Nginx. **Node calls Microsoft Foundry directly** through its JavaScript SDK, and executes client-side function calls against its internal allowlisted tool registry. No Python Gateway or `/internal/turns` service.
 
