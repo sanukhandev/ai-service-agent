@@ -5,6 +5,8 @@ on:
     paths:
       - 'infra/n8n/ancfz/**'
       - 'scripts/check-ancfz-workflows.mjs'
+      - 'scripts/check-ancfz-credentials.mjs'
+      - 'scripts/prepare-ancfz-credentials.mjs'
       - 'docker-compose.yml'
       - '.github/workflows/p4-ancfz-workflow-structure.yml'
   push:
@@ -25,6 +27,8 @@ jobs:
           node-version: '22'
       - name: Validate n8n workflow JSON and closed network boundary
         run: node scripts/check-ancfz-workflows.mjs
+      - name: Validate ANCFZ n8n credential import template and bindings
+        run: node scripts/check-ancfz-credentials.mjs
       - name: Validate Compose profile
         env:
           POSTGRES_PASSWORD: p4-test-migration-only
