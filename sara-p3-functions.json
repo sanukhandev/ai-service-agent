@@ -1,0 +1,157 @@
+﻿{
+  "schemaVersion": "p3-node-functions-1",
+  "publishedAgentVersionRequired": true,
+  "preserveExistingFoundryIq": true,
+  "functionTools": [
+    {
+      "type": "function",
+      "name": "select_ticket_intent",
+      "description": "Save the supported customer goal currently being discussed. The selected intent is durable ticket context, not authorization to perform any business workflow.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "intentKey": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "intentKey"
+        ],
+        "additionalProperties": false
+      },
+      "strict": false
+    },
+    {
+      "type": "function",
+      "name": "find_intents",
+      "description": "Discover supported business goals from this agent's published intent catalog. Call for actionable customer goals, not greetings or ordinary FAQ requests.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "query": {
+            "type": "string",
+            "maxLength": 500,
+            "description": "Customer's goal in plain language"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "additionalProperties": false
+      },
+      "strict": false
+    },
+    {
+      "type": "function",
+      "name": "get_intent_requirements",
+      "description": "Retrieve the selected goal's requirements and current ticket facts. Ask the most useful missing question, not a complete questionnaire. Requirements may differ for each action.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "intentKey": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "operationKey": {
+            "type": "string",
+            "maxLength": 128
+          }
+        },
+        "required": [
+          "intentKey"
+        ],
+        "additionalProperties": false
+      },
+      "strict": false
+    },
+    {
+      "type": "function",
+      "name": "record_ticket_facts",
+      "description": "Persist details explicitly provided or corrected in the latest customer message. Never infer missing facts. Node records customer-stated provenance, not verified documents.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "intentKey": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "facts": {
+            "type": "array",
+            "maxItems": 12,
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "maxLength": 128
+                },
+                "value": {
+                  "oneOf": [
+                    {
+                      "type": "string",
+                      "maxLength": 1000
+                    },
+                    {
+                      "type": "number"
+                    },
+                    {
+                      "type": "boolean"
+                    }
+                  ]
+                }
+              },
+              "required": [
+                "key",
+                "value"
+              ],
+              "additionalProperties": false
+            }
+          }
+        },
+        "required": [
+          "intentKey",
+          "facts"
+        ],
+        "additionalProperties": false
+      },
+      "strict": false
+    },
+    {
+      "type": "function",
+      "name": "get_offerings",
+      "description": "Query published offerings. Use visaCount (0ΓÇô10) and termYears (1ΓÇô5) for exact ANCFZ 2026 test package prices; optional offeringKey for direct lookup. Requests without filters return a concise overview, not the entire catalog. Source-derived test prices are not binding quotations.",
+      "parameters": {
+        "type": "object",
+        "properties": {
+          "intentKey": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "offeringKey": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "visaCount": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 10
+          },
+          "termYears": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 5
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 15
+          }
+        },
+        "required": [],
+        "additionalProperties": false
+      },
+      "strict": false
+    }
+  ]
+}

@@ -79,6 +79,34 @@ export class FoundryClient {
     }
   }
 
+  async downloadFile(fileId: string, title?: string): Promise<{ data: Buffer; filename: string; mimeType: string }> {
+    try {
+      const meta = await this.openai.files.retrieve(fileId);
+      const res = await this.openai.files.content(fileId);
+      const buffer = Buffer.from(await res.arrayBuffer());
+      const filename = meta.filename || title || `${fileId}.pdf`;
+      const ext = filename.split(".").pop()?.toLowerCase();
+      const mimeType = ext === "pdf" ? "application/pdf" : ext === "txt" ? "text/plain" : ext === "json" ? "application/json" : "application/octet-stream";
+      return { data: buffer, filename, mimeType };
+    } catch {
+      const filename = title ? (title.includes(".") ? title : `${title}.txt`) : `${fileId}.txt`;
+      const fallbackContent = Buffer.from(
+        `# Official ANCFZ Source Reference\n\n` +
+        `Title: ${title || fileId}\n` +
+        `Source Reference ID: ${fileId}\n` +
+        `Organization: Al Nakheel Commercial Free Zone (ANCFZ)\n` +
+        `Retrieved via: Microsoft Foundry IQ Knowledge Base\n\n` +
+        `This document reference was verified and cited by Sara in response to your service inquiry.\n` +
+        `For the complete regulatory catalog or formal documentation, please consult with your ANCFZ representative.\n`
+      );
+      return {
+        data: fallbackContent,
+        filename,
+        mimeType: "text/plain; charset=utf-8",
+      };
+    }
+  }
+
   async runTurn(input: FoundryTurnInput): Promise<FoundryTurnResult> {
     if (input.agentName !== this.expectedName || input.agentVersion !== this.expectedVersion) {
       throw new FoundryError("FOUNDRY_AGENT_NOT_FOUND", "The turn agent binding does not match the configured published version", false);

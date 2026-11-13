@@ -193,7 +193,11 @@ export class TurnQueue {
         "UPDATE ticket_turns SET state='completed',provider_response_id=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE agent_id=$1 AND id=$2",
         [turn.agentId,turn.id,responseId],
       );
-      const envelope={message:{id:message.id,role:"assistant",text,createdAt:message.created_at.toISOString(),sourceReferences:refs}};
+      const enrichedRefs = refs.map((ref) => ({
+        ...ref,
+        uri: ref.uri || `/api/v1/tickets/${turn.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`,
+      }));
+      const envelope={message:{id:message.id,role:"assistant",text,createdAt:message.created_at.toISOString(),sourceReferences:enrichedRefs}};
       const payload=Buffer.byteLength(JSON.stringify(envelope),"utf8") <= 30000
         ? envelope : {messageId:message.id,requestId:turn.requestId};
       await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.message",payload);

@@ -1,8 +1,10 @@
 import Fastify, { type FastifyRequest } from "fastify";
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessageRepository, TicketEventRepository } from "../repositories/index.js";
-import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord } from "../repositories/types.js";
+import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord, type SourceReference } from "../repositories/types.js";
 import { TurnQueue } from "./turn-queue.js";
+import { FoundryClient } from "../foundry/client.js";
+import { AgentToolRegistry } from "../agent/tool-registry.js";
 
 function ticketView(ticket:TicketRecord,agentKey:string) {
   return {id:ticket.id,number:String(ticket.ticketNumber),agentKey,
@@ -10,7 +12,11 @@ function ticketView(ticket:TicketRecord,agentKey:string) {
 }
 function messageView(message:MessageRecord) {
   return {id:message.id,role:message.role,text:message.text,
-    createdAt:message.createdAt,sourceReferences:message.sourceReferences};
+    createdAt:message.createdAt,
+    sourceReferences:(message.sourceReferences ?? []).map(ref => ({
+      ...ref,
+      uri: ref.uri || `/api/v1/tickets/${message.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`,
+    }))};
 }
 function cookieToken(request:FastifyRequest):string|null {
   const raw=request.headers.cookie;
@@ -120,6 +126,50 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const result=await messages.createCustomerMessage(scope,id,body["requestId"],body["text"]);
     await queue.enqueue(scope,id,result.message.id,body["requestId"]);
     return reply.code(202).send({ticketId:id,messageId:result.message.id,requestId:body["requestId"],status:"accepted"});
+  });
+
+  app.get<{Params:{ticketId:string;sourceId:string}}>("/api/v1/tickets/:ticketId/sources/:sourceId/download",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const ticketId=idParam(request);
+    await tickets.get(scope,ticketId);
+    const rawSourceId=(request.params as Record<string,string>)["sourceId"];
+    if(!rawSourceId) throw new PersistenceError("NOT_FOUND","Source document not found");
+    const sourceId=decodeURIComponent(rawSourceId);
+
+    const history=await messages.listTicketMessages(scope,ticketId,"0",200);
+    let targetRef:SourceReference|undefined;
+    for(const msg of history) {
+      for(const ref of msg.sourceReferences ?? []) {
+        if(ref.sourceId===sourceId) {
+          targetRef=ref;
+          break;
+        }
+      }
+      if(targetRef) break;
+    }
+    if(!targetRef) {
+      throw new PersistenceError("NOT_FOUND","Source document not found for this ticket");
+    }
+
+    if(targetRef.uri && /^https:\/\//i.test(targetRef.uri)) {
+      return reply.redirect(targetRef.uri,302);
+    }
+
+    const binding=await agents.getPinnedForTicket(scope,ticketId);
+    if(!binding.foundryProjectEndpoint) {
+      throw new PersistenceError("NOT_CONFIGURED","Foundry project endpoint not configured");
+    }
+
+    const foundry=new FoundryClient(new AgentToolRegistry(),{
+      projectEndpoint:binding.foundryProjectEndpoint,
+      defaultAgentName:binding.foundryAgentName,
+      defaultAgentVersion:binding.foundryAgentVersion,
+    });
+    const file=await foundry.downloadFile(sourceId,targetRef.title??undefined);
+    reply.header("Content-Type",file.mimeType);
+    reply.header("Content-Disposition",`attachment; filename="${encodeURIComponent(file.filename)}"`);
+    return reply.send(file.data);
   });
 
   app.get("/api/events/tickets/:ticketId",async(request,reply)=>{
