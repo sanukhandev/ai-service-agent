@@ -7,8 +7,8 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 
 export const metadata: Metadata = {
-  title: "AI Service Agent",
-  description: "Simple agent-powered business assistance",
+  title: "Sara | ANCFZ Customer Service",
+  description: "Chat with Sara, the ANCFZ customer service assistant.",
 };
 
 export default function RootLayout({ children }: { children: ReactNode }) {
