@@ -34,6 +34,12 @@ Thumbs.db
 secrets/
 *.secret
 *.local
+# Generated ANCFZ n8n credential imports and private environment inputs
+**/credentials-import.json
+**/ancfz-credentials.json
+**/ancfz-n8n-import.json
+**/n8n-credentials.env
+**/ancfz-n8n-credentials.env
 
 # Runtime volumes, artifacts and temporary files
 postgres-data/
