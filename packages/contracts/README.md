@@ -25,6 +25,6 @@ Access to ticket endpoints is bound to a server-issued guest/customer session. R
 
 ## Foundry function names for P3/P4
 
-`find_intents`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation`, `get_operation_status`.
+`find_intents`, `select_ticket_intent`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation`, `get_operation_status`.
 
 These run inside Node and do not themselves authorize workflow execution. The future n8n approval API uses a separate customer confirmation, Node preflight and durable outbox entry. Native Foundry IQ remains attached separately as the agent's knowledge tool.
