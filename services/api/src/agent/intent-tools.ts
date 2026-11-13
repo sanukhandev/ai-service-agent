@@ -23,7 +23,7 @@ export interface TicketFact {
   readonly key: string;
   readonly value: string | number | boolean;
   readonly sourceMessageId: string;
-  readonly verification: "customer_stated" | "verified";
+  readonly verification: "customer_stated" | "verified" | "disputed";
   readonly updatedAt: string;
 }
 export interface OfferingEntry {
@@ -117,6 +117,9 @@ export function registerIntentTools(
         const intents = await catalog.listIntents(ctx.agentId, ctx.intentCatalogRevision);
         const intent = intents.find((candidate) => candidate.key === intentKey);
         if (!intent) return { error: "INTENT_NOT_FOUND" };
+        if (operationKey && !intent.allowedActions.includes(operationKey)) {
+          return { error: "OPERATION_NOT_ALLOWED_FOR_INTENT" };
+        }
         const stored = await facts.listFacts(ctx.agentId, ctx.ticketId);
         const byKey = new Map(stored.map((fact) => [fact.key, fact]));
         return {
