@@ -31,7 +31,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 5
+test "$migrations" = 6
 count=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM ticket_messages WHERE ticket_id='$ticket_id' AND role='customer'")
 test "$count" = 1
