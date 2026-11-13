@@ -27,26 +27,18 @@ services:
     environment:
       API_HOST: 0.0.0.0
       API_PORT: "4000"
-      AI_GATEWAY_URL: http://ai-gateway:8000
+      AZURE_CONFIG_DIR: /home/app/.azure
+      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
+      FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
+      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
       REDIS_URL: redis://redis:6379
+    volumes:
+      - azure-cli-auth:/home/app/.azure
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks: [app]
-    restart: unless-stopped
-
-  ai-gateway:
-    build:
-      context: ./services/ai-gateway
-    environment:
-      AZURE_CONFIG_DIR: /home/app/.azure
-      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
-      FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
-      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
-    volumes:
-      - azure-cli-auth:/home/app/.azure
     networks: [app]
     restart: unless-stopped
 
