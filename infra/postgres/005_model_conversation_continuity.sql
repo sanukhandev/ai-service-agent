@@ -28,8 +28,8 @@ CREATE POLICY agent_scope ON ticket_model_sessions
   USING (agent_id = nullif(current_setting('app.agent_id', true), '')::uuid)
   WITH CHECK (agent_id = nullif(current_setting('app.agent_id', true), '')::uuid);
 
-GRANT SELECT, INSERT ON ticket_model_sessions TO ai_service_runtime;
+GRANT SELECT, INSERT ON ticket_model_sessions TO agent_runtime;
 GRANT UPDATE (last_response_id, updated_at)
-  ON ticket_model_sessions TO ai_service_runtime;
+  ON ticket_model_sessions TO agent_runtime;
 
 COMMIT;
