@@ -23,6 +23,12 @@
         "authentication": "headerAuth",
         "responseMode": "responseNode",
         "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
       }
     },
     {
@@ -55,6 +61,12 @@
         "emailFormat": "text",
         "text": "={{ 'Your ANCFZ payment approval code is ' + $('Validate OTP Delivery').first().json.otp + '. It expires in 5 minutes. Never share this code in chat.' }}",
         "options": {}
+      },
+      "credentials": {
+        "smtp": {
+          "id": "0f33b267-e036-4cca-a147-535b59fefc7d",
+          "name": "ANCFZ - SMTP OTP Delivery"
+        }
       }
     },
     {
