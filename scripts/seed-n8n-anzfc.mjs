@@ -102,9 +102,15 @@ export function seedOwner({ allowOwnerUpdate = false } = {}) {
     throw new Error("Set N8N_OWNER_PASSWORD in a private environment (minimum 12 characters) before --stage=owner");
   }
   // Validate Compose before touching a running container or its owner.
-  validateExistingConfig(compose(["config", "--format", "json"]));
-  if (isN8nRunning() && !allowOwnerUpdate) {
-    throw new Error("n8n is already running. Owner bootstrap may update an existing owner. Re-run with --allow-owner-update only after verifying this instance and backing up its n8n DB");
+  const config = validateExistingConfig(compose(["config", "--format", "json"]));
+  // A stopped/deleted container can still have a populated SQLite database in
+  // its named volume. Guard the volume itself, not only running containers.
+  const volumeName = config?.volumes?.["n8n-data"]?.name ??
+    (String(config.name || "ai-service-agent") + "_n8n-data");
+  if (!/^[A-Za-z0-9_.-]{3,200}$/.test(volumeName)) throw new Error("Unexpected n8n volume identifier");
+  const volumes = docker(["volume", "ls", "--format", "{{.Name}}"]).split(/\r?\n/).filter(Boolean);
+  if ((isN8nRunning() || volumes.includes(volumeName)) && !allowOwnerUpdate) {
+    throw new Error("Existing n8n container or persistent data volume detected. Owner bootstrap could change its owner. Back up and inspect the existing instance, then use --allow-owner-update only when explicitly approved.");
   }
   // Use htpasswd as a one-shot bcrypt implementation; receive plaintext ONLY
   // over stdin (never as an argv/Compose value or checked-in file).
