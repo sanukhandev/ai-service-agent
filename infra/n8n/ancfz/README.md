@@ -4,6 +4,68 @@
 
 This pack is intentionally **ANCFZ-specific**. The core agent-centric Node/PostgreSQL platform remains reusable, but these workflow names, Salesforce fields, invoice copy, gateway and verification rules belong only to the `ancfz` agent.
 
+## Credentials import (NEW — four reusable n8n credentials)
+
+**Import credentials separately from workflow JSON.** n8n's workflow import does not install working credentials. The new `credentials.template.json` is a valid n8n CLI import array containing **placeholders only**. It covers:
+
+| Credential | n8n type | Used by |
+|---|---|---|
+| ANCFZ - Node to n8n Webhook Header | `httpHeaderAuth` | All five inbound private webhook triggers |
+| ANCFZ - Salesforce OAuth2 Sandbox | `salesforceOAuth2Api` | Salesforce Lead upsert and provider ID readback |
+| ANCFZ - SMTP OTP Delivery | `smtp` | OTP Send Email node |
+| ANCFZ - MockGateway Demo X-API-Key | `httpHeaderAuth` | Demo Orders HTTP Request; header `X-API-Key` |
+
+Each node now has the **matching stable credential ID/name** in its workflow JSON. Import the credential pack **before** the workflows into the same n8n instance/project. Do not import the placeholder template and assume it is usable.
+
+### Prepare a private import file (Node 22+)
+
+Copy `credentials.env.example` to a **private file outside Git**, fill with new secrets, and use the generator. On Linux/macOS:
+
+```sh
+mkdir -p "$HOME/.config/ancfz"
+cp infra/n8n/ancfz/credentials.env.example "$HOME/.config/ancfz/n8n-credentials.env"
+chmod 600 "$HOME/.config/ancfz/n8n-credentials.env"
+# Edit your private file; do NOT put real values in Git or shell history.
+node --env-file="$HOME/.config/ancfz/n8n-credentials.env" \
+  scripts/prepare-ancfz-credentials.mjs --output "$HOME/.config/ancfz/credentials-import.json"
+```
+
+Windows PowerShell (run inside the repository):
+
+```powershell
+Copy-Item infra/n8n/ancfz/credentials.env.example "$env:USERPROFILE\ancfz-n8n-credentials.env"
+# Edit the private file and restrict its Windows file permissions.
+node --env-file="$env:USERPROFILE\ancfz-n8n-credentials.env" scripts/prepare-ancfz-credentials.mjs --output "$env:USERPROFILE\ancfz-n8n-import.json"
+```
+
+The generator requires all four credential configurations, validates required fields, refuses output inside the repository, refuses overwrite and writes with owner-only permissions on POSIX systems. The generated JSON contains **plaintext secrets** until n8n encrypts them on import. Never attach this generated file to an issue, chat, PR or backup without encryption.
+
+### Import into the private Docker n8n instance
+
+First complete n8n owner account setup, ensure a **persistent nonempty** `N8N_ENCRYPTION_KEY` is configured in the local Compose `.env`, and start the workflow profile. On Linux/macOS, for the file generated above:
+
+```sh
+docker compose --profile workflows up -d n8n gotenberg
+docker compose --profile workflows cp "$HOME/.config/ancfz/credentials-import.json" n8n:/tmp/ancfz-credentials.json
+docker compose --profile workflows exec -T --user root n8n chown node:node /tmp/ancfz-credentials.json
+docker compose --profile workflows exec -T n8n n8n import:credentials --input=/tmp/ancfz-credentials.json
+docker compose --profile workflows exec -T n8n rm -f /tmp/ancfz-credentials.json
+rm "$HOME/.config/ancfz/credentials-import.json"
+```
+
+On Windows use `docker compose --profile workflows cp "$env:USERPROFILE\ancfz-n8n-import.json" n8n:/tmp/ancfz-credentials.json`, then the same three `docker compose exec` commands; delete the local generated file with `Remove-Item` afterward. **Never copy the plaintext import into `/home/node/.n8n`**, the persistent n8n data volume.
+
+n8n CLI `import:credentials` expects an **array** and preserves supplied IDs. **Reimporting into an instance with these IDs may overwrite its existing credentials.** Check for collisions and back up the n8n database/encryption key before importing to an existing instance. For a multi-user instance, use the CLI's `--projectId` ownership option.
+
+### After importing
+
+1. Open n8n Credentials in the protected editor connection and confirm the four credentials exist; replace any placeholders if the template was imported instead of using the generator.
+2. **Salesforce OAuth2 requires clicking Connect/Authorize in n8n**. Client ID/secret import alone does **not** create access/refresh tokens. Configure the External Client App callback and reachability via a controlled private access path. Do not publicly expose n8n to solve the callback.
+3. Verify SMTP with a safe test message, verify the private inbound Header Auth credential, and verify MockGateway's test key against the ANCFZ Orders endpoint.
+4. Import the five workflow files (below), confirm every node resolves to the intended credential and leave all workflows **inactive** until Node authorization/OTP and provider acceptance are complete.
+
+The MockGateway API key previously pasted in chat should be **rotated** before putting it into the private credentials store. `X-Guest-ID` comes from `MOCKGATEWAY_GUEST_ID` in the local Compose `.env` and is **not** the API key.
+
 ## Import order
 
 Import each JSON via n8n UI over a private editor connection or the mounted CLI path (e.g. `docker compose --profile workflows exec n8n n8n import:workflow --input=/workflows/ancfz/03-mockgateway-payment-link.json`). The Docker network intentionally does **not** publish the editor to the host.
@@ -16,7 +78,7 @@ Import each JSON via n8n UI over a private editor connection or the mounted CLI 
 | `03-mockgateway-payment-link.json` | `POST /webhook/ancfz/payment-link` | MockGateway **demo Orders** request; only return a hosted test checkout link if the API response actually supplies one |
 | `04-mockgateway-payment-verify.json` | `POST /webhook/ancfz/payment-verify` | Fail-closed order-status stub until the matching demo Orders verification endpoint is documented |
 
-Webhook nodes use n8n **Header Auth** and will be unable to run until a real header credential is attached to every imported workflow. Configure separate credential access for Salesforce OAuth, SMTP and MockGateway bearer authorization in the relevant downstream nodes. **Do not put API keys into JSON or git.**
+Webhook nodes use **Header Auth**. Their credential references are included in the workflow JSON, but actual values must be generated/imported privately. Salesforce OAuth, SMTP and MockGateway use the separate credentials listed above. **Do not put real API keys into checked-in JSON or Git.**
 
 These are **private server-to-server paths**: reachable through Docker `http://n8n:5678/webhook/...`, never via Nginx public routes. Attach a restricted shared Header Auth credential and call the endpoints from the authorized Node outbox worker only.
 
@@ -54,7 +116,7 @@ Do not wire the model directly to the private webhooks. **The user saying "paid"
 
 ## Smoke tests before enabling
 
-Run locally: `node scripts/check-ancfz-workflows.mjs`. This validates JSON structure, required nodes and disabled state; it does **not** validate real n8n credential binding or provider execution.
+Run locally: `node scripts/check-ancfz-workflows.mjs` and `node scripts/check-ancfz-credentials.mjs`. These validate structural JSON and credential ID bindings plus safe generation. They do **not** verify live OAuth authorization, imported-credential decryptability, Salesforce, SMTP, MockGateway, or provider execution.
 
 Test with disposable identities: Salesforce duplicate request, SMTP rejection, OTP reuse/expiry, stale quote, demo Orders creation and real response fields, documented checkout flow, status success/decline/pending/mismatch, PDF generation, duplicate callback, Node restart and owner-scoped document access. If the demo endpoint has no checkout/status operation, it cannot satisfy the payment-and-invoice acceptance requirement.
 
