@@ -15,14 +15,14 @@ Status: **approved architecture and partial Node scaffolding**. The Node functio
 | CRM, quotes, external integration effects | n8n after **Node authorization** | Direct model tool call |
 | User-interface chat, consent, OTP and documents | Next.js through Node API | Foundry playground |
 
-No direct model-exposed \`execute_workflow\`, arbitrary URL, CRM mutation or \`n8n_trigger\`. Even \`propose_operation\` only creates a non-executing proposal in Node.
+No direct model-exposed `execute_workflow`, arbitrary URL, CRM mutation or `n8n_trigger`. Even `propose_operation` only creates a non-executing proposal in Node.
 
 ## Four categories of turns
 
 1. **Greeting/small talk:** answer normally; no intent catalog or RAG required.
 2. **Information:** use Foundry IQ for FAQ, rules, license procedures and business facts. Answer first; do not demand a lead.
-3. **Customer goal:** use \`find_intents\` to discover configured services; \`record_ticket_facts\` to save explicit details; \`get_intent_requirements\` to find the next relevant missing question; \`get_offerings\` for published catalog prices.
-4. **Consequential action:** on explicit customer request, \`preflight_operation\` -> \`propose_operation\`, then **separate authenticated customer approval** -> Node outbox -> n8n -> verified provider evidence.
+3. **Customer goal:** use `find_intents` to discover configured services; `select_ticket_intent` to persist the current goal; `record_ticket_facts` to save explicit details; `get_intent_requirements` to find the next relevant missing question; `get_offerings` for published catalog prices.
+4. **Consequential action:** on explicit customer request, `preflight_operation` -> `propose_operation`, then **separate authenticated customer approval** -> Node outbox -> n8n -> verified provider evidence.
 
 ## Why this is more natural than a FAQ bot
 
@@ -44,29 +44,29 @@ On each accepted customer turn:
 3. Load ticket summary, recent messages, selected intent and verified/customer-stated facts from PostgreSQL. Build bounded context.
 4. Call the pinned Foundry agent (no new agent creation). Native IQ retrieval happens within Foundry when selected.
 5. If Foundry yields an application function call, validate name/JSON, enforce agent tool allowlist, attach **trusted Node context** and execute registered handler locally.
-6. Submit the output back to the **same Foundry conversation** as a \`function_call_output\`, and resume model inference. Repeat with a bounded call/round budget.
+6. Submit the output back to the **same Foundry conversation** as a `function_call_output`, and resume model inference. Repeat with a bounded call/round budget.
 7. Persist final reply, source references, events and any proposed non-executing action. Deliver via SSE.
 8. On unsupported tool/timeout, return a typed error and a safe customer response, not invented data.
 
 The source scaffolding is:
-- \`services/api/src/agent/tool-registry.ts\`
-- \`services/api/src/agent/intent-tools.ts\`
-- \`services/api/src/agent/function-loop.ts\`
+- `services/api/src/agent/tool-registry.ts`
+- `services/api/src/agent/intent-tools.ts`
+- `services/api/src/agent/function-loop.ts`
 
-The first registered tools in code are \`find_intents\`, \`get_intent_requirements\`, \`record_ticket_facts\` and \`get_offerings\`. **No direct n8n function is registered.** Read tool handlers depend on \`CatalogRepository\` and \`TicketFactRepository\` implemented against PostgreSQL in P2/P3. The model cannot select \`agentId\` or \`ticketId\`.
+The first registered tools in code are `find_intents`, `select_ticket_intent`, `get_intent_requirements`, `record_ticket_facts` and `get_offerings`. **No direct n8n function is registered.** Tool handlers depend on `CatalogRepository`, `TicketIntentRepository` and `TicketFactRepository` backed by PostgreSQL. POC database adapters exist but are not yet wired to the live Foundry turn. The model cannot select `agentId` or `ticketId`.
 
 ## Ticket fact persistence
 
 Suggested normalized tables:
-- \`ticket_intents(agent_id, ticket_id, catalog_version_id, intent_key, status, selected_at)\`: selected/current goals; preserve historical changes.
-- \`ticket_facts(agent_id, ticket_id, intent_key, requirement_key, value, verification_status, source_message_id, updated_at)\`: current customer statements and verified facts, each scoped by agent and ticket.
-- \`ticket_fact_events(agent_id, ticket_id, fact_id, old_value, new_value, source_message_id, created_at)\`: corrections/audit.
-- \`intent_catalog_versions\`, \`intents\`, \`intent_requirements\`, \`offerings\`, \`offering_price_revisions\`: published definitions and prices.
+- `ticket_intents(agent_id, ticket_id, intent_id, status, selected_at)`: selected/current goals; preserve historical changes.
+- `ticket_facts(agent_id, ticket_id, intent_key, requirement_key, value, verification_status, source_message_id, updated_at)`: current customer statements and verified facts, each scoped by agent and ticket.
+- `ticket_fact_events(agent_id, ticket_id, fact_id, old_value, new_value, source_message_id, created_at)`: corrections/audit.
+- `intent_catalog_versions`, `intents`, `intent_requirements`, `offerings`, `offering_price_revisions`: published definitions and prices.
 
-Use agent-scoped composite FKs, RLS, transaction-local context and ownership validation. The \`record_ticket_facts\` repository adapter must ensure that \`source_message_id\` references an actual customer-authored message on the current ticket. Customer-stated fields are **not** automatically independently verified, even when accepted for conversational planning.
+Use agent-scoped composite FKs, RLS, transaction-local context and ownership validation. The `record_ticket_facts` repository adapter must ensure that `source_message_id` references an actual customer-authored message on the current ticket. Customer-stated fields are **not** automatically independently verified, even when accepted for conversational planning.
 
 A simple summary/rolling context should provide:
-\`\`\`json
+```json
 {
   "selectedIntent": "company_formation",
   "knownCustomerFacts": {
@@ -77,29 +77,31 @@ A simple summary/rolling context should provide:
   "missingForCompanyStructure": ["shareholder_count"],
   "availableActions": ["create_lead", "generate_quote"]
 }
-\`\`\`
+```
 
 The context is assembled in Node from durable state. Never use the entire conversation transcript as a permanent prompt; rolling history/summaries avoid quota exhaustion.
 
+See [example ANCFZ intent catalog](examples/ancfz-intent-catalog.json) for illustrative versioned configuration (not a published or automatically loaded catalog).
+
 ## Configuration example — ANCFZ
 
-Use a published, agent-scoped catalog row for \`company_formation\`:
+Use a published, agent-scoped catalog row for `company_formation`:
 - Description: Starting/registering a new company.
 - Intent examples: "open a software company", "register my business", "get a business license".
-- Requirements: \`business_activity\`, \`shareholder_count\`, \`visa_count\`, \`office_preference\`.
-- \`customer_email\` is **only required for a consented lead/notification**, not for answering setup questions.
-- Allowed actions: \`create_lead\`, \`generate_quote\`.
+- Requirements: `business_activity`, `shareholder_count`, `visa_count`, `office_preference`.
+- `customer_email` is **only required for a consented lead/notification**, not for answering setup questions.
+- Allowed actions: `create_lead`, `generate_quote`.
 - Offerings/price revisions are separate and must be verified before formal quotes.
 
 **Dialogue example:**
 
 Customer: "I want to start a software business, with one visa and shared office."
 
-Node records explicit \`business_activity\`, \`visa_count\`, \`office_preference\` as customer-stated. Sara finds the published goal and asks: "Will you be the only shareholder, or will you have partners?"
+Node records explicit `business_activity`, `visa_count`, `office_preference` as customer-stated. Sara finds the published goal and asks: "Will you be the only shareholder, or will you have partners?"
 
 Customer: "It's just me."
 
-Node updates \`shareholder_count = 1\` with the new message source. Sara can now explain the likely FZE company structure, using IQ for descriptions and the structured catalog for offerings.
+Node updates `shareholder_count = 1` with the new message source. Sara can now explain the likely FZE company structure, using IQ for descriptions and the structured catalog for offerings.
 
 Customer: "Please send a formal quote."
 
