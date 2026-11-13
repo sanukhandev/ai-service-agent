@@ -53,7 +53,8 @@ export class PersistenceDatabase {
 
   // Invoke at API startup. A migration superuser MUST NOT be used for requests.
   async assertSafeRuntimeRole(): Promise<void> {
-    const client = await this.pool.connect();
+    let client: PoolClient;
+    try { client = await this.pool.connect(); } catch (error) { throw dbError(error); }
     try {
       const result = await client.query<{ rolsuper: boolean; rolbypassrls: boolean; member: boolean }>(
         "SELECT r.rolsuper, r.rolbypassrls, pg_has_role(current_user, 'ai_service_runtime', 'member') AS member FROM pg_roles r WHERE r.rolname = current_user",
@@ -62,14 +63,15 @@ export class PersistenceDatabase {
       if (!row || row.rolsuper || row.rolbypassrls || !row.member) {
         throw new PersistenceError("NOT_CONFIGURED", "Application login must inherit ai_service_runtime and must not bypass RLS");
       }
-    } finally {
+    } catch (error) { throw dbError(error); } finally {
       client.release();
     }
   }
 
   async withAgent<T>(agentId: string, operation: (client: PoolClient) => Promise<T>): Promise<T> {
     requireUuid(agentId, "agentId");
-    const client = await this.pool.connect();
+    let client: PoolClient;
+    try { client = await this.pool.connect(); } catch (error) { throw dbError(error); }
     let begun = false;
     try {
       await client.query("BEGIN");
