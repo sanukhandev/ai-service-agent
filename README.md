@@ -2,7 +2,7 @@
 
 A clean, generic **agent-centric business assistant** platform. Sara/ANCFZ is the first example, not business logic hardcoded into the runtime.
 
-> **Current status:** P0 scaffolding only. The Angular admin shell and Python Model Gateway have been removed. Docker images, database migrations, real Foundry calls and full customer workflows have **not** been runtime-verified.
+> **Current status:** P0 foundation completion is validated by a dedicated Docker/build smoke workflow. P1 Foundry calls and P2 customer conversations remain unimplemented. Angular admin and Python Gateway are excluded. See the live GitHub Actions result for actual build status.
 
 ## Active architecture
 
@@ -39,11 +39,16 @@ For P1, Node will use `@azure/ai-projects` and `@azure/identity` with `AzureCliC
 
 ```bash
 cp .env.example .env
-# Supply a strong POSTGRES_PASSWORD in the local .env.
+# Set DIFFERENT strong POSTGRES_PASSWORD and POSTGRES_APP_PASSWORD values.
 docker compose config
 docker compose up -d --build
 docker compose ps
+# Once P0 services are up, verify public routes and runtime DB role:
+# export POSTGRES_PASSWORD and POSTGRES_APP_PASSWORD from your local .env
+# bash scripts/p0-smoke.sh
 ```
+
+The official PostgreSQL image initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then `infra/bootstrap/003-app-runtime-role.sh` on a **fresh** data volume. It creates a restricted `agent_runtime` role for the Node service; the `postgres` migration owner must not be used for application queries. Do not delete an existing volume to re-run init scripts. Track B owns any follow-up migrations and grants for new tables.
 
 Only Nginx publishes host port 80. `http://localhost/` is the Next.js shell, and `http://localhost/api/health` is the Node health endpoint. These commands have not been executed/verified in this repository session.
 

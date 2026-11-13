@@ -32,6 +32,11 @@ services:
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
       FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
       REDIS_URL: redis://redis:6379
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
+      PGUSER: agent_runtime
+      PGPASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in your local .env file}
     volumes:
       - azure-cli-auth:/home/app/.azure
     depends_on:
@@ -48,10 +53,12 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-ai_service_agent}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in a local .env file}
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./infra/postgres/001_core.sql:/docker-entrypoint-initdb.d/001_core.sql:ro
       - ./infra/postgres/002_intents_and_ticket_facts.sql:/docker-entrypoint-initdb.d/002_intents_and_ticket_facts.sql:ro
+      - ./infra/bootstrap/003-app-runtime-role.sh:/docker-entrypoint-initdb.d/003-app-runtime-role.sh:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-ai_service_agent}"]
       interval: 5s

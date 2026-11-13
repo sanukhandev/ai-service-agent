@@ -2,7 +2,7 @@
 
 ## Current state
 
-P0 scaffolding and architecture docs exist in `main`. The Python Model Gateway and Angular Admin Portal have been **deleted from the active repository**. Node is the only business/model integration backend. The existing Foundry Sara agent with native IQ retrieval is the selected AI runtime.
+P0 scaffolding and architecture docs exist in `main`. A separate foundation-completion branch adds restricted PostgreSQL role bootstrap, explicit DB credential separation and executable build/Compose smoke checks. The Python Model Gateway and Angular Admin Portal have been **deleted from the active repository**. Node is the only business/model integration backend. The existing Foundry Sara agent with native IQ retrieval is the selected AI runtime.
 
 **Do not claim the live Node-to-Foundry integration is working yet.** Node has a health service and P3 tool registry/repository scaffolding, but the real Foundry SDK adapter, ticket endpoints, tool wiring and n8n workflows remain integration work.
 
@@ -43,7 +43,7 @@ The integration owner maintains `services/api/src/index.ts`, `packages/contracts
 
 ## Starter sequence
 
-1. Confirm P0 Docker build and SQL migration `001` + `002` in a fresh disposable DB.
+1. Confirm the P0 GitHub Actions smoke gate: Node/Next compilation; fresh SQL `001` + `002` and restricted runtime role `003`; Nginx-only port 80; public shell and health responses.
 2. Add Azure CLI to Node API image; prove direct Sara greeting and native IQ retrieval.
 3. Build Node ticket persistence and Next chat with SSE/replay.
 4. Wire `tool-registry.ts`, `intent-tools.ts`, `function-loop.ts` and scoped repositories into the live Foundry function-response loop.
