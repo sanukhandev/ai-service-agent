@@ -68,18 +68,18 @@ export class TicketMessageRepository {
   ): Promise<{ message: MessageRecord; duplicated: boolean }> {
     return this.db.withAgent(scope.agentId, async (client) => {
       const ticket = await authorizedTicket(client, scope, ticketId, true);
-      if (ticket["status"] === "closed") throw new PersistenceError("CONFLICT", "Ticket is closed");
-      const prior = await client.query<MessageRow>(
-        "SELECT * FROM ticket_messages WHERE agent_id = $1 AND ticket_id = $2 AND role = $3 AND request_id = $4",
-        [scope.agentId, ticketId, role, requestId],
+      const prior = await client.query<MessageRow & { identical_refs: boolean }>(
+        "SELECT *, source_references = $5::jsonb AS identical_refs FROM ticket_messages WHERE agent_id = $1 AND ticket_id = $2 AND role = $3 AND request_id = $4",
+        [scope.agentId, ticketId, role, requestId, JSON.stringify(refs)],
       );
       const old = prior.rows[0];
       if (old) {
-        if (old.content !== text || JSON.stringify(old.source_references) !== JSON.stringify(refs)) {
+        if (old.content !== text || !old.identical_refs) {
           throw new PersistenceError("CONFLICT", "Request ID already used for different content");
         }
         return { message: mapMessage(old), duplicated: true };
       }
+      if (ticket["status"] === "closed") throw new PersistenceError("CONFLICT", "Ticket is closed");
       const next = await client.query<{ last_message_sequence: string }>(
         "UPDATE tickets SET last_message_sequence = last_message_sequence + 1, updated_at = now() WHERE agent_id = $1 AND id = $2 RETURNING last_message_sequence",
         [scope.agentId, ticketId],
