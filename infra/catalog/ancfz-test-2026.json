@@ -1,0 +1,1921 @@
+{
+  "schemaVersion": "ancfz-poc-catalog-1",
+  "seedKey": "ancfz-test-2026-v1",
+  "agentKey": "ancfz",
+  "agentDisplayName": "Sara",
+  "intentRevision": 20261113,
+  "offeringRevision": 20261113,
+  "publication": "published",
+  "environment": "test",
+  "reviewStatus": "Source-derived test data; no ANCFZ business-owner approval asserted",
+  "statement": "Prices and services copied from supplied ANCFZ descriptive DOCX files for test conversations only. No regulatory, bank, visa or quotation guarantee.",
+  "sourceDocuments": [
+    "ANCFZ_Business_Activity_Categories.docx",
+    "ANCFZ_Contact_Us.docx",
+    "ANCFZ_FAQs.docx",
+    "ANCFZ_License_Cost_2026.docx",
+    "ANCFZ_Packages_and_Offers.docx",
+    "ANCFZ_Rules_and_Regulations.docx",
+    "ANCFZ_Strategic_Partners.docx",
+    "ANCFZ_Types_of_Companies.docx"
+  ],
+  "intents": [
+    {
+      "key": "company_formation",
+      "name": "Start a company",
+      "description": "Assist with a new ANCFZ company, licensing activity, structure, visa allocation and workspace.",
+      "examplePhrases": [
+        "start a business",
+        "set up an IT company",
+        "register a new company",
+        "open a software services company",
+        "get a trade licence"
+      ],
+      "allowedActions": [
+        "create_lead",
+        "generate_quote"
+      ],
+      "requirements": [
+        {
+          "key": "business_activity",
+          "label": "What business activity will the company carry out?",
+          "type": "text",
+          "requiredFor": [
+            "create_lead",
+            "generate_quote"
+          ],
+          "hint": "Capture the customer's activity description; check licensed activity separately."
+        },
+        {
+          "key": "shareholder_count",
+          "label": "How many shareholders will there be?",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "One typically indicates FZE, multiple FZC; confirm exact structure."
+        },
+        {
+          "key": "visa_count",
+          "label": "How many residence visas are required?",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "Package tiers are 0-10 for the published 2026 test matrix."
+        },
+        {
+          "key": "office_preference",
+          "label": "Which workspace option is preferred?",
+          "type": "choice",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "flexi_desk, shared_office, private_office, executive_office, retail"
+        },
+        {
+          "key": "term_years",
+          "label": "Preferred package term (1-5 years)",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "preferred_company_name",
+          "label": "Preferred company name",
+          "type": "text",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "customer_email",
+          "label": "Contact email for an explicitly requested enquiry",
+          "type": "email",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": "Do not collect simply to answer a question."
+        },
+        {
+          "key": "shareholder_nationality",
+          "label": "Nationality of the shareholder(s)",
+          "type": "text",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": "Collect only when justified by the specific requested action."
+        }
+      ]
+    },
+    {
+      "key": "branch_registration",
+      "name": "Register a branch",
+      "description": "Explore local UAE and foreign-company branch registration and documentation.",
+      "examplePhrases": [
+        "register my existing company branch",
+        "foreign company branch",
+        "UAE branch registration"
+      ],
+      "allowedActions": [
+        "create_lead"
+      ],
+      "requirements": [
+        {
+          "key": "parent_jurisdiction",
+          "label": "Is the parent company UAE-based or foreign?",
+          "type": "choice",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "parent_trade_license",
+          "label": "Existing parent company licence reference",
+          "type": "text",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "manager_details",
+          "label": "Authorised manager details",
+          "type": "text",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "business_activity_selection",
+      "name": "Select a licensed activity",
+      "description": "Identify suitable ANCFZ activity categories and confirm official licence codes separately.",
+      "examplePhrases": [
+        "can I do software development",
+        "which activity license",
+        "general trading licence",
+        "AI development activity",
+        "consultancy trading"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "business_activity",
+          "label": "Describe the intended activity",
+          "type": "text",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "activity_category",
+          "label": "Which category best fits the business?",
+          "type": "choice",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "license_renewal",
+      "name": "Renew a licence",
+      "description": "Guide an existing ANCFZ customer through licence renewal and available term options.",
+      "examplePhrases": [
+        "renew my ANCFZ licence",
+        "my licence is expiring",
+        "renew trade license"
+      ],
+      "allowedActions": [
+        "create_renewal_request"
+      ],
+      "requirements": [
+        {
+          "key": "existing_license_reference",
+          "label": "Existing licence reference",
+          "type": "text",
+          "requiredFor": [
+            "create_renewal_request"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "term_years",
+          "label": "Renewal duration",
+          "type": "number",
+          "requiredFor": [
+            "create_renewal_request"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "license_amendment",
+      "name": "Amend an existing licence",
+      "description": "Help an existing company request a change to its ANCFZ licence or registered details.",
+      "examplePhrases": [
+        "change my licence",
+        "add business activity",
+        "update shareholders",
+        "amend licence details"
+      ],
+      "allowedActions": [
+        "create_amendment_request"
+      ],
+      "requirements": [
+        {
+          "key": "existing_license_reference",
+          "label": "Existing licence number",
+          "type": "text",
+          "requiredFor": [
+            "create_amendment_request"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "requested_change",
+          "label": "What needs to be changed?",
+          "type": "text",
+          "requiredFor": [
+            "create_amendment_request"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "visa_services",
+      "name": "Apply for residence visas",
+      "description": "Discuss investor, partner, employee or dependant visa support and the required steps.",
+      "examplePhrases": [
+        "one residence visa",
+        "investor visa",
+        "employment visa",
+        "sponsor my dependants",
+        "get Emirates ID"
+      ],
+      "allowedActions": [
+        "create_visa_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "visa_count",
+          "label": "Number of visas required",
+          "type": "number",
+          "requiredFor": [
+            "create_visa_enquiry"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "visa_type",
+          "label": "Visa category",
+          "type": "choice",
+          "requiredFor": [
+            "create_visa_enquiry"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "applicant_residency_status",
+          "label": "Applicant's current UAE residency status",
+          "type": "choice",
+          "requiredFor": [
+            "create_visa_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "visa_renewal",
+      "name": "Renew a visa",
+      "description": "Help existing customers enquire about residency visa or Emirates ID renewal.",
+      "examplePhrases": [
+        "renew employee visa",
+        "visa renewal",
+        "Emirates ID renewal"
+      ],
+      "allowedActions": [
+        "create_visa_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "existing_license_reference",
+          "label": "Company licence reference",
+          "type": "text",
+          "requiredFor": [
+            "create_visa_enquiry"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "visa_type",
+          "label": "Visa type being renewed",
+          "type": "choice",
+          "requiredFor": [
+            "create_visa_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "visa_quota",
+      "name": "Review visa allocation",
+      "description": "Explore visa quotas in relation to packages and workspace.",
+      "examplePhrases": [
+        "how many visas can I get",
+        "increase visa quota",
+        "need 5 employee visas"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "visa_count",
+          "label": "Requested visa quota",
+          "type": "number",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "office_preference",
+          "label": "Preferred workspace",
+          "type": "choice",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "package_comparison",
+      "name": "Compare business setup packages",
+      "description": "Compare visa-inclusive, zero-visa, Pay As You Go and workspace offers.",
+      "examplePhrases": [
+        "show me offers",
+        "compare packages",
+        "zero visa vs one visa",
+        "what's the best package for me"
+      ],
+      "allowedActions": [
+        "generate_quote"
+      ],
+      "requirements": [
+        {
+          "key": "visa_count",
+          "label": "Required visas",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "term_years",
+          "label": "Package term",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "office_preference",
+          "label": "Workspace preference",
+          "type": "choice",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "quotation_request",
+      "name": "Request a quotation",
+      "description": "Prepare a customer-requested estimate or formal quotation subject to enabled workflow and verified rates.",
+      "examplePhrases": [
+        "send me a quote",
+        "quotation for one visa and a desk",
+        "how much will it cost",
+        "give me a PDF quote"
+      ],
+      "allowedActions": [
+        "generate_quote"
+      ],
+      "requirements": [
+        {
+          "key": "business_activity",
+          "label": "What business activity will the company carry out?",
+          "type": "text",
+          "requiredFor": [
+            "create_lead",
+            "generate_quote"
+          ],
+          "hint": "Capture the customer's activity description; check licensed activity separately."
+        },
+        {
+          "key": "shareholder_count",
+          "label": "How many shareholders will there be?",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "One typically indicates FZE, multiple FZC; confirm exact structure."
+        },
+        {
+          "key": "visa_count",
+          "label": "How many residence visas are required?",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "Package tiers are 0-10 for the published 2026 test matrix."
+        },
+        {
+          "key": "office_preference",
+          "label": "Which workspace option is preferred?",
+          "type": "choice",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": "flexi_desk, shared_office, private_office, executive_office, retail"
+        },
+        {
+          "key": "term_years",
+          "label": "Preferred package term (1-5 years)",
+          "type": "number",
+          "requiredFor": [
+            "generate_quote"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "preferred_company_name",
+          "label": "Preferred company name",
+          "type": "text",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "customer_email",
+          "label": "Contact email for an explicitly requested enquiry",
+          "type": "email",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": "Do not collect simply to answer a question."
+        },
+        {
+          "key": "shareholder_nationality",
+          "label": "Nationality of the shareholder(s)",
+          "type": "text",
+          "requiredFor": [
+            "create_lead"
+          ],
+          "hint": "Collect only when justified by the specific requested action."
+        }
+      ]
+    },
+    {
+      "key": "workspace_selection",
+      "name": "Choose workspace",
+      "description": "Compare flexi-desk, shared office, private office, executive office and retail premises.",
+      "examplePhrases": [
+        "I need a desk",
+        "flexi desk price",
+        "shared office",
+        "executive office package",
+        "retail premises"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "office_preference",
+          "label": "Preferred workspace",
+          "type": "choice",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "desk_count",
+          "label": "How many desks are required?",
+          "type": "number",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "banking_assistance",
+      "name": "Corporate banking support",
+      "description": "Explain ANCFZ partner-bank introductions. Account opening is subject to the bank's discretion.",
+      "examplePhrases": [
+        "open a corporate bank account",
+        "Wio ADIB bank",
+        "bank referral",
+        "business bank account"
+      ],
+      "allowedActions": [
+        "create_referral"
+      ],
+      "requirements": [
+        {
+          "key": "company_status",
+          "label": "Is the company already incorporated?",
+          "type": "choice",
+          "requiredFor": [
+            "create_referral"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "existing_license_reference",
+          "label": "Licence number if already issued",
+          "type": "text",
+          "requiredFor": [
+            "create_referral"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "payment_installments",
+      "name": "Payment and instalment options",
+      "description": "Explain source-described Tabby/GCC instalment options, subject to current provider terms.",
+      "examplePhrases": [
+        "can I pay in instalments",
+        "Tabby payments",
+        "pay monthly",
+        "split my package payment"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "package_key",
+          "label": "Which package?",
+          "type": "text",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "payment_solutions",
+      "name": "Business payment services",
+      "description": "Help licensed businesses explore partner payment acceptance and checkout solutions.",
+      "examplePhrases": [
+        "accept card payments",
+        "online payment gateway",
+        "Tamara",
+        "payment collection for my business"
+      ],
+      "allowedActions": [
+        "create_referral"
+      ],
+      "requirements": [
+        {
+          "key": "existing_license_reference",
+          "label": "Existing ANCFZ licence",
+          "type": "text",
+          "requiredFor": [
+            "create_referral"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "payment_channel",
+          "label": "Online checkout or card collection?",
+          "type": "choice",
+          "requiredFor": [
+            "create_referral"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "entrepreneurship_support",
+      "name": "Entrepreneurship and mentorship",
+      "description": "Explore Thara Entrepreneurship Hub Ajman support and referrals.",
+      "examplePhrases": [
+        "startup mentorship",
+        "Thara entrepreneurship",
+        "entrepreneurship hub",
+        "need founder advice"
+      ],
+      "allowedActions": [
+        "create_referral"
+      ],
+      "requirements": [
+        {
+          "key": "business_stage",
+          "label": "Stage of your business",
+          "type": "choice",
+          "requiredFor": [
+            "create_referral"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "legal_partner_referral",
+      "name": "Legal services referral",
+      "description": "Explore partner support for contracts and corporate documents; no personalised legal advice.",
+      "examplePhrases": [
+        "need a legal partner",
+        "corporate document legal help",
+        "contract advice",
+        "DIFC Courts"
+      ],
+      "allowedActions": [
+        "create_referral"
+      ],
+      "requirements": [
+        {
+          "key": "legal_support_topic",
+          "label": "What legal-document help is needed?",
+          "type": "text",
+          "requiredFor": [
+            "create_referral"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "corporate_compliance",
+      "name": "Corporate compliance guidance",
+      "description": "Provide source-backed general UBO, AML and corporate-tax guidance; complex cases require specialist review.",
+      "examplePhrases": [
+        "UBO declaration",
+        "AML compliance",
+        "free zone corporate tax",
+        "legal compliance requirement"
+      ],
+      "allowedActions": [
+        "request_specialist_review"
+      ],
+      "requirements": [
+        {
+          "key": "compliance_topic",
+          "label": "Compliance subject",
+          "type": "text",
+          "requiredFor": [
+            "request_specialist_review"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "regulated_activity_review",
+      "name": "Regulated activity eligibility",
+      "description": "Review whether financial, healthcare, education or other regulated activities may require special approval.",
+      "examplePhrases": [
+        "regulated business activity",
+        "licence for financial services",
+        "medical business approval",
+        "education permit"
+      ],
+      "allowedActions": [
+        "request_specialist_review"
+      ],
+      "requirements": [
+        {
+          "key": "business_activity",
+          "label": "Proposed regulated activity",
+          "type": "text",
+          "requiredFor": [
+            "request_specialist_review"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "document_requirements",
+      "name": "Company setup document requirements",
+      "description": "Explain available structure-specific document requirements without requesting private files in chat.",
+      "examplePhrases": [
+        "what documents do I need",
+        "passport documents for FZE",
+        "foreign branch attestation",
+        "MOA and board resolution"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "company_structure",
+          "label": "FZE, FZC, local branch or foreign branch",
+          "type": "choice",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "contact_ancfz",
+      "name": "Contact ANCFZ",
+      "description": "Provide Ajman head office or Dubai representative-office details, or guide a requested enquiry.",
+      "examplePhrases": [
+        "ANCFZ phone number",
+        "Ajman office address",
+        "Dubai office appointment",
+        "contact ANCFZ"
+      ],
+      "allowedActions": [
+        "create_enquiry"
+      ],
+      "requirements": [
+        {
+          "key": "preferred_office",
+          "label": "Ajman or Dubai office",
+          "type": "choice",
+          "requiredFor": [
+            "create_enquiry"
+          ],
+          "hint": ""
+        }
+      ]
+    },
+    {
+      "key": "existing_customer_support",
+      "name": "Existing customer services",
+      "description": "Explain customer and agent portals, licence renewal, visa applications, and document requests.",
+      "examplePhrases": [
+        "existing licence customer",
+        "customer portal",
+        "I need my company documents",
+        "account support"
+      ],
+      "allowedActions": [
+        "create_support_request"
+      ],
+      "requirements": [
+        {
+          "key": "existing_license_reference",
+          "label": "Existing licence reference",
+          "type": "text",
+          "requiredFor": [
+            "create_support_request"
+          ],
+          "hint": ""
+        },
+        {
+          "key": "support_topic",
+          "label": "What support is needed?",
+          "type": "text",
+          "requiredFor": [
+            "create_support_request"
+          ],
+          "hint": ""
+        }
+      ]
+    }
+  ],
+  "offerings": [
+    {
+      "key": "visa_0_y1",
+      "label": "0 Visas — 1 Year",
+      "description": "Zero-visa Starter company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 4888,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 4888 total for 1 year and 0 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_0_y2",
+      "label": "0 Visas — 2 Years",
+      "description": "Zero-visa Starter company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 9776,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 9776 total for 2 years and 0 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_0_y3",
+      "label": "0 Visas — 3 Years",
+      "description": "Zero-visa Starter company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 14664,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 14664 total for 3 years and 0 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_0_y4",
+      "label": "0 Visas — 4 Years",
+      "description": "Zero-visa Starter company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 19552,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 19552 total for 4 years and 0 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_0_y5",
+      "label": "0 Visas — 5 Years",
+      "description": "Zero-visa Starter company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 24440,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 24440 total for 5 years and 0 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_1_y1",
+      "label": "1 Visa — 1 Year",
+      "description": "All-inclusive 1-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 10800,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 10800 total for 1 year and 1 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_1_y2",
+      "label": "1 Visa — 2 Years",
+      "description": "All-inclusive 1-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 20700,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 20700 total for 2 years and 1 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_1_y3",
+      "label": "1 Visa — 3 Years",
+      "description": "All-inclusive 1-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 30600,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 30600 total for 3 years and 1 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_1_y4",
+      "label": "1 Visa — 4 Years",
+      "description": "All-inclusive 1-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 40500,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 40500 total for 4 years and 1 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_1_y5",
+      "label": "1 Visa — 5 Years",
+      "description": "All-inclusive 1-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 50400,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 50400 total for 5 years and 1 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_2_y1",
+      "label": "2 Visas — 1 Year",
+      "description": "All-inclusive 2-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 16200,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 16200 total for 1 year and 2 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_2_y2",
+      "label": "2 Visas — 2 Years",
+      "description": "All-inclusive 2-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 30150,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 30150 total for 2 years and 2 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_2_y3",
+      "label": "2 Visas — 3 Years",
+      "description": "All-inclusive 2-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 44100,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 44100 total for 3 years and 2 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_2_y4",
+      "label": "2 Visas — 4 Years",
+      "description": "All-inclusive 2-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 58050,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 58050 total for 4 years and 2 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_2_y5",
+      "label": "2 Visas — 5 Years",
+      "description": "All-inclusive 2-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 72000,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 72000 total for 5 years and 2 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_3_y1",
+      "label": "3 Visas — 1 Year",
+      "description": "All-inclusive 3-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 20700,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 20700 total for 1 year and 3 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_3_y2",
+      "label": "3 Visas — 2 Years",
+      "description": "All-inclusive 3-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 38250,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 38250 total for 2 years and 3 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_3_y3",
+      "label": "3 Visas — 3 Years",
+      "description": "All-inclusive 3-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 55800,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 55800 total for 3 years and 3 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_3_y4",
+      "label": "3 Visas — 4 Years",
+      "description": "All-inclusive 3-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 73350,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 73350 total for 4 years and 3 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_3_y5",
+      "label": "3 Visas — 5 Years",
+      "description": "All-inclusive 3-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 90900,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 90900 total for 5 years and 3 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_4_y1",
+      "label": "4 Visas — 1 Year",
+      "description": "All-inclusive 4-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 25200,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 25200 total for 1 year and 4 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_4_y2",
+      "label": "4 Visas — 2 Years",
+      "description": "All-inclusive 4-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 46350,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 46350 total for 2 years and 4 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_4_y3",
+      "label": "4 Visas — 3 Years",
+      "description": "All-inclusive 4-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 67500,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 67500 total for 3 years and 4 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_4_y4",
+      "label": "4 Visas — 4 Years",
+      "description": "All-inclusive 4-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 88650,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 88650 total for 4 years and 4 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_4_y5",
+      "label": "4 Visas — 5 Years",
+      "description": "All-inclusive 4-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 109800,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 109800 total for 5 years and 4 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_5_y1",
+      "label": "5 Visas — 1 Year",
+      "description": "All-inclusive 5-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 29700,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 29700 total for 1 year and 5 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_5_y2",
+      "label": "5 Visas — 2 Years",
+      "description": "All-inclusive 5-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 49005,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 49005 total for 2 years and 5 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_5_y3",
+      "label": "5 Visas — 3 Years",
+      "description": "All-inclusive 5-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 71280,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 71280 total for 3 years and 5 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_5_y4",
+      "label": "5 Visas — 4 Years",
+      "description": "All-inclusive 5-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 93555,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 93555 total for 4 years and 5 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_5_y5",
+      "label": "5 Visas — 5 Years",
+      "description": "All-inclusive 5-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 115830,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 115830 total for 5 years and 5 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_6_y1",
+      "label": "6 Visas — 1 Year",
+      "description": "All-inclusive 6-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 34200,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 34200 total for 1 year and 6 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_6_y2",
+      "label": "6 Visas — 2 Years",
+      "description": "All-inclusive 6-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 56295,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 56295 total for 2 years and 6 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_6_y3",
+      "label": "6 Visas — 3 Years",
+      "description": "All-inclusive 6-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 81810,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 81810 total for 3 years and 6 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_6_y4",
+      "label": "6 Visas — 4 Years",
+      "description": "All-inclusive 6-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 107325,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 107325 total for 4 years and 6 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_6_y5",
+      "label": "6 Visas — 5 Years",
+      "description": "All-inclusive 6-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 132840,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 132840 total for 5 years and 6 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_7_y1",
+      "label": "7 Visas — 1 Year",
+      "description": "All-inclusive 7-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 38700,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 38700 total for 1 year and 7 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_7_y2",
+      "label": "7 Visas — 2 Years",
+      "description": "All-inclusive 7-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 63585,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 63585 total for 2 years and 7 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_7_y3",
+      "label": "7 Visas — 3 Years",
+      "description": "All-inclusive 7-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 92340,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 92340 total for 3 years and 7 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_7_y4",
+      "label": "7 Visas — 4 Years",
+      "description": "All-inclusive 7-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 121095,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 121095 total for 4 years and 7 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_7_y5",
+      "label": "7 Visas — 5 Years",
+      "description": "All-inclusive 7-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 149850,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 149850 total for 5 years and 7 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_8_y1",
+      "label": "8 Visas — 1 Year",
+      "description": "All-inclusive 8-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 43200,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 43200 total for 1 year and 8 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_8_y2",
+      "label": "8 Visas — 2 Years",
+      "description": "All-inclusive 8-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 70875,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 70875 total for 2 years and 8 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_8_y3",
+      "label": "8 Visas — 3 Years",
+      "description": "All-inclusive 8-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 102870,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 102870 total for 3 years and 8 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_8_y4",
+      "label": "8 Visas — 4 Years",
+      "description": "All-inclusive 8-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 134865,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 134865 total for 4 years and 8 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_8_y5",
+      "label": "8 Visas — 5 Years",
+      "description": "All-inclusive 8-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 166860,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 166860 total for 5 years and 8 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_9_y1",
+      "label": "9 Visas — 1 Year",
+      "description": "All-inclusive 9-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 47700,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 47700 total for 1 year and 9 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_9_y2",
+      "label": "9 Visas — 2 Years",
+      "description": "All-inclusive 9-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 78165,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 78165 total for 2 years and 9 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_9_y3",
+      "label": "9 Visas — 3 Years",
+      "description": "All-inclusive 9-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 113400,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 113400 total for 3 years and 9 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_9_y4",
+      "label": "9 Visas — 4 Years",
+      "description": "All-inclusive 9-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 148635,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 148635 total for 4 years and 9 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_9_y5",
+      "label": "9 Visas — 5 Years",
+      "description": "All-inclusive 9-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 183870,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 183870 total for 5 years and 9 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_10_y1",
+      "label": "10 Visas — 1 Year",
+      "description": "All-inclusive 10-visa company-setup package; 1-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 52200,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 52200 total for 1 year and 10 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_10_y2",
+      "label": "10 Visas — 2 Years",
+      "description": "All-inclusive 10-visa company-setup package; 2-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 85455,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 85455 total for 2 years and 10 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_10_y3",
+      "label": "10 Visas — 3 Years",
+      "description": "All-inclusive 10-visa company-setup package; 3-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 123930,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 123930 total for 3 years and 10 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_10_y4",
+      "label": "10 Visas — 4 Years",
+      "description": "All-inclusive 10-visa company-setup package; 4-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 162405,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 162405 total for 4 years and 10 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "visa_10_y5",
+      "label": "10 Visas — 5 Years",
+      "description": "All-inclusive 10-visa company-setup package; 5-year term. Includes licence, lease agreement, incorporation/registry documents, bank-opening letter and up to 10 mix-and-match activities; visa tiers add the listed visa-processing services. Unlimited shareholders advertised. Health insurance excluded. Desk/office upgrades not priced in this source.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 200880,
+        "conditions": "2026 source-derived TEST PUBLISHED rate; AED 200880 total for 5 years and 10 visas. One-year quoted rates include a 10% full-advance-payment discount. Other conditions must be confirmed by ANCFZ. Not a binding quotation.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2027-01-01T00:00:00Z"
+      },
+      "sourceDocument": "ANCFZ_License_Cost_2026.docx"
+    },
+    {
+      "key": "pay_as_you_go",
+      "label": "Pay As You Go",
+      "description": "Flexible business setup with low initial payment; visa and additional support paid when needed. Exact price/terms not specified.",
+      "intentKey": "package_comparison",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "zero_visa_package",
+      "label": "Zero Visa Package",
+      "description": "Advertised starter offering; for precise 1–5 year prices use visa_0_y1 through visa_0_y5.",
+      "intentKey": "package_comparison",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "visa_all_inclusive",
+      "label": "Visa All-Inclusive Packages",
+      "description": "1–10 visas with company registration and listed ICP services. Price variations are published as visa_N_yM offers.",
+      "intentKey": "package_comparison",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "executive_office_package",
+      "label": "Executive Office Package",
+      "description": "Business licence, lease and incorporation documents; no separate sourced price. Verify office/desk conditions.",
+      "intentKey": "workspace_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "retail_package",
+      "label": "Retail Package",
+      "description": "Business licence, lease and incorporation documents; price not specified in supplied source.",
+      "intentKey": "workspace_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "flexi_desk",
+      "label": "Flexi-Desk Workspace",
+      "description": "Flexible workspace option; pricing/availability and licence suitability require ANCFZ confirmation.",
+      "intentKey": "workspace_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "shared_office",
+      "label": "Shared Office",
+      "description": "Shared workspace option; standalone desk price not stated.",
+      "intentKey": "workspace_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "private_office",
+      "label": "Private Office",
+      "description": "Private office workspace option; standalone rental price not stated.",
+      "intentKey": "workspace_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "fze",
+      "label": "Free Zone Establishment (FZE)",
+      "description": "ANCFZ company structure for a single shareholder, subject to requirements.",
+      "intentKey": "company_formation",
+      "price": null,
+      "sourceDocument": "ANCFZ_Types_of_Companies.docx"
+    },
+    {
+      "key": "fzc",
+      "label": "Free Zone Company (FZC)",
+      "description": "ANCFZ company structure for two or more shareholders.",
+      "intentKey": "company_formation",
+      "price": null,
+      "sourceDocument": "ANCFZ_Types_of_Companies.docx"
+    },
+    {
+      "key": "foreign_branch",
+      "label": "Foreign Company Branch",
+      "description": "Branch for a company established outside UAE; attested parent documents may be required.",
+      "intentKey": "branch_registration",
+      "price": null,
+      "sourceDocument": "ANCFZ_Types_of_Companies.docx"
+    },
+    {
+      "key": "local_branch",
+      "label": "Local UAE Company Branch",
+      "description": "Branch for a UAE-licensed company; relevant notarised/attested parent documents required.",
+      "intentKey": "branch_registration",
+      "price": null,
+      "sourceDocument": "ANCFZ_Types_of_Companies.docx"
+    },
+    {
+      "key": "licence_renewal",
+      "label": "Company Licence Renewal",
+      "description": "ANCFZ licensed companies can request renewal; actual renewal price and eligibility need verification.",
+      "intentKey": "license_renewal",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "licence_amendment",
+      "label": "Company Licence Amendments",
+      "description": "Existing-company licence or registered-detail amendment enquiries via ANCFZ.",
+      "intentKey": "license_amendment",
+      "price": null,
+      "sourceDocument": "ANCFZ_Contact_Us.docx"
+    },
+    {
+      "key": "investor_visa",
+      "label": "Investor/Partner Residence Visa",
+      "description": "Investor or partner visa assistance subject to application conditions.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "employment_visa",
+      "label": "Employment Residence Visa",
+      "description": "Employee visa assistance subject to immigration and package requirements.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "dependant_visa",
+      "label": "Dependant Residence Visa Enquiry",
+      "description": "ANCFZ-licensed companies may enquire about dependant visas; eligibility and price not verified.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "emirates_id",
+      "label": "Emirates ID Processing",
+      "description": "New/renewal Emirates ID processing is listed within relevant visa-package inclusions.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "entry_permit",
+      "label": "Entry Permit Processing",
+      "description": "Entry-permit service included in listed visa packages subject to applicable rules.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "visa_medical",
+      "label": "Visa Medical",
+      "description": "Normal visa medical in Ajman listed as visa-package inclusion where applicable.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "visa_status_change",
+      "label": "Visa Status Change",
+      "description": "Status change included where applicable to the applicant's case.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "establishment_card",
+      "label": "Establishment Card",
+      "description": "New/renewal establishment-card processing listed in visa packages.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "e_channel",
+      "label": "E-Channel Services",
+      "description": "E-channel registration/guarantee and related licensing activation as applicable.",
+      "intentKey": "visa_services",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "corporate_bank_referral",
+      "label": "Banking Partner Referral",
+      "description": "Support for corporate account enquiries via ADIB, Wio and Ruya; bank approval not guaranteed.",
+      "intentKey": "banking_assistance",
+      "price": null,
+      "sourceDocument": "ANCFZ_Strategic_Partners.docx"
+    },
+    {
+      "key": "payment_collection",
+      "label": "Payment Collection Referral",
+      "description": "Partner payment acceptance or online checkout enquiry; terms decided by partner.",
+      "intentKey": "payment_solutions",
+      "price": null,
+      "sourceDocument": "ANCFZ_Strategic_Partners.docx"
+    },
+    {
+      "key": "tabby_installments",
+      "label": "Tabby Instalments",
+      "description": "Source describes GCC eligibility and four instalments; pricing and financing terms subject to provider confirmation.",
+      "intentKey": "payment_installments",
+      "price": null,
+      "sourceDocument": "ANCFZ_Packages_and_Offers.docx"
+    },
+    {
+      "key": "thara_mentorship",
+      "label": "Thara Entrepreneurship Support",
+      "description": "Mentorship, founder workspace and access to opportunities via Thara Entrepreneurship Hub.",
+      "intentKey": "entrepreneurship_support",
+      "price": null,
+      "sourceDocument": "ANCFZ_Strategic_Partners.docx"
+    },
+    {
+      "key": "legal_services_referral",
+      "label": "Legal Partner Referral",
+      "description": "General partner referral for contracts/corporate documents; no legal advice provided.",
+      "intentKey": "legal_partner_referral",
+      "price": null,
+      "sourceDocument": "ANCFZ_Strategic_Partners.docx"
+    },
+    {
+      "key": "ubo_guidance",
+      "label": "UBO Compliance Guidance",
+      "description": "General beneficial-ownership record and declaration guidance; specialist/legal review for individual cases.",
+      "intentKey": "corporate_compliance",
+      "price": null,
+      "sourceDocument": "ANCFZ_Rules_and_Regulations.docx"
+    },
+    {
+      "key": "aml_guidance",
+      "label": "AML Compliance Guidance",
+      "description": "General AML-related compliance information only; regulated advice requires specialist review.",
+      "intentKey": "corporate_compliance",
+      "price": null,
+      "sourceDocument": "ANCFZ_Rules_and_Regulations.docx"
+    },
+    {
+      "key": "corporate_tax_guidance",
+      "label": "Free Zone Corporate Tax Guidance",
+      "description": "General corporate-tax documentation references; no individual tax advice.",
+      "intentKey": "corporate_compliance",
+      "price": null,
+      "sourceDocument": "ANCFZ_Rules_and_Regulations.docx"
+    },
+    {
+      "key": "regulated_activity_check",
+      "label": "Regulated Activity Consultation",
+      "description": "Licensing support to determine whether outside authority approvals apply.",
+      "intentKey": "regulated_activity_review",
+      "price": null,
+      "sourceDocument": "ANCFZ_FAQs.docx"
+    },
+    {
+      "key": "ajman_office",
+      "label": "Ajman ANCFZ Head Office",
+      "description": "Amber Gem Tower, Mezzanine Floor, Sheikh Khalifa Bin Zayed Street, Al Rashidiya 3, Ajman. +971 6 808 8888, info@ancfz.ae.",
+      "intentKey": "contact_ancfz",
+      "price": null,
+      "sourceDocument": "ANCFZ_Contact_Us.docx"
+    },
+    {
+      "key": "dubai_office",
+      "label": "Dubai Representative Office",
+      "description": "Office 901, Aspin Commercial Tower, Sheikh Zayed Road, Dubai. +971 4 386 9597, info@fdizone.ae.",
+      "intentKey": "contact_ancfz",
+      "price": null,
+      "sourceDocument": "ANCFZ_Contact_Us.docx"
+    },
+    {
+      "key": "activity_category_it_software",
+      "label": "IT & Software",
+      "description": "Computer programming, software development, software publishing, data/cloud/AI services and computer/software trading; source category reports 54 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_professional_consulting",
+      "label": "Consulting & Professional Services",
+      "description": "Management, internet, aviation, hospitality, quality, feasibility and specialist consultancy; source category reports 53 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_marketing_media",
+      "label": "Marketing & Media",
+      "description": "Social-media marketing, advertising, PR, publishing, design and media monitoring; source category reports 34 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_trading",
+      "label": "Trading & General Trading",
+      "description": "Wholesale, import/export, specialised trading, vehicles and spare parts; source category reports 944 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_logistics_transport",
+      "label": "Logistics & Transport",
+      "description": "Freight, cargo, transport brokerage, handling and logistics consultancy; source category reports 24 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_real_estate",
+      "label": "Real Estate & Related Services",
+      "description": "Real-estate valuation, survey, selected intellectual-property and leasing activities; source category reports 20 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_finance_accounting",
+      "label": "Finance & Accounting Services",
+      "description": "Accounting, bookkeeping, tax consultancy, office machinery rental; regulated activities may require additional approval; source category reports 7 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "activity_category_ai_web3_gaming",
+      "label": "Blockchain, AI, Crypto & Gaming",
+      "description": "AI development, data analysis, Web3 venture support, metaverse and gaming QA; regulated digital-asset activities may need approval; source category reports 24 activities. These are category summaries, not an exhaustive activity code list.",
+      "intentKey": "business_activity_selection",
+      "price": null,
+      "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    }
+  ]
+}
