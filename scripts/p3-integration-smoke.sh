@@ -31,7 +31,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 4
+test "$migrations" = 5
 count=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM ticket_messages WHERE ticket_id='$ticket_id' AND role='customer'")
 test "$count" = 1
@@ -51,5 +51,25 @@ docker compose exec -T \
   -e P3_TEST_MESSAGE2="$correction_id" \
   api node dist/runtime/intent-smoke.js
 
-printf '%s\n' 'P3 offline integration smoke PASS: guest session, ticket, 202, dedupe, ownership, SSE, ledger'
+# Private operation status requires an authenticated ticket-owner session.
+unauthorized_operation=$(curl --silent -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$ticket_id/operations")
+test "$unauthorized_operation" = 404
+
+# Check the customer-facing API's fail-closed state before authorizing the offline operation.
+lead_options=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/operations")
+printf '%s' "$lead_options" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["enabled"] is False;assert d["operations"]==[]'
+lead_denied=$(curl --silent -o /dev/null -w '%{http_code}' -b "$jar" -H 'Content-Type: application/json' -d '{"requestId":"11111111-1111-4111-8111-111111111111","consent":true}' "http://localhost/api/v1/tickets/$ticket_id/operations/salesforce-lead")
+test "$lead_denied" = 400
+
+# Queue one authorized lead through the real restricted database role. The live
+# API worker remains disabled, so there is no Salesforce/n8n side effect.
+docker compose exec -T \
+  -e P4_OFFLINE_SMOKE=1 \
+  -e P3_TEST_TICKET="$ticket_id" \
+  api node dist/runtime/lead-smoke.js
+
+lead_status=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/operations")
+printf '%s' "$lead_status" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["enabled"] is False;assert len(d["operations"])==1;assert d["operations"][0]["state"]=="queued"'
+
+printf '%s\\n' 'P3/P4 offline integration PASS: guest ticket, SSE, intent tools, consent, dedupe, durable lead queue'
 printf '%s\n' 'Live Foundry and browser certification remain BLOCKED without credentials.'

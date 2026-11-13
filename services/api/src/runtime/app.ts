@@ -3,6 +3,7 @@ import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessageRepository, TicketEventRepository } from "../repositories/index.js";
 import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord } from "../repositories/types.js";
 import { TurnQueue } from "./turn-queue.js";
+import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 
 function ticketView(ticket:TicketRecord,agentKey:string) {
   return {id:ticket.id,number:String(ticket.ticketNumber),agentKey,
@@ -53,12 +54,13 @@ function frame(event:EventRecord):string {
 }
 
 export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
-  const app=Fastify({logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","res.headers.set-cookie"]},trustProxy:false,bodyLimit:32768});
+  const app=Fastify({logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","req.body.phone","req.body.name","req.body.company","req.body.description","res.headers.set-cookie"]},trustProxy:false,bodyLimit:32768});
   const agents=new AgentRepository(db);
   const sessions=new GuestSessionRepository(db);
   const tickets=new TicketRepository(db);
   const messages=new TicketMessageRepository(db);
   const events=new TicketEventRepository(db);
+  const leads=new LeadOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -120,6 +122,22 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const result=await messages.createCustomerMessage(scope,id,body["requestId"],body["text"]);
     await queue.enqueue(scope,id,result.message.id,body["requestId"]);
     return reply.code(202).send({ticketId:id,messageId:result.message.id,requestId:body["requestId"],status:"accepted"});
+  });
+
+  // Customer-initiated operation only; never callable as a model tool.
+  // Consent is collected in a separate UI form and recorded in Node.
+  app.post("/api/v1/tickets/:ticketId/operations/salesforce-lead",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const ticketId=idParam(request);
+    const submitted=await leads.submit(scope,ticketId,request.body);
+    return reply.code(submitted.duplicated?200:202).send(submitted);
+  });
+
+  app.get("/api/v1/tickets/:ticketId/operations",async(request)=>{
+    const scope=await scopeFromCookie(db,request);
+    const ticketId=idParam(request);
+    return {enabled:leadDispatchEnabled(),operations:await leads.list(scope,ticketId)};
   });
 
   app.get("/api/events/tickets/:ticketId",async(request,reply)=>{
