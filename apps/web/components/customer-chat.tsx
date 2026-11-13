@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatComposer } from "./chat-composer";
 import { LeadSubmission } from "./lead-submission";
+import { QuotationRequest } from "./quotation-request";
 import { MessageBubble } from "./chat-message";
 import {
   ChatApiError,
@@ -317,6 +318,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {operationNotice && <p role="status" className="mb-2 rounded-lg bg-blue-50 px-3 py-2 text-xs text-blue-900">{operationNotice}</p>}
           {sendError && <p role="alert" className="mb-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-800">{sendError}</p>}
           {ticket && <LeadSubmission key={ticket.id} ticketId={ticket.id} />}
+          {ticket && <QuotationRequest key={ticket.id} ticketId={ticket.id} />}
           <ChatComposer onSend={send} disabled={locked} sending={isSending} />
           {ticket?.status === "closed" && <p role="status" className="mt-1 text-center text-xs text-slate-500">This ticket is closed. Messages are read-only.</p>}
         </div>

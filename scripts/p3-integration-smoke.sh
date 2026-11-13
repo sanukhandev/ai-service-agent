@@ -31,7 +31,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 5
+test "$migrations" = 6
 count=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM ticket_messages WHERE ticket_id='$ticket_id' AND role='customer'")
 test "$count" = 1
@@ -72,4 +72,29 @@ lead_status=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/
 printf '%s' "$lead_status" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["enabled"] is False;assert len(d["operations"])==1;assert d["operations"][0]["state"]=="queued"'
 
 printf '%s\\n' 'P3/P4 offline integration PASS: guest ticket, SSE, intent tools, consent, dedupe, durable lead queue'
+# CI-only price fixture; never use this value as a customer quotation.
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" <<'SQL'
+INSERT INTO offering_price_revisions(
+  agent_id,offering_id,revision,currency,amount,conditions,effective_from
+)
+SELECT agent_id,id,1,'AED',16200.00,
+       'CI synthetic price: never use in customer quotes',now()-interval '1 day'
+FROM offerings WHERE offering_key='company_setup_consultation'
+  AND agent_id=(SELECT id FROM agents WHERE agent_key='ancfz');
+SQL
+
+# The API's provider worker stays off. The independent DB smoke injects a
+# synthetic Lead ID into an isolated test ticket and exercises quote gates.
+quote_options=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/quotation-options")
+printf '%s' "$quote_options" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["enabled"] is False;assert d["options"]==[]'
+docker compose exec -T -e P4_QUOTATION_OFFLINE_SMOKE=1 -e P3_TEST_TICKET="$ticket_id" \
+  api node dist/runtime/quotation-smoke.js
+
+private_pdf=$(curl --silent -o /dev/null -w '%{http_code}' \
+  "http://localhost/api/v1/tickets/$ticket_id/quotations/33333333-3333-4333-8333-333333333333/pdf")
+test "$private_pdf" = 404
+quoted=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/quotations")
+printf '%s' "$quoted" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["quotation"]["state"]=="queued";assert d["quotation"]["pdfAvailable"] is False'
+printf '%s\n' 'P4 quotation offline DB smoke PASS'
+
 printf '%s\n' 'Live Foundry and browser certification remain BLOCKED without credentials.'
