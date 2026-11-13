@@ -16,7 +16,7 @@ Browser -> Nginx -> Next.js / Node Fastify -> existing **published Foundry Agent
 - Node handles Foundry client-executed **function calls locally** through an allowlisted tool registry. Never route application tool calls through a Python gateway. Keep native Foundry IQ knowledge MCP attached to the agent; do not duplicate knowledge retrieval.
 - Node is the sole authority for agent identity, guest/customer ownership, tickets, durable messages and events, catalog versions, customer consent, workflow authorization and provider evidence.
 - Agent is the isolation root; every agent-owned row, ticket and workflow binding is scoped by trusted server-derived `agent_id`. No `tenant_id` compatibility layer.
-- Business functions start with `find_intents`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation` and `get_operation_status` (introduce gradually).
+- Business functions start with `find_intents`, `select_ticket_intent`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation` and `get_operation_status` (introduce gradually).
 - Each action requires Node preflight and explicit customer authorization for consequential side effects. n8n runs from authorized Node dispatch only; HTTP acceptance is not evidence of provider completion.
 - PostgreSQL is the authority; Redis is ephemeral cache/fanout. Persist customer and assistant message/events durably, SSE with replay. Keep private document uploads apart from Foundry IQ.
 
