@@ -1,0 +1,16 @@
+**/node_modules
+**/dist
+**/.next
+**/.angular
+**/__pycache__
+**/.venv
+**/coverage
+.git
+.github
+.env
+.env.*
+!.env.example
+.azure
+**/.azure
+secrets
+*.log
