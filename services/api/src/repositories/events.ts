@@ -1,6 +1,6 @@
 import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireBounded, requireUuid } from "../database/pool.js";
-import { asIso, authorizedTicket, cursor, pageSize, type EventRecord, type TicketScope } from "./types.js";
+import { asIso, authorizedTicket, assertAgentActive, cursor, pageSize, type EventRecord, type TicketScope } from "./types.js";
 
 type Payload = Record<string, unknown>;
 
@@ -109,6 +109,7 @@ export class TicketEventRepository {
     const json = safePayload(payload);
     return this.db.withAgent(scope.agentId, async (client) => {
       await authorizedTicket(client, scope, ticketId, true);
+      await assertAgentActive(client, scope.agentId);
       const existing = await client.query<{ id: string; event_type: string; same_payload: boolean }>(
         "SELECT id, event_type, payload = $4::jsonb AS same_payload FROM event_outbox WHERE agent_id = $1 AND ticket_id = $2 AND idempotency_key = $3",
         [scope.agentId, ticketId, idempotencyKey, json],
