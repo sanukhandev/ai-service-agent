@@ -34,7 +34,15 @@ for (const [filename, path] of Object.entries(expected)) {
   if(allPaths.has(path)) errors.push(filename+": duplicate path");
   allPaths.add(path);
   if (!workflow.nodes.some(node => node.type === "n8n-nodes-base.respondToWebhook")) errors.push(filename+": missing response");
-  if (workflow.nodes.some(node => node.credentials && JSON.stringify(node.credentials).match(/(api[_-]?key|password|token)/i))) errors.push(filename+": possible embedded credentials");
+  for(const node of workflow.nodes) {
+    for(const [kind, credential] of Object.entries(node.credentials ?? {})) {
+      if(!credential || typeof credential !== "object" || Array.isArray(credential) ||
+         Object.keys(credential).some(key=>key!=="id" && key!=="name") ||
+         typeof credential.id !== "string" || typeof credential.name !== "string") {
+        errors.push(filename+": embedded credential data or invalid reference: "+node.name+" / "+kind);
+      }
+    }
+  }
   if (workflow.settings?.saveDataSuccessExecution !== "none" || workflow.settings?.saveDataErrorExecution !== "none") errors.push(filename+": sensitive execution retention enabled");
   for (const [name, ports] of Object.entries(workflow.connections ?? {})) {
     if(!names.has(name)) errors.push(filename+": unknown upstream "+name);
