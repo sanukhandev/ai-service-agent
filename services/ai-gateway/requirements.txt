@@ -1,0 +1,3 @@
+# P0 service shell. Add azure-identity and azure-ai-projects in P1.
+fastapi>=0.120,<1
+uvicorn>=0.35,<1
