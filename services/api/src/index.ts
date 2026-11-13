@@ -2,6 +2,7 @@ import { PersistenceDatabase } from "./database/pool.js";
 import { createApi } from "./runtime/app.js";
 import { TurnQueue } from "./runtime/turn-queue.js";
 import { TurnWorker } from "./runtime/turn-worker.js";
+import { N8nLeadWorker } from "./runtime/n8n-lead-worker.js";
 
 const port=Number(process.env.API_PORT??"4000");
 const host=process.env.API_HOST??"0.0.0.0";
@@ -11,8 +12,10 @@ const db=new PersistenceDatabase(process.env.DATABASE_URL);
 const queue=new TurnQueue(db);
 const app=createApi(db,queue);
 const worker=new TurnWorker(db,queue,(data,message)=>app.log.info(data,message));
+const leadWorker=new N8nLeadWorker(db,(data,message)=>app.log.info(data,message));
 app.addHook("onClose",async()=>{
   worker.stop();
+  leadWorker.stop();
   await db.close();
 });
 
@@ -24,6 +27,7 @@ try {
   await db.assertSafeRuntimeRole();
   await app.listen({host,port});
   await worker.start();
+  leadWorker.start();
 } catch(error) {
   app.log.error({errorCode:(error as Error).name,message:(error as Error).message},"Runtime startup failed");
   process.exitCode=1;
