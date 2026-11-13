@@ -137,12 +137,14 @@ export class TicketRepository {
   // Customer first proves ownership of the guest session and then completes
   // account verification in Node; this method never performs OTP verification.
   async linkVerifiedAccount(
-    scope: TicketScope, ticketId: string, verifiedAccountId: string,
+    scope: TicketScope, ticketId: string, verifiedAccountScope: TicketScope,
   ): Promise<TicketRecord> {
-    if (scope.owner.kind !== "guest") {
-      throw new PersistenceError("CONFLICT", "Guest ownership is required for account upgrade");
+    if (scope.owner.kind !== "guest" ||
+      verifiedAccountScope.agentId !== scope.agentId ||
+      verifiedAccountScope.owner.kind !== "verified_account") {
+      throw new PersistenceError("CONFLICT", "Both guest ownership and verified account session are required");
     }
-    requireUuid(verifiedAccountId, "verifiedAccountId");
+    const verifiedAccountId = requireUuid(verifiedAccountScope.owner.accountId, "verifiedAccountId");
     return this.db.withAgent(scope.agentId, async (client) => {
       const ticket = await authorizedTicket(client, scope, ticketId, true);
       if (ticket["account_id"] !== null) throw new PersistenceError("CONFLICT", "Ticket already linked");
