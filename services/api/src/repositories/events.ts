@@ -109,13 +109,13 @@ export class TicketEventRepository {
     const json = safePayload(payload);
     return this.db.withAgent(scope.agentId, async (client) => {
       await authorizedTicket(client, scope, ticketId, true);
-      const existing = await client.query<{ id: string; event_type: string; payload: Payload }>(
-        "SELECT id, event_type, payload FROM event_outbox WHERE agent_id = $1 AND ticket_id = $2 AND idempotency_key = $3",
-        [scope.agentId, ticketId, idempotencyKey],
+      const existing = await client.query<{ id: string; event_type: string; same_payload: boolean }>(
+        "SELECT id, event_type, payload = $4::jsonb AS same_payload FROM event_outbox WHERE agent_id = $1 AND ticket_id = $2 AND idempotency_key = $3",
+        [scope.agentId, ticketId, idempotencyKey, json],
       );
       const previous = existing.rows[0];
       if (previous) {
-        if (previous.event_type !== type || JSON.stringify(previous.payload) !== json) {
+        if (previous.event_type !== type || !previous.same_payload) {
           throw new PersistenceError("CONFLICT", "Idempotency key reused with different operation");
         }
         return { event: null, outboxId: previous.id, duplicated: true };
