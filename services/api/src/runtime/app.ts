@@ -54,7 +54,7 @@ function frame(event:EventRecord):string {
 }
 
 export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
-  const app=Fastify({logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","res.headers.set-cookie"]},trustProxy:false,bodyLimit:32768});
+  const app=Fastify({logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","req.body.phone","req.body.name","req.body.company","req.body.description","res.headers.set-cookie"]},trustProxy:false,bodyLimit:32768});
   const agents=new AgentRepository(db);
   const sessions=new GuestSessionRepository(db);
   const tickets=new TicketRepository(db);
