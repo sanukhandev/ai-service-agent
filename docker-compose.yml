@@ -112,8 +112,21 @@ services:
       N8N_PORT: "5678"
       N8N_PROTOCOL: http
       N8N_SECURE_COOKIE: "false"
+      # Optional ANCFZ configuration. Keep provider secrets in n8n credentials.
+      SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
+      MOCKGATEWAY_SLUG: ${MOCKGATEWAY_SLUG:-}
+      ANCFZ_OTP_FROM_EMAIL: ${ANCFZ_OTP_FROM_EMAIL:-}
     volumes:
       - n8n-data:/home/node/.n8n
+    depends_on:
+      - gotenberg
+    networks: [backend]
+    restart: unless-stopped
+
+  # ANCFZ PDF renderer. Internal-only; no host port and no browser access.
+  gotenberg:
+    profiles: ["workflows"]
+    image: gotenberg/gotenberg:8
     networks: [backend]
     restart: unless-stopped
 
