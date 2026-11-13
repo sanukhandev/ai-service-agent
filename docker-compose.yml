@@ -114,6 +114,12 @@ services:
       N8N_SECURE_COOKIE: "false"
       # Configure a persistent private key before importing any credentials.
       N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      # Official n8n >=2.17 owner provisioning; activated only by the private seed script.
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: ${N8N_INSTANCE_OWNER_MANAGED_BY_ENV:-false}
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_INSTANCE_OWNER_EMAIL:-}
+      N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_INSTANCE_OWNER_FIRST_NAME:-}
+      N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_INSTANCE_OWNER_LAST_NAME:-}
+      N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}
       # Optional ANCFZ configuration. Keep provider secrets in n8n credentials.
       # MockGateway Demo Orders requires a configured guest identifier.
       MOCKGATEWAY_GUEST_ID: ${MOCKGATEWAY_GUEST_ID:-}
