@@ -1,0 +1,42 @@
+name: P0 foundation smoke
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+      - chore/p0-foundation-completion
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  foundation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      POSTGRES_DB: ai_service_agent
+      # CI-only disposable passwords, NEVER real user credentials.
+      POSTGRES_PASSWORD: p0-ci-owner-not-for-production-2026
+      POSTGRES_APP_PASSWORD: p0-ci-runtime-not-for-production-2026
+    steps:
+      - uses: actions/checkout@v4
+      - name: Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Compile Node and Next.js P0 shells
+        run: |
+          npm install --no-audit --no-fund
+          npm run build
+      - name: Validate and start P0 services
+        run: bash scripts/p0-smoke.sh
+      - name: Report container status and logs on failure
+        if: failure()
+        run: |
+          docker compose ps || true
+          docker compose logs --no-color --tail=100 || true
+      - name: Stop disposable P0 services
+        if: always()
+        run: docker compose down -v --remove-orphans || true
