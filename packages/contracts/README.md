@@ -1,25 +1,17 @@
-# API and event contracts — initial P0 freeze
+# POC API and event contracts — P0
 
-**Status:** contract-first foundation, runtime not implemented. [HTTP specification](openapi.yaml).
+**Status:** contract-first; business and Foundry endpoints are not yet implemented. [HTTP specification](openapi.yaml).
 
-The contract is service-independent:
-- The browser sends messages and receives ticket events only via the Node API.
-- Node delegates model turns to the internal Python gateway.
-- Application model function calls are subsequently authorized by Node.
-- Foundry IQ knowledge is a **native agent MCP tool**, not a second Node knowledge API in this POC.
-- Node derives agent/session/ticket scope, persists messages before inference and never trusts model-authored identity.
+The customer browser calls only Node via Nginx. **Node calls Microsoft Foundry directly** through its JavaScript SDK, and executes client-side function calls against its internal allowlisted tool registry. No Python Gateway or `/internal/turns` service.
 
-## Contract rules
+- Server resolves `agentId`, ticket ownership and active Foundry agent version; never delegate authorization to model arguments.
+- JSON API uses `camelCase`. IDs are issued by Node. `requestId` provides idempotent customer message acceptance.
+- Node persists accepted customer messages before inference; `202 Accepted` never means the model completed.
+- SSE exposes event IDs and per-ticket replay from PostgreSQL, not just Redis.
+- Typed tool failures and missing business evidence cannot become false success.
+- Future catalogs and action contracts are versioned.
 
-- Stable JSON keys use `camelCase` at public API boundaries; database columns may use `snake_case`.
-- IDs are server-issued; `agentId` and `ticketId` passed to Python are trusted metadata, not user-selected tool parameters.
-- Every accepted user message has an idempotent `requestId`; the server returns `202 Accepted` after persistence, not after model completion.
-- SSE events have monotonically ordered per-ticket event IDs, with an authenticated replay cursor.
-- Tool errors/statuses are typed. A failed tool, absent evidence or n8n dispatch never counts as success.
-- Version new incompatible contracts deliberately; change OpenAPI + service adapters together.
-- The internal service token must never reach browsers, model messages or logs.
-
-## API groups
+## Initial public API
 
 ```text
 GET  /api/health
@@ -27,15 +19,12 @@ POST /api/v1/agents/{agentKey}/tickets
 GET  /api/v1/tickets/{ticketId}
 POST /api/v1/tickets/{ticketId}/messages
 GET  /api/events/tickets/{ticketId}
-POST /internal/turns                   # API -> Python only
 ```
 
-Authentication/authorization design remains owned by Node; first guest session uses an opaque secure browser cookie. Secure customer OTP and admin APIs will be added as versioned contract extensions in P5/P6.
+Access to ticket endpoints is bound to a server-issued guest/customer session. Real routes beyond `/api/health` will be added in P2.
 
-## Future function registry (P3/P4)
+## Foundry function names for P3/P4
 
-Read functions: `find_intents`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`.
+`find_intents`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation`, `get_operation_status`.
 
-Operation functions: `preflight_operation`, `propose_operation`, `get_operation_status`. Model function invocation is **not** operation authorization. Actual execution uses a separate verified customer approval endpoint and Node outbox/worker.
-
-Automated contract tests are deliberately deferred until H1, but implementation should retain compatible schemas rather than inventing divergent payloads.
+These run inside Node and do not themselves authorize workflow execution. The future n8n approval API uses a separate customer confirmation, Node preflight and durable outbox entry. Native Foundry IQ remains attached separately as the agent's knowledge tool.
