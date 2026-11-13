@@ -6,7 +6,7 @@
 export type ReadToolName =
   | "find_intents" | "get_intent_requirements" | "get_offerings"
   | "get_ticket_context" | "get_document_data" | "get_operation_status";
-export type ContextToolName = "record_ticket_facts";
+export type ContextToolName = "record_ticket_facts" | "select_ticket_intent";
 export type ProposalToolName = "preflight_operation" | "propose_operation";
 export type RegisteredToolName = ReadToolName | ContextToolName | ProposalToolName;
 
