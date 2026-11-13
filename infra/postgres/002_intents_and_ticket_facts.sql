@@ -124,6 +124,7 @@ CREATE TABLE ticket_facts (
   FOREIGN KEY (agent_id, ticket_id, source_message_id)
     REFERENCES ticket_messages(agent_id, ticket_id, id) ON DELETE RESTRICT,
   UNIQUE (agent_id, ticket_id, fact_key),
+  UNIQUE (agent_id, ticket_id, id),
   UNIQUE (agent_id, id),
   CHECK (jsonb_typeof(value) IN ('string', 'number', 'boolean'))
 );
@@ -137,8 +138,8 @@ CREATE TABLE ticket_fact_events (
   new_value jsonb NOT NULL,
   source_message_id uuid NOT NULL,
   changed_at timestamptz NOT NULL DEFAULT now(),
-  FOREIGN KEY (agent_id, fact_id)
-    REFERENCES ticket_facts(agent_id, id) ON DELETE RESTRICT,
+  FOREIGN KEY (agent_id, ticket_id, fact_id)
+    REFERENCES ticket_facts(agent_id, ticket_id, id) ON DELETE RESTRICT,
   FOREIGN KEY (agent_id, ticket_id, source_message_id)
     REFERENCES ticket_messages(agent_id, ticket_id, id) ON DELETE RESTRICT
 );
