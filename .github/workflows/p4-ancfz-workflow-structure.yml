@@ -1,0 +1,32 @@
+name: P4 ANCFZ n8n workflow structure
+
+on:
+  pull_request:
+    paths:
+      - 'infra/n8n/ancfz/**'
+      - 'scripts/check-ancfz-workflows.mjs'
+      - 'docker-compose.yml'
+      - '.github/workflows/p4-ancfz-workflow-structure.yml'
+  push:
+    paths:
+      - 'infra/n8n/ancfz/**'
+      - 'scripts/check-ancfz-workflows.mjs'
+      - 'docker-compose.yml'
+      - '.github/workflows/p4-ancfz-workflow-structure.yml'
+
+jobs:
+  static-validation:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Validate n8n workflow JSON and closed network boundary
+        run: node scripts/check-ancfz-workflows.mjs
+      - name: Validate Compose profile
+        env:
+          POSTGRES_PASSWORD: p4-test-migration-only
+          POSTGRES_APP_PASSWORD: p4-test-restricted-only
+        run: docker compose --profile workflows config --quiet
