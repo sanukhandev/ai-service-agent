@@ -6,7 +6,7 @@ Status: ANCFZ-specific integration contract; **not** live-certified. This does n
 
 The four ANCFZ external business workflows are:
 
-1. `ancfz_salesforce_lead`: create/upsert a Salesforce **Lead** using approved customer details.
+1. `ancfz_salesforce_lead`: submit an authorized ANCFZ lead to the Salesforce **AIChatbotLead Apex REST** endpoint using approved customer details.
 2. `ancfz_render_pdf`: render either an ANCFZ **quotation** or **invoice** with Gotenberg.
 3. `ancfz_payment_link`: create a **demo Orders** request against the ANCFZ-specific MockGateway API after explicit customer agreement and **Node-verified email OTP**; return a checkout link only if present in the actual response.
 4. `ancfz_payment_verify`: **not configured yet** for this demo Orders API. It must independently verify the provider transaction when a documented status endpoint is available. Only a real matched success authorizes `ancfz_render_pdf` with `documentType=invoice`.
@@ -27,7 +27,7 @@ flowchart TD
     B --> C["Collect ANCFZ qualification details"]
     C --> D{"Customer agrees to lead submission?"}
     D -->|No| C
-    D -->|Yes| E["Node authorizes n8n Salesforce lead upsert"]
+    D -->|Yes| E["Node authorizes n8n Salesforce Apex lead request"]
     E --> F{"Verified Salesforce Lead ID?"}
     F -->|No| X["Block downstream operations; reconcile"]
     F -->|Yes| G["Node resolves approved offering price"]
@@ -68,7 +68,9 @@ Suggested operation state: `proposed → authorized → queued → running → v
 
 ## Salesforce lead
 
-Required ANCFZ fields should include `LastName`, `Company`, a usable customer contact, business enquiry and optional package/visa needs. Restrict data sent to approved fields. For robust deduplication, provision a Salesforce **unique external ID** field for the Node ticket UUID (e.g. `ANCFZ_Ticket_ID__c`) and use REST upsert with the connected Salesforce OAuth credential; do not call naive `POST Lead` repeatedly. Never trust a model-generated Salesforce ID.
+Required ANCFZ data for the custom Apex endpoint: `Name` (full customer name), `Company`, `Phone`, `Email`, and `Description` (enquiry summary). The Node-authorized lead submission must be routed to n8n through the private Header Auth webhook and be limited to those fields. The n8n HTTP Request node uses the generic OAuth2 `oAuth2Api` credential with `grantType=clientCredentials`, `authentication=body`, and `accessTokenUrl=https://techcarrot4--realforce.sandbox.my.salesforce.com/services/oauth2/token`. Its `clientId` and `clientSecret` are **`xxxx` placeholders** for the operator to replace in n8n; they are not read from environment variables. It calls `POST https://techcarrot4--realforce.sandbox.my.salesforce.com/services/apexrest/AIChatbotLead/` (not Salesforce standard `/sobjects/Lead`), supplying the bearer token through the OAuth2 credential.
+
+**Provider response unknown:** The supplied curl showed request examples only, not the actual Apex REST response contract. The template accepts a Salesforce Lead ID starting `00Q` if actually returned, otherwise reports `provider_acknowledged_unverified`; it must not invent a Lead ID. There is no demonstrated duplicate-safe idempotency field in the provided Apex request. A network timeout must become `unknown_outcome`, and a retry must not occur without reconciliation. Require a documented stable correlation/idempotency contract in the Apex class before claiming exactly-once Salesforce creation.
 
 ## Quotation and invoice PDF
 
@@ -125,7 +127,7 @@ MockGateway is a **test-only payment simulator**. Display **"Test payment confir
 
 1. Node creates a ticket; Salesforce and n8n are not invoked on ticket creation.
 2. Consent denied: no Salesforce lead or contact-data transfer.
-3. Consent accepted twice: exactly one Salesforce Lead per ticket.
+3. Consent accepted twice: Node schedules one submission per authorized ticket, but exactly-one Salesforce Lead creation requires Apex-side idempotency support and proof; never assume duplicate suppression from HTTP POST.
 4. Invalid/expired/reused OTP: no payment link is issued.
 5. Valid OTP but price changed: authorization rejected; request new agreement.
 6. MockGateway link generated once; message includes exact quote and **test** label.
@@ -138,7 +140,7 @@ MockGateway is a **test-only payment simulator**. Display **"Test payment confir
 
 ## Required live configuration before enabling operations
 
-- Salesforce connected app/OAuth and unique external lead-ID field.
+- Salesforce sandbox OAuth client-credentials integration user, Apex REST permissions, real response schema and deduplication/correlation contract.
 - ANCFZ-specific approved offerings and current prices, including applicable tax rules.
 - n8n imported active workflows and credentials; internal Gotenberg.
 - A MockGateway **account-created** gateway slug, API key, sample init and verify payloads.

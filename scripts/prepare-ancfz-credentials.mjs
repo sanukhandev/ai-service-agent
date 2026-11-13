@@ -32,18 +32,20 @@ const required = (name, minLength = 1) => {
 const creds = JSON.parse(readFileSync(template, "utf8"));
 if (!Array.isArray(creds) || creds.length !== 4) throw new Error("Unexpected credentials template");
 const webhook = creds.find(c => c.name === "ANCFZ - Node to n8n Webhook Header");
-const sf = creds.find(c => c.name === "ANCFZ - Salesforce OAuth2 Sandbox");
+const sf = creds.find(c => c.name === "ANCFZ - Salesforce Client Credentials Sandbox");
 const smtp = creds.find(c => c.name === "ANCFZ - SMTP OTP Delivery");
 const gateway = creds.find(c => c.name === "ANCFZ - MockGateway Demo X-API-Key");
 if (![webhook, sf, smtp, gateway].every(Boolean)) throw new Error("Missing ANCFZ credential type in template");
 
 webhook.data = { name: "X-ANCFZ-Workflow-Key", value: required("ANCFZ_N8N_WEBHOOK_SECRET", 32) };
-sf.data = {
-  grantType: "pkce",
-  environment: "sandbox",
-  clientId: required("ANCFZ_SALESFORCE_CLIENT_ID", 8),
-  clientSecret: required("ANCFZ_SALESFORCE_CLIENT_SECRET", 8),
-};
+// Salesforce client credentials remain as "xxxx" in the n8n import JSON.
+// Edit Client ID / Client Secret in n8n's protected credential UI after import.
+// Do not pull Salesforce credentials from environment variables.
+if (sf.type !== "oAuth2Api" || sf.data.grantType !== "clientCredentials" ||
+    sf.data.clientId !== "xxxx" || sf.data.clientSecret !== "xxxx" ||
+    sf.data.authentication !== "body") {
+  throw new Error("Unexpected Salesforce client credentials template");
+}
 const port = Number(process.env.ANCFZ_SMTP_PORT || "587");
 if (!Number.isSafeInteger(port) || port < 1 || port > 65535) throw new Error("Invalid ANCFZ_SMTP_PORT");
 const secure = (process.env.ANCFZ_SMTP_TLS || "starttls").trim().toLowerCase();
@@ -65,4 +67,4 @@ writeFileSync(output, json, { flag: "wx", mode: 0o600 });
 chmodSync(output, 0o600);
 console.log("Prepared an n8n credential import file at " + output);
 console.log("Contains plaintext secrets: import into n8n privately, then remove this temporary file.");
-console.log("Salesforce OAuth2 is not connected yet: authorize the imported credential in n8n before enabling any workflow.");
+console.log("Salesforce credential remains disabled with xxxx placeholders: edit Client ID/Secret in n8n. Client Credentials OAuth obtains tokens automatically when configured.");
