@@ -8,6 +8,8 @@
  * Two stages on a new instance:
  *   N8N_OWNER_PASSWORD=<private runtime value> node scripts/seed-n8n-anzfc.mjs --stage=owner
  *   N8N_API_KEY=<owner-created key> node scripts/seed-n8n-anzfc.mjs --stage=import
+ * Imports into the owner's personal workspace by default, without Projects API.
+ * Use --workspace=project only on n8n instances with project permissions.
  *
  * The password is NEVER encoded into scripts, Compose files or CLI arguments.
  * Project imports require the n8n Projects entitlement; no personal-space fallback.
@@ -32,6 +34,8 @@ const MIN_ENCRYPTION_LENGTH = 32;
 
 export function parseArgs(args) {
   const phases = ["owner", "import", "all"];
+  const workspaces = ["personal", "project"];
+  let workspace = "personal";
   let stage = "all";
   let dryRun = false;
   let allowOwnerUpdate = false;
@@ -39,11 +43,14 @@ export function parseArgs(args) {
     if (arg.startsWith("--stage=")) {
       stage = arg.slice(8);
       if (!phases.includes(stage)) throw new Error("Invalid --stage; choose owner, import or all");
+    } else if (arg.startsWith("--workspace=")) {
+      workspace = arg.slice("--workspace=".length);
+      if (!workspaces.includes(workspace)) throw new Error("Invalid --workspace; choose personal or project");
     } else if (arg === "--dry-run") dryRun = true;
     else if (arg === "--allow-owner-update") allowOwnerUpdate = true;
     else throw new Error("Unknown argument: " + arg);
   }
-  return { stage, dryRun, allowOwnerUpdate };
+  return { stage, workspace, dryRun, allowOwnerUpdate };
 }
 
 export function extractHtpasswdHash(text) {
@@ -147,41 +154,56 @@ function privateApiRequest(payload) {
   return response;
 }
 
-export function seedProject() {
+/** The n8n server CLI defaults to the global owner's personal workspace. */
+export function workspaceImportArgs(workspace, projectId) {
+  if (workspace === "personal") return [];
+  if (workspace === "project" && typeof projectId === "string" && /^[A-Za-z0-9_-]{4,100}$/.test(projectId)) {
+    return ["--projectId=" + projectId];
+  }
+  throw new Error("Explicit project imports require a valid n8n project ID");
+}
+
+export function seedWorkspace({ workspace = "personal" } = {}) {
+  if (!["personal", "project"].includes(workspace)) throw new Error("Unknown n8n workspace mode");
   const apiKey = process.env.N8N_API_KEY;
   if (typeof apiKey !== "string" || apiKey.trim().length < 16) {
-    throw new Error("N8N_API_KEY is required for the supported Projects API. Log into n8n as the owner, create an API key under Settings > n8n API, then retry --stage=import");
+    throw new Error("N8N_API_KEY is required. Log into n8n as the owner, create an API key under Settings > n8n API, then retry --stage=import");
   }
   validateExistingConfig(compose(["config", "--format", "json"]));
   if (!isN8nRunning()) throw new Error("n8n is not running. Start it with the workflows profile before --stage=import");
 
-  // The first phase preflights existing resources and creates/reuses the named
-  // project. It will not overwrite an existing import or a foreign credential.
+  // Preflight every expected name and credential ID before writing anything.
+  // Personal mode MUST NOT call /projects: Community instances can return 403.
   const outcome = privateApiRequest({
-    action: "prepare", apiKey: apiKey.trim(), projectName: PROJECT_NAME,
+    action: "prepare", workspace, apiKey: apiKey.trim(), projectName: PROJECT_NAME,
     credentialIds: credentialIds(), workflowNames: workflowNames(),
   });
-  const projectId = outcome.projectId;
-  if (typeof projectId !== "string" || !/^[A-Za-z0-9_-]{4,100}$/.test(projectId)) {
-    throw new Error("n8n returned invalid project ID");
-  }
-  console.log("Project " + PROJECT_NAME + " resolved as " + projectId + "; importing disabled ANCFZ assets.");
-  // CLI imports use n8n's configured database and encryption key.
-  // NEVER use import:entities --truncateTables or user-management:reset.
+  const projectId = workspace === "project" ? outcome.projectId : undefined;
+  const destination = workspaceImportArgs(workspace, projectId);
+  console.log(workspace === "personal"
+    ? "Owner personal workspace selected; importing disabled ANCFZ assets."
+    : "Project " + PROJECT_NAME + " resolved as " + projectId + "; importing disabled ANCFZ assets.");
+
+  // Credentials must come first, since workflow nodes reference their fixed IDs.
+  // Refuse preexisting assets rather than overwrite real credential secrets.
   compose(["exec", "-T", "n8n", "n8n", "import:credentials",
-    "--input=/workflows/ancfz/credentials.template.json", "--projectId=" + projectId], { silent: true });
+    "--input=/workflows/ancfz/credentials.template.json", ...destination], { silent: true });
   for (const file of WORKFLOWS) {
     compose(["exec", "-T", "n8n", "n8n", "import:workflow",
       "--input=/workflows/ancfz/" + file,
-      "--projectId=" + projectId, "--activeState=false"], { silent: true });
+      ...destination, "--activeState=false"], { silent: true });
   }
   const verified = privateApiRequest({
-    action: "verify", apiKey: apiKey.trim(), projectName: PROJECT_NAME,
-    projectId, credentialIds: credentialIds(), workflowNames: workflowNames(),
+    action: "verify", workspace, apiKey: apiKey.trim(), projectName: PROJECT_NAME,
+    ...(projectId ? { projectId } : {}),
+    credentialIds: credentialIds(), workflowNames: workflowNames(),
   });
-  if (!verified.alreadySeeded) throw new Error("n8n CLI imports finished, but API could not verify all four credentials and five inactive workflows");
-  console.log("Verified n8n project " + PROJECT_NAME + ": 4 credential placeholders and 5 inactive ANCFZ workflows.");
-  console.log("Complete real credential values in the n8n UI before using the workflows. Do not publish/activate them yet.");
+  if (!verified.alreadySeeded) {
+    throw new Error("n8n CLI imports finished, but API could not verify all four credentials and five inactive workflows");
+  }
+  console.log("Verified n8n " + (workspace === "personal" ? "owner personal workspace" : "project " + PROJECT_NAME) +
+    ": 4 credential placeholders and 5 inactive ANCFZ workflows.");
+  console.log("Set real credential values in the n8n UI before activating any workflow.");
 }
 
 function credentialIds() {
@@ -199,13 +221,14 @@ function workflowNames() {
 export function main(args = process.argv.slice(2)) {
   const opts = parseArgs(args);
   if (opts.dryRun) {
-    console.log("Dry run: owner=" + OWNER_EMAIL + ", project=" + PROJECT_NAME +
+    console.log("Dry run: owner=" + OWNER_EMAIL + ", workspace=" + opts.workspace +
+      ", project=" + (opts.workspace === "project" ? PROJECT_NAME : "none") +
       ", credentials=4 placeholders, inactiveWorkflows=" + workflowNames().length +
       ", stage=" + opts.stage + ". No Docker, database, provider or network calls made.");
     return;
   }
   if (opts.stage === "owner" || opts.stage === "all") seedOwner(opts);
-  if (opts.stage === "import" || opts.stage === "all") seedProject();
+  if (opts.stage === "import" || opts.stage === "all") seedWorkspace(opts);
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); }
