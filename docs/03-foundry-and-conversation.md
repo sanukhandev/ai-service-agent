@@ -13,7 +13,7 @@ P1 introduces a small Foundry adapter in `services/api/src/foundry/`, using comp
 ## Two tool classes
 
 1. **Foundry-managed IQ MCP retrieval:** information/FAQ/package descriptions, indexed approved knowledge and source citations. Executed by Foundry; Node does not emulate the IQ tool.
-2. **Node-executed application functions:** `find_intents`, `get_intent_requirements`, `record_ticket_facts`, `get_offerings` and later ticket context, operation preflight/proposal/status. Foundry sees schema descriptions only; Node executes handlers against scoped PostgreSQL repositories.
+2. **Node-executed application functions:** `find_intents`, `select_ticket_intent`, `get_intent_requirements`, `record_ticket_facts`, `get_offerings` and later ticket context, operation preflight/proposal/status. Foundry sees schema descriptions only; Node executes handlers against scoped PostgreSQL repositories.
 
 To add functions, **publish a new Foundry agent version via supported SDK/REST tooling while retaining the IQ tool configuration**. Changing a Node handler or local prompt file does not update the deployed Foundry version. The runtime Node registry also enforces per-agent tool grants independently of Foundry configuration.
 
@@ -34,7 +34,7 @@ The loop is **partially scaffolded** but not wired to a live SDK or PostgreSQL r
 
 Sara is a team member helping a customer toward the relevant business goal, **not** a robotic FAQ list generator. Use [service-employee instructions](../services/api/prompts/sara-service-employee.md) as the versioned prompt source.
 
-Typical progression: hear a goal -> `find_intents` -> save explicit customer facts -> fetch missing requirements -> answer or ask **one relevant question** -> if customer requests action, preflight/propose -> await separate authorized approval.
+Typical progression: hear a goal -> `find_intents` -> `select_ticket_intent` -> save explicit customer facts -> fetch missing requirements -> answer or ask **one relevant question** -> if customer requests action, preflight/propose -> await separate authorized approval.
 
 For "software services, one visa, shared office", Sara should not request those again. A helpful next question is shareholder count (if necessary), not a four-field questionnaire. Price explanations can be answered immediately with verified knowledge/catalog values, while formal quotes use structured price revisions.
 
