@@ -10,7 +10,7 @@ services:
     depends_on:
       - web
       - api
-    networks: [app]
+    networks: [frontend]
     restart: unless-stopped
 
   web:
@@ -18,7 +18,7 @@ services:
       context: ./apps/web
     environment:
       NODE_ENV: production
-    networks: [app]
+    networks: [frontend]
     restart: unless-stopped
 
   api:
@@ -39,7 +39,7 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
-    networks: [app]
+    networks: [frontend, backend]
     restart: unless-stopped
 
   postgres:
@@ -57,7 +57,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
-    networks: [app]
+    networks: [backend]
     restart: unless-stopped
 
   redis:
@@ -70,7 +70,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 12
-    networks: [app]
+    networks: [backend]
     restart: unless-stopped
 
   n8n:
@@ -83,11 +83,13 @@ services:
       N8N_SECURE_COOKIE: "false"
     volumes:
       - n8n-data:/home/node/.n8n
-    networks: [app]
+    networks: [backend]
     restart: unless-stopped
 
 networks:
-  app:
+  frontend:
+    driver: bridge
+  backend:
     driver: bridge
 
 volumes:
