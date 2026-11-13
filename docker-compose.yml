@@ -35,6 +35,7 @@ services:
       FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
       # P4 ANCFZ Salesforce lead worker is opt-in and disabled by default.
       ANCFZ_LEAD_DISPATCH_ENABLED: ${ANCFZ_LEAD_DISPATCH_ENABLED:-false}
+      ANCFZ_QUOTE_DISPATCH_ENABLED: ${ANCFZ_QUOTE_DISPATCH_ENABLED:-false}
       ANCFZ_N8N_WEBHOOK_SECRET: ${ANCFZ_N8N_WEBHOOK_SECRET:-}
       REDIS_URL: redis://redis:6379
       PGHOST: postgres
