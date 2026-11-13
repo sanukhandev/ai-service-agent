@@ -1,71 +1,57 @@
-# Architecture and component ownership
+# Architecture — Node as the only business backend
 
-## Runtime topology
+## Runtime
 
 ```mermaid
 flowchart TD
-  Customer[Customer browser] -->|HTTP /| Nginx[Nginx :80]
-  Admin[Admin browser] -->|HTTP /admin/| Nginx
-  Nginx -->|/| Web[Next.js :3000]
-  Nginx -->|/api/| API[Fastify API :4000]
-  Nginx -->|/api/events/ SSE| API
-  API --> PG[(PostgreSQL 16)]
+  Customer[Customer browser] -->|HTTP /| Nginx[Nginx :80 only]
+  Nginx -->|/| Web[Next.js :3000 internal]
+  Nginx -->|/api and SSE| API[Node Fastify :4000 internal]
+  API --> DB[(PostgreSQL 16)]
   API --> Redis[(Redis)]
-  API -->|private HTTP| Gateway[FastAPI gateway :8000]
-  Gateway -->|Entra authenticated| Foundry[Published Foundry Agent GPT-5.4]
-  Foundry -->|native MCP retrieval| IQ[Foundry IQ / Azure AI Search]
-  Gateway -->|approved function calls| API
-  API -->|outbox worker| N8N[n8n :5678]
-  API --> Blob[Azure Blob]
+  API -->|@azure/ai-projects + AzureCliCredential| Sara[Published Sara Agent GPT-5.4]
+  Sara -->|native MCP retrieval| IQ[Foundry IQ knowledge]
+  Sara -->|client-executed function requests| API
+  API -->|authorized outbox worker only| N8N[n8n internal]
+  API --> Blob[Private Blob Storage]
   API --> OCR[Azure Document Intelligence]
 ```
 
-Angular is built to static `/admin/` assets inside the Nginx image; it is not a long-running container. The operation dispatcher may initially run in the Node process with bounded leases or as a separate worker only when reliability needs justify the service.
+**No Angular admin, Python gateway, independent intent engine, LangGraph, pgvector or custom RAG container.** The app is agent-centric: ANCFZ is a sample configured Agent, not a global Tenant.
 
-## Ownership boundaries
+## Authority matrix
 
-| Component | Authority | Must not do |
-|---|---|---|
-| Next.js | Customer presentation, API/SSE client | Hold internal service keys; directly call Foundry/n8n |
-| Angular | Admin presentation | Bypass API authorization; access Azure secrets |
-| Nginx | Single public ingress and Angular static files | Host business policy |
-| Node Fastify | Authoritative agent resolution, identity, tickets, catalog, consent, operations, event outbox | Trust model assertions as finalized actions |
-| Python FastAPI | Versioned Foundry invocation, function-call relay, Presidio, budgets/errors | Own customer identity, create leads directly, store authoritative tickets |
-| Foundry Agent | Model reasoning and tool selection | Authorize external side effects, invent source evidence |
-| Foundry IQ | Authorized, attached business knowledge retrieval | Store customer ticket attachments |
-| PostgreSQL | Durable transactions, facts, action/event history | Embedding vector storage in POC |
-| Redis | Ephemeral context/OTP, coordination, fanout | Sole source of durable messages or business outcomes |
-| n8n | Approved workflow adapters | Self-authorize actions from prompts |
+| Owner | Responsibilities |
+|---|---|
+| Foundry Agent | Natural conversational decisions, selecting a knowledge or application tool, asking questions |
+| Foundry IQ | Grounded descriptive information from approved business knowledge |
+| Node | Agent/ticket session authority, function registry, intent/offerings catalog, persistent facts, consent, action eligibility, outbox, SSE and verified outcomes |
+| PostgreSQL | Durable transactional state and agent-scoped integrity/RLS |
+| Redis | Cache, rate limiting, temporary challenges and event fanout, never sole truth |
+| n8n | Executing Node-approved external integrations, never selecting its own authorization |
+| Next.js | Customer chat, ticket state, explicit approval, identity forms and documents |
+| Nginx | Public port 80 ingress only; route / to web and /api/ to Node |
 
-## Agent as root
+## Turn lifecycle
 
-`agents` maps a public alias and UUID to active, immutable versions of Foundry agent, persona, knowledge binding, intent catalog, offerings catalog and workflow permissions. The app maintains a stable `agent_id` independent of Azure IDs. Each ticket pins the relevant versions to prevent mid-transaction drift.
+1. Browser submits message to Node, which resolves agent, authenticated guest/customer ticket and published catalog/Foundry binding.
+2. Node commits the customer message and event, then retrieves bounded ticket context and known facts.
+3. Node calls the **existing** pinned Foundry Agent through JavaScript SDK.
+4. Foundry may answer directly, retrieve Foundry IQ or emit a client-executed function call.
+5. Node validates the function name/JSON and agent allowlist, executes the handler within trusted Node scope, then returns `function_call_output` to **the same Foundry conversation**; bound rounds and output size.
+6. When finished, Node stores response, source references and SSE ticket events. A tool error is not an invented successful answer.
+7. When customer explicitly approves a prepared business operation, Node atomically records authorization/outbox. An internal worker dispatches n8n; verified provider evidence updates the ticket.
 
-Do not add a Tenant entity. That does **not** remove the requirement for RBAC, row/record-level isolation or per-agent tool and knowledge access.
+The Foundry IQ MCP function remains managed by Foundry, **not** a Node business function. This is the deliberate difference between RAG and the application tool registry.
 
-## Conversation transaction
+## Boundary principles
 
-1. Browser posts to Node over same-origin `/api/`. Browser never calls Python or Foundry directly.
-2. Node validates agent, ticket ownership, size limits and request ID; inserts accepted customer message and event in PostgreSQL.
-3. Node loads version-pinned agent binding and authorized conversation context.
-4. Node calls Python with trusted metadata and message. Python uses `AzureCliCredential` in local POC.
-5. Foundry answers directly or retrieves Foundry IQ. Application function requests go through the Python dispatcher to the scoped Node tool registry; outputs return to Foundry.
-6. Node validates reply/evidence contract and commits assistant message/events; SSE pushes status with durable IDs and supports replay.
-7. Errors produce explicit failure state and a retry path; a failed model run never pretends an operation succeeded.
+- The model cannot supply trusted `agentId`, `ticketId`, provider URL, workflow name or credentials.
+- Only **registered and agent-authorized** Node handlers may execute; publishing tool schemas to Foundry does not grant access by itself.
+- A customer-stated fact is tracked with source message/provenance. Corrected facts update durable state.
+- Model selects useful questions; the catalog describes missing fields **per operation** and doesn't enforce a rigid order.
+- Public browser routes: `/`, `/api/`, `/api/events/`. No `/admin/`, `/ai-gateway/`, n8n editor or database public route.
+- Docker service-to-service traffic uses Docker DNS, never unnecessary public Nginx hops.
+- HTTP port 80 is for isolated local POC only; no public exposure of real OTP, PII or uploads without TLS.
 
-## Transport
-
-- Browser writes: authenticated HTTP `POST`; server-to-browser updates: SSE.
-- Node-Python: private HTTP with service authentication/authorization and request correlation; network privacy alone is not authorization.
-- Node-worker-n8n: private network; idempotent operations and signed/verified callbacks or reconciliation.
-- Browser/Admin same origin: `/api/`; no public `/ai-gateway/`, database or n8n route.
-
-## Failure handling
-
-- Foundry timeout: persist pending/failed response event; allow safe retry with dedupe.
-- Redis outage: load context/events from PostgreSQL; do not lose authoritative state.
-- n8n callback failure: preserve unknown/retryable states until trusted reconciliation.
-- Knowledge retrieval failure: explain lack of verified answer; do not fill business gaps from general model memory.
-- Network restarts: SSE reconnects with replay cursor from durable `ticket_events`.
-
-The default first milestone is one verified live chat path, not the full administration platform.
+See [intent orchestration](11-intent-conversation-and-node-ownership.md).
