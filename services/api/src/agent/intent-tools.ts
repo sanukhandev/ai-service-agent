@@ -226,16 +226,76 @@ export function registerIntentTools(
     },
     {
       name: "get_offerings",
-      description: "Get the agent's published services/packages and authoritative price revisions for comparison. Formal quotes must use catalog prices and conditions, not model-generated RAG prices.",
+      description: "Query published offerings. Use visaCount (0–10) and termYears (1–5) for exact ANCFZ 2026 test package prices; optional offeringKey for direct lookup. Requests without filters return a concise overview, not the entire catalog. Source-derived test prices are not binding quotations.",
       parameters: schema({
         intentKey: { type: "string", maxLength: 128 },
+        offeringKey: { type: "string", maxLength: 128 },
+        visaCount: { type: "integer", minimum: 0, maximum: 10 },
+        termYears: { type: "integer", minimum: 1, maximum: 5 },
+        limit: { type: "integer", minimum: 1, maximum: 15 },
       }),
       async execute(ctx, args) {
         const intentKey = typeof args["intentKey"] === "string"
           ? requireText(args["intentKey"], "intentKey", 128) : undefined;
+        const offeringKey = typeof args["offeringKey"] === "string"
+          ? requireText(args["offeringKey"], "offeringKey", 128) : undefined;
+        function integer(name: "visaCount" | "termYears" | "limit", min: number, max: number): number | undefined {
+          const value = args[name];
+          if (value === undefined) return undefined;
+          if (typeof value !== "number" || !Number.isInteger(value) || value < min || value > max) {
+            throw new Error("Invalid " + name);
+          }
+          return value;
+        }
+        const visaCount = integer("visaCount", 0, 10);
+        const termYears = integer("termYears", 1, 5);
+        const limit = integer("limit", 1, 15) ?? 8;
+        // Package comparisons and quotations must be able to see the
+        // company-formation price SKUs, not just generic package summaries.
+        const packageIntents = new Set(["company_formation", "package_comparison", "quotation_request"]);
+        const broadPackageQuery = intentKey !== undefined && packageIntents.has(intentKey);
+        const fetched = await catalog.listOfferings(
+          ctx.agentId, ctx.offeringCatalogRevision,
+          broadPackageQuery || offeringKey ? undefined : intentKey,
+        );
+        const selected = fetched.filter((offer) => {
+          const packageRelated = offer.key.startsWith("visa_") ||
+            ["pay_as_you_go", "zero_visa_package", "visa_all_inclusive",
+             "executive_office_package", "retail_package", "flexi_desk",
+             "shared_office", "private_office", "fze", "fzc",
+             "foreign_branch", "local_branch"].includes(offer.key);
+          if (broadPackageQuery && !packageRelated) return false;
+          if (offeringKey && offer.key !== offeringKey) return false;
+          const match = /^visa_(\d+)_y([1-5])$/.exec(offer.key);
+          if (visaCount !== undefined && (!match || Number(match[1]) !== visaCount)) return false;
+          if (termYears !== undefined && (!match || Number(match[2]) !== termYears)) return false;
+          return true;
+        });
+        // Unfiltered requests get a useful overview, with direct SKU lookup
+        // recommended for exact prices. Do not overflow the function budget.
+        const overviewPriority = [
+          "pay_as_you_go", "zero_visa_package", "visa_all_inclusive",
+          "executive_office_package", "retail_package",
+          "visa_0_y1", "visa_1_y1", "visa_2_y1", "visa_3_y1",
+        ];
+        if (visaCount === undefined && termYears === undefined && !offeringKey) {
+          selected.sort((a, b) => {
+            const rank = (key: string) => {
+              const index = overviewPriority.indexOf(key);
+              return index < 0 ? 100 : index;
+            };
+            return rank(a.key) - rank(b.key) || a.key.localeCompare(b.key);
+          });
+        }
         return {
           catalogVersion: ctx.offeringCatalogRevision,
-          offerings: await catalog.listOfferings(ctx.agentId, ctx.offeringCatalogRevision, intentKey),
+          totalMatches: selected.length,
+          returned: Math.min(selected.length, limit),
+          hasMore: selected.length > limit,
+          ...(selected.length > limit
+            ? { guidance: "Specify visaCount, termYears or offeringKey to retrieve the exact published test variant." }
+            : {}),
+          offerings: selected.slice(0, limit),
         };
       },
     },
