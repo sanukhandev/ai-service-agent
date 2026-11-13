@@ -112,12 +112,16 @@ services:
       N8N_PORT: "5678"
       N8N_PROTOCOL: http
       N8N_SECURE_COOKIE: "false"
+      # Configure a persistent private key before importing any credentials.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
       # Optional ANCFZ configuration. Keep provider secrets in n8n credentials.
       SALESFORCE_INSTANCE_URL: ${SALESFORCE_INSTANCE_URL:-}
-      MOCKGATEWAY_SLUG: ${MOCKGATEWAY_SLUG:-}
+      # MockGateway Demo Orders requires a configured guest identifier.
+      MOCKGATEWAY_GUEST_ID: ${MOCKGATEWAY_GUEST_ID:-}
       ANCFZ_OTP_FROM_EMAIL: ${ANCFZ_OTP_FROM_EMAIL:-}
     volumes:
       - n8n-data:/home/node/.n8n
+      - ./infra/n8n/ancfz:/workflows/ancfz:ro
     depends_on:
       - gotenberg
     networks: [backend]
