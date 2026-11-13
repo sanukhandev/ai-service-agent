@@ -111,5 +111,6 @@ try {
   const known = String(error.message || "Project operation failed");
   const safe = known.replace(/(n8n_api_[A-Za-z0-9._-]+|Bearer [A-Za-z0-9._-]+)/g, "[redacted]");
   process.stdout.write(JSON.stringify({ ok: false, error: safe }) + "\n");
-  process.exitCode = 1;
+  // Controlled API failure is returned as structured JSON for the host orchestrator.
+  // No exception details containing credentials are printed to stderr.
 }
