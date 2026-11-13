@@ -5,7 +5,6 @@ on:
   push:
     branches:
       - main
-      - chore/p0-foundation-completion
   workflow_dispatch:
 
 permissions:
