@@ -39,12 +39,17 @@ export function dbError(error: unknown): Error {
 export class PersistenceDatabase {
   readonly pool: Pool;
 
-  constructor(databaseUrl: string, config: Pick<PoolConfig, "max" | "idleTimeoutMillis" | "connectionTimeoutMillis"> = {}) {
-    if (!databaseUrl || !databaseUrl.trim()) {
-      throw new PersistenceError("NOT_CONFIGURED", "DATABASE_URL must be provided");
+  constructor(databaseUrl: string | undefined, config: Pick<PoolConfig, "max" | "idleTimeoutMillis" | "connectionTimeoutMillis"> = {}) {
+    // Compose P0 supplies PGHOST / PGPORT / PGDATABASE / PGUSER / PGPASSWORD.
+    // DATABASE_URL remains an optional explicit override, never a requirement.
+    // The runtime-role assertion below refuses privileged connections.
+    const connectionString = databaseUrl?.trim() || undefined;
+    if (!connectionString && (!process.env.PGHOST || !process.env.PGDATABASE ||
+        !process.env.PGUSER || !process.env.PGPASSWORD)) {
+      throw new PersistenceError("NOT_CONFIGURED", "Set DATABASE_URL or the complete PGHOST/PGDATABASE/PGUSER/PGPASSWORD configuration");
     }
     this.pool = new Pool({
-      connectionString: databaseUrl,
+      ...(connectionString ? { connectionString } : {}),
       max: config.max ?? 10,
       idleTimeoutMillis: config.idleTimeoutMillis ?? 30_000,
       connectionTimeoutMillis: config.connectionTimeoutMillis ?? 5_000,
@@ -57,11 +62,11 @@ export class PersistenceDatabase {
     try { client = await this.pool.connect(); } catch (error) { throw dbError(error); }
     try {
       const result = await client.query<{ rolsuper: boolean; rolbypassrls: boolean; member: boolean }>(
-        "SELECT r.rolsuper, r.rolbypassrls, pg_has_role(current_user, 'ai_service_runtime', 'USAGE') AS member FROM pg_roles r WHERE r.rolname = current_user",
+        "SELECT r.rolsuper, r.rolbypassrls, (current_user = 'agent_runtime') AS member FROM pg_roles r WHERE r.rolname = current_user",
       );
       const row = result.rows[0];
       if (!row || row.rolsuper || row.rolbypassrls || !row.member) {
-        throw new PersistenceError("NOT_CONFIGURED", "Application login must inherit ai_service_runtime and must not bypass RLS");
+        throw new PersistenceError("NOT_CONFIGURED", "Application must connect as P0 agent_runtime without superuser or bypass-RLS privileges");
       }
     } catch (error) { throw dbError(error); } finally {
       client.release();
