@@ -40,7 +40,7 @@ Node API Docker image will install the Linux Azure CLI in **P1**. Persist Linux 
 - Authenticate guests/customers in Node and bind their tickets to a server-verified agent/session; never trust model-supplied IDs, operations, prices or permissions.
 - Keep OTP/password/credentials outside prompts, chat messages and telemetry. OTP is handled by Node and secure UI endpoints in P5.
 - **PII approach:** no Python just for Presidio. Keep a small replaceable Node privacy adapter, with Azure AI Language PII as an optional P5 provider, plus structured input validation, scoped storage and logging redaction. Do not blindly mask necessary consented contact data. PII detection is never a substitute for security.
-- Use normalized PostgreSQL with composite agent-scoped FKs and RLS where practical. Do not import old migrations or create pgvector.
+- Use normalized PostgreSQL with composite agent-scoped FKs and RLS where practical. The migration owner (`postgres`) and the Node runtime role (`agent_runtime`) have **separate secrets**; runtime credentials use `PG*` environment variables and never obtain bypass-RLS privileges. Do not import old migrations or create pgvector.
 - Version intents, requirements, offerings/prices and agent permissions; use structured offerings for formal quotes and IQ only for descriptive knowledge.
 - Admin-style configuration during POC must be through an authenticated local CLI or one-time controlled seed. No unauthenticated management endpoints; no hardcoded admin credentials.
 
@@ -50,7 +50,7 @@ P0: foundation/Compose/contract -> P1: **Node direct Foundry integration** -> P2
 
 **Admin UI is deferred beyond the POC** and will have its own future milestone. Do not put an admin UI delivery gate into P0–P7.
 
-For P0–P7, prioritize functionality, successful builds/migrations and minimal live smoke verification. The dedicated unit/contract/E2E suites, benchmarking and comprehensive CI come later in H1. Do not defer basic authorization, input validation, secret protection or action consent.
+For P0–P7, prioritize functionality, successful builds/migrations and minimal live smoke verification. `scripts/p0-smoke.sh` and the P0 GitHub Actions job are a **smoke gate**, not the deferred H1 automated test suite. The dedicated unit/contract/E2E suites, benchmarking and comprehensive CI come later in H1. Do not defer basic authorization, input validation, secret protection or action consent.
 
 ## 7. Engineering discipline
 
