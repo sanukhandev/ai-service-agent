@@ -51,7 +51,7 @@ The Foundry IQ MCP function remains managed by Foundry, **not** a Node business 
 - A customer-stated fact is tracked with source message/provenance. Corrected facts update durable state.
 - Model selects useful questions; the catalog describes missing fields **per operation** and doesn't enforce a rigid order.
 - Public browser routes: `/`, `/api/`, `/api/events/`. No `/admin/`, `/ai-gateway/`, n8n editor or database public route.
-- Docker service-to-service traffic uses Docker DNS, never unnecessary public Nginx hops.
+- Docker service-to-service traffic uses Docker DNS, never unnecessary public Nginx hops. Compose uses a **frontend network** (Nginx, Next.js, Node) and a **backend network** (Node, PostgreSQL, Redis, n8n), so Next.js cannot address n8n or the databases directly.
 - HTTP port 80 is for isolated local POC only; no public exposure of real OTP, PII or uploads without TLS.
 
 See [intent orchestration](11-intent-conversation-and-node-ownership.md).
