@@ -169,6 +169,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
         break;
       case "agent.response.completed":
       case "assistant.reply":
+      case "assistant.message":
         if (!incomingMessage) void refresh();
         break;
       case "agent.response.failed":
