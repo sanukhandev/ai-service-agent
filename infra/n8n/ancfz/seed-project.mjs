@@ -90,11 +90,10 @@ async function main() {
   }
 
   if (matchCreds.length || matchWorkflows.length) {
-    // Prevent destructive re-import/overwrite when a seed was interrupted.
-    if (project && matchCreds.length === credentialIds.length && matchWorkflows.length === workflowNames.length) {
-      return { ok: true, projectId: project.id, alreadySeeded: true };
-    }
-    throw new Error("Existing ANCFZ credentials/workflows detected; refusing overwrite or partial reseed. Inspect n8n manually and back up before retry.");
+    // The public list endpoints do not prove that matching assets belong to
+    // this project. NEVER report success by matching names globally.
+    // Re-importing credentials with the same IDs can overwrite secrets.
+    throw new Error("Existing ANCFZ credentials/workflows detected. Refusing duplicate or partial reseed; verify their project ownership and back up the n8n DB before retry.");
   }
   if (!project) {
     const created = await api("POST", "/projects", { name: projectName });
