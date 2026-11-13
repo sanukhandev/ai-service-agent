@@ -41,6 +41,15 @@ export interface CatalogRepository {
   listIntents(agentId: string, catalogVersion: string): Promise<IntentEntry[]>;
   listOfferings(agentId: string, catalogVersion: string, intentKey?: string): Promise<OfferingEntry[]>;
 }
+export interface TicketIntentRepository {
+  selectIntent(
+    agentId: string,
+    ticketId: string,
+    catalogVersion: string,
+    intentKey: string,
+  ): Promise<{ intentKey: string; status: string }>;
+}
+
 export interface TicketFactRepository {
   listFacts(agentId: string, ticketId: string): Promise<TicketFact[]>;
   /** Verify sourceMessageId is an actual customer message for this ticket, audit corrections. */
@@ -76,8 +85,26 @@ export function registerIntentTools(
   registry: AgentToolRegistry,
   catalog: CatalogRepository,
   facts: TicketFactRepository,
+  ticketIntents: TicketIntentRepository,
 ): void {
   const handlers: ToolHandler[] = [
+    {
+      name: "select_ticket_intent",
+      description: "Save the supported customer goal currently being discussed. The selected intent is durable ticket context, not authorization to perform any business workflow.",
+      parameters: schema({
+        intentKey: { type: "string", maxLength: 128 },
+      }, ["intentKey"]),
+      async execute(ctx, args) {
+        const intentKey = requireText(args["intentKey"], "intentKey", 128);
+        const intents = await catalog.listIntents(ctx.agentId, ctx.intentCatalogRevision);
+        if (!intents.some((intent) => intent.key === intentKey)) {
+          return { error: "INTENT_NOT_FOUND" };
+        }
+        return await ticketIntents.selectIntent(
+          ctx.agentId, ctx.ticketId, ctx.intentCatalogRevision, intentKey,
+        );
+      },
+    },
     {
       name: "find_intents",
       description: "Discover supported business goals from this agent's published intent catalog. Call for actionable customer goals, not greetings or ordinary FAQ requests.",
