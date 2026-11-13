@@ -1,5 +1,5 @@
 {
-  "name": "ANCFZ | Verify MockGateway Test Payment",
+  "name": "ANCFZ | MockGateway Demo Orders Status (Fail Closed Until Verified)",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -35,32 +35,13 @@
         300
       ],
       "parameters": {
-        "jsCode": "const b=$input.first().json.body??{};\nif(b.agentKey!=='ancfz'||typeof b.paymentId!=='string'||!/^[A-Za-z0-9_-]{2,200}$/.test(b.paymentId))throw new Error('Invalid provider ID');\nif(!Number.isSafeInteger(b.amount)||b.amount<=0||typeof b.currency!=='string'||!/^[A-Z]{3}$/.test(b.currency))throw new Error('Invalid payment expectation');\nreturn [{json:{paymentId:b.paymentId,amount:b.amount,currency:b.currency,ticketId:String(b.ticketId??'')}}];",
+        "jsCode": "// This is a fail-closed stub. The supplied demo Orders POST is not a payment\n// status endpoint. Configure a documented status API and live-test it FIRST.\nconst b=$input.first().json.body??{};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||!uuid.test(b.ticketId)) throw new Error('Invalid ANCFZ scope');\nif(typeof b.orderReference!=='string'||!b.orderReference.trim()||b.orderReference.length>200) throw new Error('Missing provider order reference');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference)) throw new Error('Invalid authorized order correlation');\nif(b.currency!=='AED'||typeof b.amount!=='string'||!/^(?:0|[1-9]\\d{0,7})\\.\\d{2}$/.test(b.amount)) throw new Error('Invalid expected payment');\nreturn [{json:{ticketId:b.ticketId,orderReference:b.orderReference,externalReference:b.externalReference,amount:b.amount,currency:'AED'}}];",
         "mode": "runOnceForAllItems"
       }
     },
     {
-      "id": "get",
-      "name": "MockGateway Verify",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.2,
-      "position": [
-        720,
-        300
-      ],
-      "parameters": {
-        "method": "GET",
-        "url": "={{ 'https://mockgateway.com/api/pg/' + $env.MOCKGATEWAY_SLUG + '/verify/' + encodeURIComponent($('Validate Verification Request').first().json.paymentId) }}",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpHeaderAuth",
-        "options": {
-          "timeout": 20000
-        }
-      }
-    },
-    {
       "id": "result",
-      "name": "Check Provider Evidence",
+      "name": "Reject Unverified Demo Order",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -68,7 +49,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "const r=$input.first().json;const expected=$('Validate Verification Request').first().json;\nconst id=r.payment_id??r.paymentId??r.id;\nconst status=String(r.status??r.payment_status??'').toLowerCase();\nconst amount=Number(r.amount);\nconst currency=String(r.currency??'').toUpperCase();\nconst matches=String(id)===expected.paymentId&&Number.isFinite(amount)&&amount===expected.amount&&currency===expected.currency;\nconst success=['succeeded','success','paid','completed'].includes(status);\nreturn [{json:{status:matches&&success?'verified_test_payment':'not_verified',provider:'mockgateway_sandbox',paymentId:expected.paymentId,providerStatus:status,matchedIdAmountCurrency:matches,verified:matches&&success,amount:expected.amount,currency:expected.currency,ticketId:expected.ticketId}}];",
+        "jsCode": "// Never infer payment from customer claims, order creation or a guessed GET.\n// The operator must add a documented Demo Orders GET/status endpoint,\n// verify returned provider ID, amount, currency and a terminal paid state,\n// and independently validate it in Node before issuing an invoice.\nconst expected=$('Validate Verification Request').first().json;\nreturn [{json:{status:'verification_unconfigured',verified:false,provider:'mockgateway_demo_orders',orderReference:expected.orderReference,ticketId:expected.ticketId,amount:expected.amount,currency:expected.currency}}];",
         "mode": "runOnceForAllItems"
       }
     },
@@ -106,25 +87,14 @@
       "main": [
         [
           {
-            "node": "MockGateway Verify",
+            "node": "Reject Unverified Demo Order",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "MockGateway Verify": {
-      "main": [
-        [
-          {
-            "node": "Check Provider Evidence",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "Check Provider Evidence": {
+    "Reject Unverified Demo Order": {
       "main": [
         [
           {
