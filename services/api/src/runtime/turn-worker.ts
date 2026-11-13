@@ -50,6 +50,7 @@ function authorizedTools(config:Record<string,unknown>):ReadonlySet<RegisteredTo
 export class TurnWorker {
   private busy=false;
   private stopped=false;
+  private lastRecovery=0;
   private timer:ReturnType<typeof setInterval>|undefined;
   private readonly agents:AgentRepository;
   private readonly context:ConversationContextRepository;
@@ -79,6 +80,11 @@ export class TurnWorker {
     if(this.busy||this.stopped) return;
     this.busy=true;
     try {
+      if(Date.now()-this.lastRecovery>30000) {
+        await this.queue.reconcileMissing();
+        await this.queue.recoverAbandoned();
+        this.lastRecovery=Date.now();
+      }
       const turn=await this.queue.claim();
       if(turn) await this.process(turn);
     } catch(error) {
