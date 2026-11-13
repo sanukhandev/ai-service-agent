@@ -2,7 +2,7 @@
 
 A clean, generic **agent-centric AI business assistant** platform. ANCFZ / Sara is the first example, not a hardcoded business integration.
 
-> **Status:** Architecture and engineering documentation only. The runtime, CI, Docker configuration, SQL schema and Azure integration scripts have **not** been created or verified.
+> **Status:** P0 scaffold committed: npm workspace, Node/Python health services, minimal Next.js and Angular shells, Nginx/Compose, initial PostgreSQL schema and shared API contract. **Images/builds, database initialization, Foundry calls and end-to-end runtime have not been executed or verified.** Foundry SDK integration is P1. Full automated testing and hardening are deferred until H1.
 
 ## Design
 
@@ -47,3 +47,18 @@ Only Nginx has `ports: ["80:80"]`. All other services remain on the internal Com
 4. Add runnable setup instructions and exact commands only after the corresponding code and Compose files exist.
 
 Do not copy the old `agentic-rag-ai` runtime or its historical migrations. Port narrowly scoped, tested ideas when useful.
+
+## Local P0 startup (once Docker is available)
+
+The services are scaffolds, not a working AI assistant yet. Set a local database password and use the repository's Compose file:
+
+```bash
+cp .env.example .env
+# Edit .env and set POSTGRES_PASSWORD to a strong local secret.
+docker compose config
+docker compose up -d --build
+```
+
+Only Nginx binds host port 80. Visit `http://localhost/` for the customer shell, `http://localhost/admin/` for the Angular shell and `http://localhost/api/health` for the Node health route. The Python gateway is internal at `ai-gateway:8000` and does **not yet** have Azure CLI installed in P0; P1 will add AzureCliCredential and the container login flow. `n8n` is currently behind the optional `workflows` Compose profile until P4.
+
+No real customer data/OTP should be used over exposed HTTP. See [POC-first phases](docs/10-implementation-plan.md).
