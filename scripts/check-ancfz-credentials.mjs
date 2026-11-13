@@ -15,7 +15,15 @@ for(const cred of creds){
   assert.match(cred.name, /^ANCFZ - /);
   assert.equal(typeof cred.data, "object");
   const serialized = JSON.stringify(cred.data);
-  assert.match(serialized, /REPLACE_WITH_/);
+  if (cred.type === "oAuth2Api") {
+    assert.equal(cred.data.grantType, "clientCredentials");
+    assert.equal(cred.data.authentication, "body");
+    assert.equal(cred.data.accessTokenUrl, "https://techcarrot4--realforce.sandbox.my.salesforce.com/services/oauth2/token");
+    assert.equal(cred.data.clientId, "xxxx");
+    assert.equal(cred.data.clientSecret, "xxxx");
+  } else {
+    assert.match(serialized, /REPLACE_WITH_/);
+  }
   assert.doesNotMatch(serialized, /demo_[A-Za-z0-9]{24,}/);
 }
 const mapping = {
@@ -24,15 +32,14 @@ const mapping = {
   "Receive Authorized Document": "httpHeaderAuth",
   "Receive Authorized Payment": "httpHeaderAuth",
   "Receive Verification Request": "httpHeaderAuth",
-  "Salesforce OAuth Upsert": "salesforceOAuth2Api",
-  "Salesforce Read Back Lead": "salesforceOAuth2Api",
+  "Salesforce Apex REST Create Lead": "oAuth2Api",
   "Send ANCFZ OTP Email": "smtp",
   "MockGateway Demo Orders POST": "httpHeaderAuth",
 };
 const expectedId = {
   "httpHeaderAuth.webhook": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
   "httpHeaderAuth.gateway": "4d9487aa-e07b-4bfd-92b9-a9699ffb5e45",
-  "salesforceOAuth2Api": "3f71959e-3b35-4d0f-9d7e-2de8223ca1b8",
+  "oAuth2Api": "3f71959e-3b35-4d0f-9d7e-2de8223ca1b8",
   "smtp": "0f33b267-e036-4cca-a147-535b59fefc7d",
 };
 const files=["00-otp-email.json","01-salesforce-lead.json","02-render-pdf.json","03-mockgateway-payment-link.json","04-mockgateway-payment-verify.json"];
@@ -60,8 +67,6 @@ try {
   const environment={
     ...process.env,
     ANCFZ_N8N_WEBHOOK_SECRET:"a".repeat(48),
-    ANCFZ_SALESFORCE_CLIENT_ID:"sandbox-client-id-123",
-    ANCFZ_SALESFORCE_CLIENT_SECRET:"sandbox-client-secret-123",
     ANCFZ_SMTP_HOST:"mail.example.net",
     ANCFZ_SMTP_USER:"test@example.net",
     ANCFZ_SMTP_PASSWORD:"nonproduction-smtp-password",
@@ -73,6 +78,11 @@ try {
   const generated=JSON.parse(readFileSync(target,"utf8"));
   assert.equal(generated.length,4);
   assert.equal(generated.find(c=>c.name.includes("MockGateway")).data.value,environment.ANCFZ_MOCKGATEWAY_API_KEY);
+  const sf=generated.find(c=>c.name.includes("Salesforce"));
+  assert.equal(sf.type,"oAuth2Api");
+  assert.equal(sf.data.clientId,"xxxx");
+  assert.equal(sf.data.clientSecret,"xxxx");
+  assert.equal(sf.data.grantType,"clientCredentials");
   assert.equal(generated.find(c=>c.name.includes("Webhook")).data.value,environment.ANCFZ_N8N_WEBHOOK_SECRET);
   assert.equal(statSync(target).mode & 0o777,0o600);
   // Never overwrite and never print secrets.
@@ -86,4 +96,4 @@ try {
   r=spawnSync(process.execPath,["scripts/prepare-ancfz-credentials.mjs","--output","./ancfz-credentials.json"],{env:environment,encoding:"utf8"});
   assert.notEqual(r.status,0);
 }finally{rmSync(testDir,{recursive:true,force:true});}
-console.log("ANCFZ credentials: 4 importable templates, 9 node bindings, safe local generation checks PASS");
+console.log("ANCFZ credentials: 4 importable templates, 8 node bindings, Salesforce client credentials, safe local generation PASS");
