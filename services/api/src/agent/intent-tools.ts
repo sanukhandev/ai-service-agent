@@ -86,14 +86,14 @@ export function registerIntentTools(
       }, ["query"]),
       async execute(ctx, args) {
         const query = requireText(args["query"], "query");
-        const all = await catalog.listIntents(ctx.agentId, ctx.catalogVersion);
+        const all = await catalog.listIntents(ctx.agentId, ctx.intentCatalogRevision);
         const sorted = all
           .map((intent) => ({ intent, score: matchScore(query, intent) }))
           .sort((a, b) => b.score - a.score);
         // Catalog discovery is inclusive; avoid false rejections from keywords.
         const max = sorted.some((entry) => entry.score > 0) ? 8 : 12;
         return {
-          catalogVersion: ctx.catalogVersion,
+          catalogVersion: ctx.intentCatalogRevision,
           candidates: sorted.slice(0, max).map(({ intent }) => ({
             intentKey: intent.key,
             name: intent.name,
@@ -114,13 +114,13 @@ export function registerIntentTools(
         const intentKey = requireText(args["intentKey"], "intentKey", 128);
         const operationKey = typeof args["operationKey"] === "string"
           ? requireText(args["operationKey"], "operationKey", 128) : undefined;
-        const intents = await catalog.listIntents(ctx.agentId, ctx.catalogVersion);
+        const intents = await catalog.listIntents(ctx.agentId, ctx.intentCatalogRevision);
         const intent = intents.find((candidate) => candidate.key === intentKey);
         if (!intent) return { error: "INTENT_NOT_FOUND" };
         const stored = await facts.listFacts(ctx.agentId, ctx.ticketId);
         const byKey = new Map(stored.map((fact) => [fact.key, fact]));
         return {
-          catalogVersion: ctx.catalogVersion,
+          catalogVersion: ctx.intentCatalogRevision,
           intentKey,
           allowedActions: intent.allowedActions,
           requirements: intent.requirements
@@ -159,7 +159,7 @@ export function registerIntentTools(
       }, ["intentKey", "facts"]),
       async execute(ctx, args) {
         const intentKey = requireText(args["intentKey"], "intentKey", 128);
-        const all = await catalog.listIntents(ctx.agentId, ctx.catalogVersion);
+        const all = await catalog.listIntents(ctx.agentId, ctx.intentCatalogRevision);
         const intent = all.find((candidate) => candidate.key === intentKey);
         if (!intent) return { error: "INTENT_NOT_FOUND" };
         if (!Array.isArray(args["facts"]) || args["facts"].length > 12) {
@@ -204,8 +204,8 @@ export function registerIntentTools(
         const intentKey = typeof args["intentKey"] === "string"
           ? requireText(args["intentKey"], "intentKey", 128) : undefined;
         return {
-          catalogVersion: ctx.catalogVersion,
-          offerings: await catalog.listOfferings(ctx.agentId, ctx.catalogVersion, intentKey),
+          catalogVersion: ctx.offeringCatalogRevision,
+          offerings: await catalog.listOfferings(ctx.agentId, ctx.offeringCatalogRevision, intentKey),
         };
       },
     },
