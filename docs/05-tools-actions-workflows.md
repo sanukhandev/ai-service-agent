@@ -11,6 +11,7 @@ This POC uses **native Foundry IQ MCP** for business knowledge retrieval. It is 
 | Function | Node-owned response |
 |---|---|
 | `find_intents` | Relevant published business goals matching the conversational request |
+| `select_ticket_intent` | Persist the currently selected supported customer goal in Node; no external action |
 | `get_intent_requirements` | Required, verified, missing and conditional requirements for an intent | 
 | `record_ticket_facts` | Save explicit current-message customer answers or corrections in Node/PostgreSQL with message provenance; customer-stated is not independently verified |
 | `get_offerings` | Current eligible services/packages and published prices with validity |
