@@ -15,6 +15,10 @@ Node API -> PostgreSQL, Redis, private n8n within Docker DNS
 
 No Angular/static admin asset stage and no Python Model Gateway. Do not add `/admin/`, `/ai-gateway/` or `/n8n/` proxy routes in this POC. n8n remains behind an optional `workflows` Compose profile until P4.
 
+## Docker network segregation
+
+Compose uses `frontend` for Nginx, Next.js and Node, plus `backend` for Node, PostgreSQL, Redis and n8n. **Only Node joins both networks**. The customer web service cannot reach n8n, PostgreSQL or Redis directly. No backend service publishes a host port.
+
 ## P0 infrastructure files
 
 - `docker-compose.yml` is the single Compose definition.
