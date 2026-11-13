@@ -119,6 +119,16 @@ export async function authorizedTicket(
   return ticket;
 }
 
+export async function assertAgentActive(client: PoolClient, agentId: string): Promise<void> {
+  const active = await client.query(
+    "SELECT 1 FROM agents WHERE id = $1 AND status = 'active'",
+    [agentId],
+  );
+  if (active.rowCount !== 1) {
+    throw new PersistenceError("CONFLICT", "Agent is not accepting new conversation activity");
+  }
+}
+
 export function ticketFromRow(row: Record<string, unknown>): TicketRecord {
   return {
     id: String(row["id"]),
