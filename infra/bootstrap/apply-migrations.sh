@@ -51,7 +51,7 @@ SELECT CASE WHEN
   to_regclass('public.ticket_model_sessions') IS NOT NULL
   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ticket_model_sessions' AND column_name='external_conversation_id')
   AND EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='ticket_model_sessions' AND column_name='last_response_id')
-  AND EXISTS (SELECT 1 FROM pg_class WHERE oid='public.ticket_model_sessions'::regclass AND relrowsecurity AND relforcerowsecurity)
+  AND EXISTS (SELECT 1 FROM pg_class WHERE oid=to_regclass('public.ticket_model_sessions') AND relrowsecurity AND relforcerowsecurity)
   AND has_table_privilege('agent_runtime','ticket_model_sessions','INSERT')
 THEN 'adopt' ELSE 'apply' END;
 SQL
