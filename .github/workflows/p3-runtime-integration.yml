@@ -35,6 +35,10 @@ jobs:
         run: |
           npm install --no-audit --no-fund
           npm run build
+      - name: Validate P4 lead authorization safety offline
+        run: node scripts/check-p4-lead-bridge.mjs
+      - name: Validate quotation and PDF safety offline
+        run: node scripts/check-p4-quotation.mjs
       - name: Validate Compose and Nginx-only ingress
         run: |
           docker compose config --quiet

@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatComposer } from "./chat-composer";
+import { LeadSubmission } from "./lead-submission";
+import { QuotationRequest } from "./quotation-request";
 import { MessageBubble } from "./chat-message";
 import {
   AlertCircleIcon,
@@ -586,7 +588,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               className="space-y-6"
             >
               {messages.map((message) => (
-                <MessageBubble message={message} key={message.id} />
+                <MessageBubble message={message} ticketId={ticket?.id} key={message.id} />
               ))}
             </ol>
           )}
@@ -680,6 +682,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               <span className="flex-1">{sendError}</span>
             </div>
           )}
+
+          {/* Customer authorized lead operations and quotations */}
+          {ticket && <LeadSubmission key={ticket.id} ticketId={ticket.id} />}
+          {ticket && <QuotationRequest key={ticket.id} ticketId={ticket.id} />}
 
           <ChatComposer
             onSend={send}

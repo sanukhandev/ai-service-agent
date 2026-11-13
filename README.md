@@ -39,7 +39,7 @@ For P1, Node will use `@azure/ai-projects` and `@azure/identity` with `AzureCliC
 
 Ticket creation remains a **direct Node/PostgreSQL operation**. ANCFZ has a separate n8n integration pack for Salesforce Lead upsert, PDF quotation/invoice generation, MockGateway **test** payment links, independent payment verification, and email delivery of Node-generated OTP. Customer approval and one-time OTP are required before generating a test payment link; a customer saying they paid never substitutes for independent verification.
 
-See [ANCFZ P4 business workflow contract](docs/ancfz-p4-workflow-contract.md) and [n8n import templates](infra/n8n/ancfz/README.md). The workflow JSON is **inactive** and not yet connected to Node, so do not enable it prematurely. The ANCFZ MockGateway demo Orders POST is configured, but checkout URL and payment verification remain unavailable until the matching provider response/status API is validated.
+See [ANCFZ P4 business workflow contract](docs/ancfz-p4-workflow-contract.md), [n8n import templates](infra/n8n/ancfz/README.md) and [n8n owner/project seed](infra/n8n/ancfz/SEEDING.md). The workflow JSON is **inactive** and not yet connected to Node, so do not enable it prematurely. The ANCFZ MockGateway demo Orders POST is configured, but checkout URL and payment verification remain unavailable until the matching provider response/status API is validated.
 
 ## Local P0 configuration
 

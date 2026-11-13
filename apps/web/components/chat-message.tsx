@@ -12,10 +12,163 @@ import {
   SparklesIcon,
 } from "./icons";
 
-function formatInline(text: string): ReactNode[] {
-  // Split on bold (**text**), italic (*text*), and inline code (`code`)
-  const pieces = text.split(/(\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g);
+function cleanDisplayTitle(rawTitle?: string | null, sourceId?: string | null): string {
+  const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
+  if (combined.includes("license") || combined.includes("cost") || combined.includes("fee")) return "ANCFZ License Costs & Fees (2026)";
+  if (combined.includes("package") || combined.includes("offer") || combined.includes("price")) return "ANCFZ Setup Packages & Inclusions";
+  if (combined.includes("rule") || combined.includes("regulation") || combined.includes("law")) return "ANCFZ Rules & Regulations";
+  if (combined.includes("type") || combined.includes("fze") || combined.includes("fzc")) return "ANCFZ Types of Companies";
+  if (combined.includes("activit") || combined.includes("categor")) return "ANCFZ Business Activity Categories";
+  if (combined.includes("partner")) return "ANCFZ Strategic Partners";
+  if (combined.includes("faq")) return "ANCFZ Official FAQs";
+  if (combined.includes("contact")) return "ANCFZ Contact & Directory";
+  if (rawTitle && !rawTitle.startsWith("http")) return rawTitle;
+  return "ANCFZ Knowledge Reference";
+}
+
+function formatInline(
+  text: string,
+  ticketId?: string,
+  sourceReferences?: SourceReference[],
+): ReactNode[] {
+  // Matches:
+  // 1. Citation tags: 【14:0†source】 or 【.*?†source】
+  // 2. Markdown links: [link text](url)
+  // 3. Raw URLs: https://...
+  // 4. Bold: **text**
+  // 5. Italic: *text*
+  // 6. Inline code: `code`
+  const regex = /(【\d+:\d+†source】|【[^】]+†source】|\[[^\]]+\]\([^)]+\)|https?:\/\/[^\s<>)"]+|\*\*[^*\n]+\*\*|\*[^*\n]+\*|`[^`\n]+`)/g;
+  const pieces = text.split(regex);
+
   return pieces.map((part, index) => {
+    if (!part) return null;
+
+    // 1. Citation annotation: e.g. 【14:0†source】
+    if (part.startsWith("【") && part.endsWith("】") && part.includes("†source")) {
+      const match = part.match(/【\d+:(\d+)†source】/);
+      const citeIdx = match ? parseInt(match[1], 10) : 0;
+      const ref = sourceReferences && sourceReferences.length > 0
+        ? (sourceReferences[citeIdx % sourceReferences.length] ?? sourceReferences[0])
+        : undefined;
+
+      const title = cleanDisplayTitle(ref?.title, ref?.sourceId);
+      const downloadUrl = ticketId && ref
+        ? `/api/v1/tickets/${encodeURIComponent(ticketId)}/sources/${encodeURIComponent(ref.sourceId)}/download`
+        : ref?.uri?.startsWith("/api/v1/")
+          ? ref.uri
+          : null;
+
+      if (downloadUrl) {
+        return (
+          <a
+            key={index}
+            href={downloadUrl}
+            download={title}
+            title={`Download ${title}`}
+            className="group/cite inline-flex items-center gap-1 mx-1 px-1.5 py-0.5 rounded-md border border-zinc-200/90 bg-white/90 text-[0.72rem] font-semibold text-zinc-700 shadow-2xs backdrop-blur-xs transition-all hover:border-zinc-900 hover:bg-zinc-900 hover:text-white active:scale-95 align-baseline"
+          >
+            <DownloadIcon className="size-2.5 text-zinc-500 transition-colors group-hover/cite:text-zinc-200" />
+            <span className="max-w-[120px] truncate">{title}</span>
+          </a>
+        );
+      }
+
+      return (
+        <span
+          key={index}
+          className="inline-flex items-center gap-1 mx-0.5 px-1 py-0.5 rounded border border-zinc-200/80 bg-zinc-100/90 text-[0.7rem] font-medium text-zinc-600 align-baseline"
+          title={title}
+        >
+          <FileTextIcon className="size-2.5 text-zinc-500" />
+          <span className="max-w-[100px] truncate">{title}</span>
+        </span>
+      );
+    }
+
+    // 2. Markdown link: [text](url)
+    if (part.startsWith("[") && part.includes("](") && part.endsWith(")")) {
+      const match = part.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (match) {
+        const linkText = match[1];
+        const linkUrl = match[2];
+        const isInternalSearch = linkUrl.includes("search.windows.net") || linkUrl.includes("blob.core.windows.net") || linkUrl.startsWith("/api/v1/");
+
+        if (isInternalSearch && ticketId) {
+          const matchedRef = sourceReferences?.find(r => r.sourceId === linkUrl || r.uri === linkUrl) || sourceReferences?.[0];
+          const targetSourceId = matchedRef ? matchedRef.sourceId : linkUrl;
+          const downloadUrl = `/api/v1/tickets/${encodeURIComponent(ticketId)}/sources/${encodeURIComponent(targetSourceId)}/download`;
+          const title = cleanDisplayTitle(matchedRef?.title || linkText, targetSourceId);
+
+          return (
+            <a
+              key={index}
+              href={downloadUrl}
+              download={title}
+              title={`Download ${title}`}
+              className="inline-flex items-center gap-1 font-medium text-zinc-900 underline decoration-zinc-400 hover:decoration-zinc-900 transition-colors"
+            >
+              <DownloadIcon className="size-3 text-zinc-600" />
+              <span>{linkText}</span>
+            </a>
+          );
+        }
+
+        return (
+          <a
+            key={index}
+            href={linkUrl}
+            target="_blank"
+            rel="noopener noreferrer nofollow"
+            className="inline-flex items-center gap-0.5 font-medium text-zinc-900 underline decoration-zinc-400 hover:decoration-zinc-900 transition-colors"
+          >
+            <span>{linkText}</span>
+            <ExternalLinkIcon className="size-3 text-zinc-400 opacity-70" />
+          </a>
+        );
+      }
+    }
+
+    // 3. Raw URL: https://...
+    if (/^https?:\/\//i.test(part)) {
+      const isSearchOrBlob = part.includes("search.windows.net") || part.includes("blob.core.windows.net");
+      if (isSearchOrBlob && ticketId) {
+        const matchedRef = sourceReferences?.find(r => r.sourceId === part || r.uri === part) || sourceReferences?.[0];
+        const targetSourceId = matchedRef ? matchedRef.sourceId : part;
+        const downloadUrl = `/api/v1/tickets/${encodeURIComponent(ticketId)}/sources/${encodeURIComponent(targetSourceId)}/download`;
+        const title = cleanDisplayTitle(matchedRef?.title, targetSourceId);
+
+        return (
+          <a
+            key={index}
+            href={downloadUrl}
+            download={title}
+            title={`Download ${title}`}
+            className="group/dl inline-flex items-center gap-1.5 rounded-lg border border-zinc-200/90 bg-white/90 px-2.5 py-1 text-xs font-semibold text-zinc-800 shadow-2xs backdrop-blur-xs transition-all hover:bg-zinc-900 hover:text-white hover:border-zinc-900 active:scale-95"
+          >
+            <DownloadIcon className="size-3 text-zinc-500 transition-colors group-hover/dl:text-zinc-200" />
+            <span className="truncate">{title}</span>
+            <span className="rounded bg-zinc-100 px-1 py-0.2 text-[0.65rem] font-bold uppercase text-zinc-600 group-hover/dl:bg-zinc-800 group-hover/dl:text-zinc-200">
+              Download
+            </span>
+          </a>
+        );
+      }
+
+      return (
+        <a
+          key={index}
+          href={part}
+          target="_blank"
+          rel="noopener noreferrer nofollow"
+          className="font-medium text-zinc-900 underline decoration-zinc-400 hover:decoration-zinc-900 transition-colors break-all"
+        >
+          {part}
+        </a>
+      );
+    }
+
+    // 4. Bold: **text**
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
         <strong key={index} className="font-semibold text-zinc-950">
@@ -23,6 +176,8 @@ function formatInline(text: string): ReactNode[] {
         </strong>
       );
     }
+
+    // 5. Italic: *text*
     if (part.startsWith("*") && part.endsWith("*")) {
       return (
         <em key={index} className="italic text-zinc-700">
@@ -30,6 +185,8 @@ function formatInline(text: string): ReactNode[] {
         </em>
       );
     }
+
+    // 6. Inline code: `code`
     if (part.startsWith("`") && part.endsWith("`")) {
       return (
         <code
@@ -40,11 +197,22 @@ function formatInline(text: string): ReactNode[] {
         </code>
       );
     }
+
     return part;
   });
 }
 
-function RichTextContent({ text, isAssistant }: { text: string; isAssistant: boolean }) {
+function RichTextContent({
+  text,
+  isAssistant,
+  ticketId,
+  sourceReferences,
+}: {
+  text: string;
+  isAssistant: boolean;
+  ticketId?: string;
+  sourceReferences?: SourceReference[];
+}) {
   if (!isAssistant) {
     return <div className="whitespace-pre-wrap break-words">{text}</div>;
   }
@@ -87,7 +255,7 @@ function RichTextContent({ text, isAssistant }: { text: string; isAssistant: boo
                         aria-hidden="true"
                         className="mt-2 size-1.5 shrink-0 rounded-full bg-zinc-700"
                       />
-                      <span className="min-w-0 flex-1">{formatInline(content)}</span>
+                      <span className="min-w-0 flex-1">{formatInline(content, ticketId, sourceReferences)}</span>
                     </li>
                   );
                 })}
@@ -111,7 +279,7 @@ function RichTextContent({ text, isAssistant }: { text: string; isAssistant: boo
                       <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[0.7rem] font-semibold text-zinc-800">
                         {num}
                       </span>
-                      <span className="min-w-0 flex-1">{formatInline(content)}</span>
+                      <span className="min-w-0 flex-1">{formatInline(content, ticketId, sourceReferences)}</span>
                     </li>
                   );
                 })}
@@ -126,13 +294,13 @@ function RichTextContent({ text, isAssistant }: { text: string; isAssistant: boo
           if (headerLevel <= 2) {
             return (
               <h3 key={pIdx} className="pt-1 text-base font-semibold tracking-tight text-zinc-950">
-                {formatInline(headerText)}
+                {formatInline(headerText, ticketId, sourceReferences)}
               </h3>
             );
           }
           return (
             <h4 key={pIdx} className="pt-1 text-sm font-semibold tracking-tight text-zinc-950">
-              {formatInline(headerText)}
+              {formatInline(headerText, ticketId, sourceReferences)}
             </h4>
           );
         }
@@ -145,7 +313,7 @@ function RichTextContent({ text, isAssistant }: { text: string; isAssistant: boo
               key={pIdx}
               className="border-l-2 border-zinc-700 bg-zinc-100/70 py-1.5 pl-3 pr-2 text-sm italic text-zinc-700 rounded-r-lg"
             >
-              {formatInline(quote)}
+              {formatInline(quote, ticketId, sourceReferences)}
             </blockquote>
           );
         }
@@ -155,7 +323,7 @@ function RichTextContent({ text, isAssistant }: { text: string; isAssistant: boo
           <p key={pIdx} className="break-words">
             {lines.map((line, lIdx) => (
               <span key={lIdx}>
-                {formatInline(line)}
+                {formatInline(line, ticketId, sourceReferences)}
                 {lIdx < lines.length - 1 && <br />}
               </span>
             ))}
@@ -172,38 +340,31 @@ function safeCitationUrl(
   ticketId?: string,
   sourceId?: string,
 ): string | null {
-  if (uri) {
-    if (uri.startsWith("/api/v1/")) return uri;
-    try {
-      const url = new URL(uri);
-      if (url.protocol === "https:" && !url.username && !url.password) {
-        if (
-          !/^(localhost|127\.|0\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.)/i.test(
-            url.hostname,
-          ) &&
-          !url.hostname.endsWith(".internal") &&
-          !url.hostname.endsWith(".local")
-        ) {
-          let hasRiskyParams = false;
-          for (const key of url.searchParams.keys()) {
-            if (/^(sig|signature|se|sp|sv|token|access_token|key|api_key|secret|code)$/i.test(key)) {
-              hasRiskyParams = true;
-              break;
-            }
-          }
-          if (!hasRiskyParams) return url.href;
-        }
-      }
-    } catch {
-      // not a standard URL
-    }
-  }
-
-  // Fallback to internal ticket download service if ticketId and sourceId are available
+  // Always prefer internal ticket download service for cited knowledge sources
   if (ticketId && sourceId) {
     return `/api/v1/tickets/${encodeURIComponent(ticketId)}/sources/${encodeURIComponent(
       sourceId,
     )}/download`;
+  }
+  if (uri && uri.startsWith("/api/v1/")) {
+    return uri;
+  }
+  if (uri && !uri.includes("search.windows.net") && !uri.includes("blob.core.windows.net")) {
+    try {
+      const url = new URL(uri);
+      if (url.protocol === "https:" && !url.username && !url.password) {
+        let hasRiskyParams = false;
+        for (const key of url.searchParams.keys()) {
+          if (/^(sig|signature|se|sp|sv|token|access_token|key|api_key|secret|code)$/i.test(key)) {
+            hasRiskyParams = true;
+            break;
+          }
+        }
+        if (!hasRiskyParams) return url.href;
+      }
+    } catch {
+      // not a standard URL
+    }
   }
 
   return null;
@@ -217,7 +378,7 @@ function Citation({
   ticketId?: string;
 }) {
   const url = safeCitationUrl(reference.uri, ticketId, reference.sourceId);
-  const label = reference.title?.trim() || reference.sourceId;
+  const label = cleanDisplayTitle(reference.title, reference.sourceId);
   const isDownload = Boolean(url && url.startsWith("/api/v1/"));
 
   return (
@@ -227,8 +388,8 @@ function Citation({
           href={url}
           target={isDownload ? undefined : "_blank"}
           rel={isDownload ? undefined : "noopener noreferrer nofollow"}
-          download={isDownload ? reference.title || reference.sourceId : undefined}
-          title={isDownload ? "Download verified reference document" : "View source"}
+          download={isDownload ? `${label}.docx` : undefined}
+          title={isDownload ? `Download ${label} (.docx)` : "View source"}
           className="group inline-flex max-w-full items-center gap-1.5 rounded-lg border border-white/80 bg-white/70 backdrop-blur-sm px-2.5 py-1.5 text-xs font-medium text-zinc-700 shadow-2xs transition-all hover:border-zinc-300 hover:bg-white hover:text-zinc-950 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-800"
         >
           {isDownload ? (
@@ -248,7 +409,7 @@ function Citation({
       ) : (
         <span
           className="inline-flex max-w-full items-center gap-1.5 rounded-lg border border-white/80 bg-white/60 backdrop-blur-sm px-2.5 py-1.5 text-xs text-zinc-600 shadow-2xs"
-          title={reference.sourceId}
+          title={label}
         >
           <FileTextIcon className="size-3.5 shrink-0 text-zinc-400" />
           <span className="truncate">{label}</span>
@@ -324,7 +485,12 @@ export function MessageBubble({
               : "rounded-tr-xs border border-zinc-800/80 bg-zinc-900/95 backdrop-blur-md px-4 py-3 text-white shadow-[0_4px_16px_rgba(24,24,27,0.15)] ring-1 ring-white/10"
           }`}
         >
-          <RichTextContent text={message.text} isAssistant={assistant} />
+          <RichTextContent
+            text={message.text}
+            isAssistant={assistant}
+            ticketId={ticketId}
+            sourceReferences={references}
+          />
 
           {/* Action footer for assistant responses */}
           {assistant && (
