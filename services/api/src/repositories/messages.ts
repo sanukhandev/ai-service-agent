@@ -97,9 +97,22 @@ export class TicketMessageRepository {
       );
       const row = saved.rows[0];
       if (!row) throw new PersistenceError("DATABASE_ERROR", "Message write returned no row");
+      // Frozen P0 SSE protocol: assistant.message carries the durable ChatMessage.
+      // If it exceeds the event size limit, the consumer re-fetches the
+      // authorized ticket snapshot using the ID-only payload.
+      const customerEvent = { messageId: row.id, requestId, sequence: String(row.message_sequence) };
+      const message = mapMessage(row);
+      const assistantEnvelope = {
+        message: {
+          id: message.id, role: message.role, text: message.text,
+          createdAt: message.createdAt, sourceReferences: message.sourceReferences,
+        },
+      };
+      const assistantEvent = Buffer.byteLength(JSON.stringify(assistantEnvelope), "utf8") <= 30_000
+        ? assistantEnvelope : customerEvent;
       await appendEventTx(client, scope.agentId, ticketId,
-        role === "customer" ? "message.accepted" : "agent.response.completed",
-        { messageId: row.id, requestId, sequence: String(row.message_sequence) });
+        role === "customer" ? "message.accepted" : "assistant.message",
+        role === "customer" ? customerEvent : assistantEvent);
       return { message: mapMessage(row), duplicated: false };
     });
   }
