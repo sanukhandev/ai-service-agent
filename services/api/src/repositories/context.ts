@@ -1,6 +1,6 @@
 import { PersistenceDatabase, PersistenceError, requireBounded, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "./events.js";
-import { asIso, authorizedTicket, type TicketScope } from "./types.js";
+import { asIso, authorizedTicket, assertAgentActive, type TicketScope } from "./types.js";
 
 export type FactValue = string | number | boolean;
 export type Verification = "customer_stated" | "verified" | "disputed";
@@ -108,6 +108,7 @@ export class ConversationContextRepository {
     return this.db.withAgent(scope.agentId, async (client) => {
       const ticket = await authorizedTicket(client, scope, ticketId, true);
       if (ticket["status"] === "closed") throw new PersistenceError("CONFLICT", "Ticket is closed");
+      await assertAgentActive(client, scope.agentId);
       const selected = await client.query<{ id: string }>(
         [
           "SELECT i.id FROM intents i JOIN intent_catalog_versions v",
@@ -147,6 +148,7 @@ export class ConversationContextRepository {
     return this.db.withAgent(scope.agentId, async (client) => {
       const ticket = await authorizedTicket(client, scope, ticketId, true);
       if (ticket["status"] === "closed") throw new PersistenceError("CONFLICT", "Ticket is closed");
+      await assertAgentActive(client, scope.agentId);
       const source = await client.query<{ role: string }>(
         "SELECT role FROM ticket_messages WHERE agent_id = $1 AND ticket_id = $2 AND id = $3",
         [scope.agentId, ticketId, sourceMessageId],
