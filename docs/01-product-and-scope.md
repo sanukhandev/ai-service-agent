@@ -10,7 +10,7 @@ The platform must support a second unrelated business by creating a new **Agent 
 
 - **Guest customer:** asks general questions, starts a ticket, optionally supplies context and uploads documents.
 - **Authenticated customer:** owns agent-scoped tickets and can resume interactions after email OTP.
-- **Administrator:** manages agent bindings, persona, published catalogs, knowledge references, permitted tools, workflow bindings and tickets.
+- **Configuration operator (POC):** uses controlled, authenticated local seed/CLI scripts to publish agent bindings, intents, offerings and workflow grants. Angular Admin UI is deferred.
 - **Operator:** inspects failures and verified workflow state. RBAC must be server-side.
 
 ## Functional scope
@@ -24,7 +24,7 @@ The platform must support a second unrelated business by creating a new **Agent 
 7. **Customer identity:** optional email OTP flow in secure HTTP UI. The same email may map to distinct agent-scoped accounts. No OTP or credentials in chat.
 8. **Private documents:** securely upload to agent/ticket-scoped storage; OCR/extract via Azure Document Intelligence when implemented; do not publish customer uploads to shared IQ.
 9. **Operations:** propose and explicitly authorize business actions (e.g. `create_lead`, `generate_quote`). Node verifies prerequisites/consent and dispatches n8n with idempotency.
-10. **Admin:** simple UI for agent management, catalogs and ticket/workflow visibility.
+10. **Configuration:** controlled local scripts/seed data for agent, catalog and action bindings. Visual Admin UI is deferred until after the POC.
 
 ## Natural interaction rules
 
