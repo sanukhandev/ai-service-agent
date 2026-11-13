@@ -1,5 +1,7 @@
 # Data model and migration policy
 
+**Current SQL:** `infra/postgres/001_core.sql` is the agent/ticket baseline; `002_intents_and_ticket_facts.sql` adds versioned Node-owned intents, offerings, price revisions, ticket intents, customer facts and fact history. Apply in sequence to a fresh disposable DB; they have not yet been runtime-validated.
+
 ## Principles
 
 Use **plain PostgreSQL 16** as the durable database. Fresh POC baseline; no legacy tenant schema, `pgvector` extension, embeddings or ANN indexes. Normalize operational entities (aim for 3NF/BCNF where practical), avoiding mixed-purpose catalog/ticket tables and unbounded event JSON in place of relational keys. JSONB is appropriate for immutable version snapshots, provider payloads and bounded structured fields, not as a substitute for key constraints.
@@ -12,11 +14,11 @@ An agent is the **top-level isolation partition**. The Foundry resource ID is an
 |---|---|
 | Agents | `agents(id, key, display_name, status, created_at)`, `agent_versions(id, agent_id, version, foundry_project_ref, foundry_name, foundry_version, persona_revision, knowledge_ref, activated_at)` |
 | Permissions | `agent_tool_grants(agent_id, agent_version_id, tool_name, enabled)`, `agent_admin_memberships(agent_id, principal_id, role)` |
-| Intent catalog | `intent_catalog_versions(id, agent_id, revision, status)`, `intents(id, agent_id, catalog_version_id, key, name, description)`, `intent_requirements(id, agent_id, intent_id, key, kind, required_for, validation)` |
-| Offerings | `offering_catalog_versions`, `offerings(id, agent_id, catalog_version_id, key, type, description)`, `price_revisions(id, agent_id, offering_id, currency, amount, valid_from, valid_to, conditions)` |
+| Intent catalog | `intent_catalog_versions(id, agent_id, revision, status)`, `intents(id, agent_id, catalog_version_id, intent_key, name, description, examples, allowed_actions)`, `intent_requirements(id, agent_id, intent_id, requirement_key, value_type, required_for)` |
+| Offerings | `offering_catalog_versions`, `offerings(id, agent_id, catalog_version_id, offering_key, intent_key, description)`, `offering_price_revisions(id, agent_id, offering_id, currency, amount, effective_from, effective_to, conditions)` |
 | Identity | `agent_accounts(id, agent_id, normalized_email, verified_at)`, `auth_sessions(id, agent_id, account_id, guest_token_hash, expires_at)`, `auth_audit_events` |
 | Tickets | `tickets(id, agent_id, ticket_number, account_id?, session_id, subject, status, created_at)`, `ticket_messages(id, agent_id, ticket_id, role, content, request_id, created_at)` |
-| Ticket memory | `ticket_facts(id, agent_id, ticket_id, fact_key, value, provenance, verification_status)`, `ticket_summaries(id, agent_id, ticket_id, revision, summary)` |
+| Ticket memory | `ticket_intents`, `ticket_facts(id, agent_id, ticket_id, fact_key, value, source_message_id, verification_status)`, `ticket_fact_events`, `ticket_summaries(id, agent_id, ticket_id, revision, summary)` |
 | Events | `ticket_events(id, agent_id, ticket_id, sequence, type, payload, created_at)`, `event_outbox(id, agent_id, event_type, payload, status, lease_until)`, `event_inbox` |
 | Documents | `ticket_documents(id, agent_id, ticket_id, blob_key, status)`, `document_extractions(id, agent_id, document_id, processor_version, status)`, `document_fields` |
 | Operations | `action_definitions`, `workflow_bindings`, `action_requests(id, agent_id, ticket_id, action_key, status, idempotency_key, approved_at)`, `action_executions`, `provider_evidence` |
@@ -63,7 +65,7 @@ Benchmark query plans before adding speculative GIN/JSON or broad indexes.
 - Test every migration chain against a **fresh disposable** PostgreSQL instance in CI.
 - After an applied migration is shared, use a new forward migration. Do not rewrite historical applied migrations.
 - Do not delete database volumes or run `down -v` against anything containing data without explicit user authorization.
-- Seed a single initial admin **from environment or a one-time CLI secret**, never a plaintext password, default universal password or committed bcrypt hash. Never enable open platform-registration in the public POC.
+- Admin UI is deferred. Any POC configuration/seed scripts must run under controlled operator authorization; never commit an admin password, default credential or plaintext secret. Do not enable public admin registration.
 
 ## Retention and privacy
 
