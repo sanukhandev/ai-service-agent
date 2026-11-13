@@ -28,8 +28,8 @@ Node API Docker image will install the Linux Azure CLI in **P1**. Persist Linux 
 
 ## 4. Deployment and UI rules
 
-- Only `nginx` publishes `ports: ["80:80"]`. No host ports on Node, Next.js, PostgreSQL, Redis or n8n.
-- Public routes: `/` -> Next.js `web:3000`, `/api/` -> Node `api:4000`; `/api/events/` -> Node SSE with Nginx buffering disabled.
+- Only `nginx` publishes host port 80, bound to `127.0.0.1` in the local POC (`127.0.0.1:80:80`). No host ports on Node, Next.js, PostgreSQL, Redis or n8n.
+- Local routes: `/` -> Next.js `web:3000`, `/api/` -> Node `api:4000`, `/api/events/` -> Node SSE, and `/n8n/` -> the owner-authenticated n8n editor only when the `workflows` profile is running. Nginx strips the `/n8n/` prefix before forwarding; browser assets use `N8N_PATH=/n8n/`. Block n8n webhook/form/MCP paths at ingress and keep internal Node-to-n8n calls at `http://n8n:5678/webhook/...`.
 - **No `/admin/` route** or Angular build stage in the active deployment.
 - Internal calls use Docker DNS, not an Nginx round-trip.
 - Next.js uses Tailwind CSS v4, Inter from Google Fonts **self-hosted** via package/build, minimal semantic HTML, small reusable local components and Lucide icons where needed. No complex dashboard/component libraries.
