@@ -70,4 +70,4 @@ Simple left navigation (desktop), compact header (mobile), native tables and det
 
 ## UI acceptance
 
-Both UIs build in CI, pass a basic accessibility audit, render under Nginx at `/` and `/admin/`, and work at desktop/mobile widths. Check Angular deep-link refresh at `/admin/... ` (strip trailing space in actual paths), Next API/SSE same-origin and no inadvertent direct port access.
+Both UIs build in CI, pass a basic accessibility audit, render under Nginx at `/` and `/admin/`, and work at desktop/mobile widths. Check Angular deep-link refresh at `/admin/settings`, Next API/SSE same-origin, and absence of direct service port exposure.
