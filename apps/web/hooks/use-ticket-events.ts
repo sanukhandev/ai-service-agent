@@ -20,6 +20,7 @@ const eventNames = [
   "message.accepted",
   "assistant.processing",
   "assistant.reply",
+  "assistant.message",
   "assistant.failed",
   "agent.processing",
   "agent.response.started",
