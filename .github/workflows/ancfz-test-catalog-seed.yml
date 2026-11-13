@@ -44,6 +44,7 @@ jobs:
           '
           npm install --no-audit --no-fund
           npm run build --workspace=@ai-service-agent/api
+          node scripts/ancfz-test-tool-smoke.mjs
       - name: Bring up fresh private database
         run: docker compose up -d --wait postgres
       - name: Apply existing P2 forward migrations
