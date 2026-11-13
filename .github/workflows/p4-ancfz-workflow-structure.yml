@@ -13,6 +13,8 @@ on:
     paths:
       - 'infra/n8n/ancfz/**'
       - 'scripts/check-ancfz-workflows.mjs'
+      - 'scripts/check-ancfz-credentials.mjs'
+      - 'scripts/prepare-ancfz-credentials.mjs'
       - 'docker-compose.yml'
       - '.github/workflows/p4-ancfz-workflow-structure.yml'
 
