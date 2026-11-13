@@ -1,0 +1,111 @@
+{
+  "name": "ANCFZ | MockGateway Demo Orders Status (Fail Closed Until Verified)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Receive Verification Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/payment-verify",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate",
+      "name": "Validate Verification Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// This is a fail-closed stub. The supplied demo Orders POST is not a payment\n// status endpoint. Configure a documented status API and live-test it FIRST.\nconst b=$input.first().json.body??{};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||!uuid.test(b.ticketId)) throw new Error('Invalid ANCFZ scope');\nif(typeof b.orderReference!=='string'||!b.orderReference.trim()||b.orderReference.length>200) throw new Error('Missing provider order reference');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference)) throw new Error('Invalid authorized order correlation');\nif(b.currency!=='AED'||typeof b.amount!=='string'||!/^(?:0|[1-9]\\d{0,7})\\.\\d{2}$/.test(b.amount)) throw new Error('Invalid expected payment');\nreturn [{json:{ticketId:b.ticketId,orderReference:b.orderReference,externalReference:b.externalReference,amount:b.amount,currency:'AED'}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "result",
+      "name": "Reject Unverified Demo Order",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Never infer payment from customer claims, order creation or a guessed GET.\n// The operator must add a documented Demo Orders GET/status endpoint,\n// verify returned provider ID, amount, currency and a terminal paid state,\n// and independently validate it in Node before issuing an invoice.\nconst expected=$('Validate Verification Request').first().json;\nreturn [{json:{status:'verification_unconfigured',verified:false,provider:'mockgateway_demo_orders',orderReference:expected.orderReference,ticketId:expected.ticketId,amount:expected.amount,currency:expected.currency}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Verification Request": {
+      "main": [
+        [
+          {
+            "node": "Validate Verification Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Verification Request": {
+      "main": [
+        [
+          {
+            "node": "Reject Unverified Demo Order",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Reject Unverified Demo Order": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}

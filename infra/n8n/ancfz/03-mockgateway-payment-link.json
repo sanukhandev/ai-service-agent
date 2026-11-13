@@ -1,0 +1,157 @@
+{
+  "name": "ANCFZ | MockGateway Demo Order Request (checkout URL if provided)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Receive Authorized Payment",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/payment-link",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validated",
+      "name": "Validate Authorized Payment",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// Called only by authenticated Node dispatch once consent + OTP are persisted.\n// The flags are informational defense-in-depth; the future Node authorization\n// handler must validate them against durable quote/OTP state before dispatch.\nconst b = $input.first().json.body ?? {};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||b.otpVerified!==true||b.customerConsent!==true) throw new Error('ANCFZ approval missing');\nif(typeof b.ticketId!=='string'||!uuid.test(b.ticketId)) throw new Error('Invalid ticket ID');\nif(typeof b.quotationId!=='string'||!uuid.test(b.quotationId)) throw new Error('Invalid quotation ID');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference)) throw new Error('Invalid stable external reference');\nif(b.currency!=='AED') throw new Error('ANCFZ demo accepts AED quote only');\nif(typeof b.amount!=='string'||! /^(?:0|[1-9]\\d{0,7})\\.\\d{2}$/.test(b.amount)|| Number(b.amount)<=0) throw new Error('Expected approved decimal amount, e.g. 10.00');\nif(typeof b.firstName!=='string'||!b.firstName.trim()||b.firstName.length>100) throw new Error('Invalid billing first name');\nif(typeof b.email!=='string'||b.email.length>254||!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(b.email)) throw new Error('Invalid billing email');\nif(typeof b.countryCode!=='string'||!/^[A-Z]{2}$/.test(b.countryCode)) throw new Error('Invalid country code');\nreturn [{json:{agentKey:'ancfz',ticketId:b.ticketId,quotationId:b.quotationId,externalReference:b.externalReference,currency:'AED',amount:b.amount,firstName:b.firstName.trim(),email:b.email.trim(),countryCode:b.countryCode}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "init",
+      "name": "MockGateway Demo Orders POST",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://mockgateway.com/api/v1/public/demo/base/ancfz-f6i0ry/rest/6.0/orders/",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "X-Guest-ID",
+              "value": "={{ $env.MOCKGATEWAY_GUEST_ID }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ Currency: $('Validate Authorized Payment').first().json.currency, Items: [{ Price: { UnitNetPrice: $('Validate Authorized Payment').first().json.amount } }], ExternalReference: $('Validate Authorized Payment').first().json.externalReference, BillingDetails: { FirstName: $('Validate Authorized Payment').first().json.firstName, Email: $('Validate Authorized Payment').first().json.email, CountryCode: $('Validate Authorized Payment').first().json.countryCode }, PaymentDetails: { Type: 'CC' } }) }}",
+        "options": {
+          "timeout": 20000
+        }
+      }
+    },
+    {
+      "id": "check",
+      "name": "Inspect Demo Order Response",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        300
+      ],
+      "parameters": {
+        "jsCode": "// The supplied demo Orders endpoint is not the /api/pg/{slug}/init API.\n// Do not invent a checkout URL or report an order as paid.\nconst raw=$input.first().json;\nconst r=(raw && typeof raw==='object' && !Array.isArray(raw))?raw:{};\nconst expected=$('Validate Authorized Payment').first().json;\nconst ref=r.order_number ?? r.OrderNumber ?? r.OrderReference ?? r.order_id ?? r.id;\nif((typeof ref!=='string'&&typeof ref!=='number')||!String(ref).trim()||String(ref).length>200) throw new Error('MockGateway Orders response has no verifiable order reference');\nconst maybeUrl=r.payment_url ?? r.paymentUrl ?? r.checkout_url ?? r.PaymentURL ?? r.PaymentUrl;\nlet paymentUrl=null;\nif(typeof maybeUrl==='string'&&maybeUrl.length<2048){\n  let u;\n  try { u=new URL(maybeUrl); } catch { throw new Error('Invalid gateway checkout URL'); }\n  if(u.protocol!=='https:'||!(u.hostname==='mockgateway.com'||u.hostname.endsWith('.mockgateway.com'))) throw new Error('Untrusted checkout URL');\n  paymentUrl=maybeUrl;\n}\nreturn [{json:{status:paymentUrl?'checkout_available':'order_created_checkout_unavailable',verified:false,provider:'mockgateway_demo_orders',orderReference:String(ref),paymentUrl,ticketId:expected.ticketId,quotationId:expected.quotationId,externalReference:expected.externalReference,amount:expected.amount,currency:expected.currency}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Authorized Payment": {
+      "main": [
+        [
+          {
+            "node": "Validate Authorized Payment",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Authorized Payment": {
+      "main": [
+        [
+          {
+            "node": "MockGateway Demo Orders POST",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "MockGateway Demo Orders POST": {
+      "main": [
+        [
+          {
+            "node": "Inspect Demo Order Response",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Inspect Demo Order Response": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}

@@ -1,0 +1,174 @@
+{
+  "name": "ANCFZ | Salesforce Lead Upsert",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "webhook",
+      "name": "Receive Authorized Lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/salesforce-lead",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "validate",
+      "name": "Validate ANCFZ Lead",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const b = $input.first().json.body ?? {};\nfunction required(v, label, max=200) { if(typeof v !== 'string' || !v.trim() || v.length>max) throw new Error('Invalid '+label); return v.trim(); }\nconst ticketId=required(b.ticketId,'ticketId',36);\nif(!/^[0-9a-f-]{36}$/i.test(ticketId) || b.agentKey !== 'ancfz' || b.consent !== true) throw new Error('Not an authorized ANCFZ lead');\nconst lastName=required(b.lastName,'lastName');\nconst company=required(b.company,'company');\nconst email=required(b.email,'email',254);\nif(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(email)) throw new Error('Invalid email');\nconst description = typeof b.enquiry === 'string' ? b.enquiry.slice(0,2000) : 'ANCFZ customer enquiry';\nreturn [{json:{ticketId,lead:{LastName:lastName,Company:company,Email:email,Description:description,LeadSource:'ANCFZ Sara'}}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "upsert",
+      "name": "Salesforce OAuth Upsert",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ $env.SALESFORCE_INSTANCE_URL + '/services/data/v62.0/sobjects/Lead/ANCFZ_Ticket_ID__c/' + encodeURIComponent($('Validate ANCFZ Lead').first().json.ticketId) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "salesforceOAuth2Api",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($('Validate ANCFZ Lead').first().json.lead) }}",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "lookup",
+      "name": "Salesforce Read Back Lead",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        970,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.SALESFORCE_INSTANCE_URL + '/services/data/v62.0/sobjects/Lead/ANCFZ_Ticket_ID__c/' + encodeURIComponent($('Validate ANCFZ Lead').first().json.ticketId) }}",
+        "authentication": "predefinedCredentialType",
+        "nodeCredentialType": "salesforceOAuth2Api",
+        "options": {
+          "timeout": 30000
+        }
+      }
+    },
+    {
+      "id": "check",
+      "name": "Verify Salesforce ID",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1220,
+        300
+      ],
+      "parameters": {
+        "jsCode": "const r=$input.first().json;\nif(typeof r.Id !== 'string' || !/^00Q[A-Za-z0-9]{12,15}$/.test(r.Id)) throw new Error('Salesforce Lead identity not confirmed');\nreturn [{json:{status:'verified_completed',provider:'salesforce',leadId:r.Id,ticketId:$('Validate ANCFZ Lead').first().json.ticketId}}];",
+        "mode": "runOnceForAllItems"
+      }
+    },
+    {
+      "id": "respond",
+      "name": "Respond",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1470,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Authorized Lead": {
+      "main": [
+        [
+          {
+            "node": "Validate ANCFZ Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate ANCFZ Lead": {
+      "main": [
+        [
+          {
+            "node": "Salesforce OAuth Upsert",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salesforce OAuth Upsert": {
+      "main": [
+        [
+          {
+            "node": "Salesforce Read Back Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Salesforce Read Back Lead": {
+      "main": [
+        [
+          {
+            "node": "Verify Salesforce ID",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Verify Salesforce ID": {
+      "main": [
+        [
+          {
+            "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}

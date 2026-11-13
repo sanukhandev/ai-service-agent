@@ -2,7 +2,7 @@
 
 A clean, generic **agent-centric business assistant** platform. Sara/ANCFZ is the first example, not business logic hardcoded into the runtime.
 
-> **Current status:** P3 integration is implemented on a draft PR, pending exact-head Docker smoke and **live Foundry Sara / IQ validation**. P0/A/B/C foundation components were merged before P3. Do not treat the POC as complete until the live acceptance scenario passes. Angular admin and Python Gateway are excluded.
+> **Current status:** P3 Node runtime integration was merged to `main` (exact-head P0/P2/P3 offline CI passed); **live Sara / Foundry IQ validation remains pending**. ANCFZ-only P4 n8n workflow templates are included as **inactive integration starters**; they are **not wired to the Node authorization/OTP runtime or tested against providers**. Do not treat the POC as complete. Angular admin and Python Gateway are excluded.
 
 ## Active architecture
 
@@ -34,6 +34,12 @@ AGENTS.md                Repository development contract
 ## POC authentication
 
 For P1, Node will use `@azure/ai-projects` and `@azure/identity` with `AzureCliCredential`. The private Docker `azure-cli-auth` volume is mounted **only in the Node API container**. P0's API image does **not** yet install Azure CLI, so do not expect an `az login` command to work until P1 implements that. Credentials persist across rebuilds when the volume and login remain valid.
+
+## ANCFZ P4 workflows (draft)
+
+Ticket creation remains a **direct Node/PostgreSQL operation**. ANCFZ has a separate n8n integration pack for Salesforce Lead upsert, PDF quotation/invoice generation, MockGateway **test** payment links, independent payment verification, and email delivery of Node-generated OTP. Customer approval and one-time OTP are required before generating a test payment link; a customer saying they paid never substitutes for independent verification.
+
+See [ANCFZ P4 business workflow contract](docs/ancfz-p4-workflow-contract.md) and [n8n import templates](infra/n8n/ancfz/README.md). The workflow JSON is **inactive** and not yet connected to Node, so do not enable it prematurely. The ANCFZ MockGateway demo Orders POST is configured, but checkout URL and payment verification remain unavailable until the matching provider response/status API is validated.
 
 ## Local P0 configuration
 
