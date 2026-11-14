@@ -4,6 +4,10 @@
 
 This pack is intentionally **ANCFZ-specific**. The core agent-centric Node/PostgreSQL platform remains reusable, but these workflow names, Salesforce fields, invoice copy, gateway and verification rules belong only to the `ancfz` agent.
 
+## Optional SMTP-free POC OTP delivery
+
+For local development without an SMTP provider, use the separate [n8n Data Table OTP mock](MOCK_OTP.md). It stores **synthetic test OTPs only**, runs only with explicit local-mode opt-in, and is imported as two additional **inactive** workflows. The original SMTP workflow and its credentials remain untouched. Do not activate both workflows on the shared OTP webhook path.
+
 ## Bootstrap the n8n owner and default workspace
 
 For the single-operator POC, follow [n8n local seeding](SEEDING.md).
