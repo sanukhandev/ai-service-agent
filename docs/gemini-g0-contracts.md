@@ -2,7 +2,7 @@
 
 **Contract identifier:** gemini-contract-v1.
 **Scope:** experiment/gemini-file-search-poc only. No PR and no changes to main.
-**Freeze reference:** The immutable G0 contract commit that adds this document and packages/contracts/gemini-v1.ts. The integration owner records the exact commit SHA after GitHub accepts the direct branch update. All six workstreams MUST use that exact commit as GEMINI_FREEZE_SHA, never moving HEAD or main.
+**Freeze reference:** GEMINI_FREEZE_SHA is the **exact successful G0 CI-tested experimental branch HEAD** announced by the integration owner after the final G0 direct commit. This file deliberately does not embed its own Git commit SHA (a self-referential value changes when committed). The first contract commit is NOT the child-branch baseline if any G0 CI fixes followed. All six P1–P6 workstreams MUST use the same final announced GEMINI_FREEZE_SHA, never moving HEAD, an earlier failed G0 commit or main.
 
 ## Canonical definitions
 
