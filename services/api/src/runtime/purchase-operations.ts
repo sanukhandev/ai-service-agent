@@ -13,7 +13,7 @@ export const PURCHASE_CONSENT =
   "I confirm that I want to proceed with this ANCFZ sandbox purchase for the exact approved quotation amount and that the required test documents have been submitted.";
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_FILE=1048576;
-type PurchaseQuote={id:string;intent_id:string;intent_key:string;amount:string;currency:string;state:string};
+type PurchaseQuote={id:string|null;intent_id:string;intent_key:string;amount:string|null;currency:string|null;state:string|null;purchase_enabled:boolean};
 type DocRow={id:string;requirement_key:string;label:string;guidance:string|null;
   required:boolean;sort_order:number;file_name:string|null;content_type:string|null;
   state:string|null;created_at:Date|null;extracted_full_name:string|null;
@@ -28,14 +28,19 @@ export type PurchaseStatus={
 async function findQuote(client:PoolClient,agentId:string,ticketId:string):Promise<PurchaseQuote|null>{
   const r=await client.query<PurchaseQuote>(
     `SELECT q.id,i.id AS intent_id,i.intent_key,q.amount::text AS amount,
-       q.currency,op.state
+       q.currency,op.state,
+       ('purchase_quotation'=ANY(i.allowed_actions)) AS purchase_enabled
      FROM tickets t
      JOIN ticket_intents ti ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id
        AND ti.status='active'
      JOIN intents i ON i.agent_id=t.agent_id AND i.id=ti.intent_id
        AND i.catalog_version_id=t.intent_catalog_version_id
-       AND 'purchase_quotation'=ANY(i.allowed_actions)
      LEFT JOIN ticket_quotations q ON q.agent_id=t.agent_id AND q.ticket_id=t.id
+       AND EXISTS (
+         SELECT 1 FROM offerings o
+         WHERE o.agent_id=q.agent_id AND o.id=q.offering_id
+           AND o.intent_key=i.intent_key
+       )
      LEFT JOIN ticket_operations op ON op.agent_id=t.agent_id AND op.ticket_id=t.id
        AND op.id=q.operation_id AND op.operation_key='ancfz_render_quote'
      WHERE t.agent_id=$1 AND t.id=$2 AND t.status<>'closed'
@@ -68,7 +73,7 @@ async function confirmation(client:PoolClient,agentId:string,ticketId:string,q:P
     `SELECT 1 FROM ticket_purchase_confirmations
       WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND intent_id=$4
         AND amount=$5::numeric AND currency=$6 LIMIT 1`,
-    [agentId,ticketId,q.id,q.intent_id,q.amount,q.currency.trim()],
+    [agentId,ticketId,q.id,q.intent_id,q.amount,q.currency?.trim()??""],
   );
   return (r.rowCount??0)>0;
 }
@@ -116,7 +121,7 @@ export async function invoiceBillingName(
  client:PoolClient,agentId:string,ticketId:string,quotationId:string,
 ):Promise<string>{
   const q=await findQuote(client,agentId,ticketId);
-  if(!q||q.id!==quotationId||q.state!=="verified_completed")
+  if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed"
     throw new PersistenceError("CONFLICT","Invoice identity is not linked to the approved quotation");
   const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
   return extractedBillingName(docs);
@@ -125,7 +130,7 @@ export async function assertPurchaseReady(
   client:PoolClient,agentId:string,ticketId:string,quotationId:string,
 ):Promise<void>{
   const q=await findQuote(client,agentId,ticketId);
-  if(!q||q.id!==quotationId||q.state!=="verified_completed")
+  if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed"
     throw new PersistenceError("CONFLICT","Select a purchase-enabled intent and obtain a verified quotation");
   const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
   // A catalog with no configured requirements is not authorization to skip intake.
@@ -160,7 +165,7 @@ export class PurchaseOperations {
       }));
       return {supported:true,intentKey:q.intent_key,quotationId:q.id??null,
         amount:q.amount??null,currency:q.currency?.trim()??null,
-        requirements:reqs,confirmed,readyForOtp:confirmed&&documents.length>0&&missing.length===0
+        requirements:reqs,confirmed,readyForOtp:q.purchase_enabled&&confirmed&&documents.length>0&&missing.length===0
           &&billingName!==null&&q.state==="verified_completed",missing,billingName,persona:branding};
     });
   }
@@ -243,8 +248,8 @@ export class PurchaseOperations {
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||q.id!==v.quotationId||q.state!=="verified_completed"||
-         q.amount!==v.amount||q.currency.trim()!==v.currency)
+      if(!q||!q.purchase_enabled||q.id!==v.quotationId||q.state!=="verified_completed"||
+         q.amount!==v.amount||q.currency?.trim()!==v.currency)
         throw new PersistenceError("CONFLICT","Verified quoted amount and intent do not match");
       const docs=await getRequirements(client,scope.agentId,ticketId,q.intent_id);
       // Validation uses OCR-derived names, not untrusted chat or uploaded filenames.
