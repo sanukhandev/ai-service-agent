@@ -1,4 +1,6 @@
-import {createHash} from 'node:crypto';
+import {createHash,randomUUID} from 'node:crypto';
+import {writeFile} from 'node:fs/promises';
+import {join} from 'node:path';
 import {readSourceFile, retainOriginal, withPrivateStage, type ValidatedSource} from './intake.js';
 import {assertDocumentName,assertStoreName,type FileSearchProvider,type IndexOperation,type Retrieval} from './provider.js';
 
@@ -33,7 +35,9 @@ const sha=(s:string)=>createHash('sha256').update(s).digest('hex');
 const storeScope=(store:string)=>{assertStoreName(store);return store;};
 const documentScope=(store:string,id:string)=>{assertDocumentName(store,id);return id;};
 export class KnowledgePublisher {
-  constructor(private readonly db:KnowledgeRepository,private readonly google:FileSearchProvider,private readonly originalsRoot:string,private readonly model:string) {}
+  constructor(private readonly db:KnowledgeRepository,private readonly google:FileSearchProvider,private readonly originalsRoot:string,private readonly model:string) {
+    if(!originalsRoot.trim()||!model.trim())throw new KnowledgeError('VAULT_AND_MODEL_REQUIRED');
+  }
   private async version(agentId:string,versionId:string):Promise<VersionRecord> {
     const v=await this.db.getVersion(agentId,versionId);if(!v)throw new KnowledgeError('VERSION_NOT_FOUND');return v;
   }
@@ -52,8 +56,10 @@ export class KnowledgePublisher {
   async receive(agentId:string,versionId:string,documentId:string,documentVersionId:string,path:string,required=true):Promise<DocumentRecord> {
     const v=await this.version(agentId,versionId);
     if(v.state!=='draft')throw new KnowledgeError('VERSION_LOCKED');
-    return withPrivateStage(async()=>{
+    return withPrivateStage(async(stage)=>{
       const file=await readSourceFile(path);
+      const staged=join(stage,randomUUID());
+      await writeFile(staged,file.data,{flag:'wx',mode:0o600});
       const existing=await this.db.findByHash(agentId,versionId,file.sha256);
       if(existing)throw new KnowledgeError('DUPLICATE_CONTENT');
       // Keep the original for independent P4 verification, not in customer ticket uploads.
@@ -190,6 +196,19 @@ export class KnowledgePublisher {
     if(await this.db.pinnedActiveSessions(agentId,versionId))throw new KnowledgeError('PINNED_SESSIONS');
     if(!await this.db.retireIfUnpinned(agentId,versionId))throw new KnowledgeError('RETIRE_CONFLICT');
     // Provider deletion is a separate privileged, auditable cleanup after retention review.
+  }
+  /** Irreversible provider cleanup; historical P2 source/approval/audit rows remain. */
+  async deleteRetiredStore(agentId:string,versionId:string,confirmation:string):Promise<void> {
+    if(confirmation!==`DELETE:${agentId}:${versionId}`)throw new KnowledgeError('DELETE_CONFIRMATION_REQUIRED');
+    const v=await this.version(agentId,versionId);
+    if(!['retired','revoked'].includes(v.state))throw new KnowledgeError('DELETE_REQUIRES_RETIREMENT');
+    if(await this.db.currentPublishedVersion(agentId)===versionId || await this.db.pinnedActiveSessions(agentId,versionId))throw new KnowledgeError('DELETE_PINNED_OR_ACTIVE');
+    const store=storeScope(v.storeResourceName??'');
+    const docs=await this.db.listDocuments(agentId,versionId);
+    const providerDocs=await this.google.listDocuments(store);
+    if(providerDocs.some(p=>!docs.some(d=>d.providerDocumentName===p.name)))throw new KnowledgeError('UNRECOGNIZED_PROVIDER_DOCUMENT');
+    for(const pd of providerDocs){documentScope(store,pd.name);await this.google.deleteDocument(pd.name);}
+    await this.google.deleteStore(store);
   }
   async revoke(agentId:string,versionId:string,reason:string):Promise<void> {
     if(!reason.trim())throw new KnowledgeError('REVOCATION_REASON_REQUIRED');

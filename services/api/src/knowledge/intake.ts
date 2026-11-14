@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { constants } from 'node:fs';
 import { lstat, open, mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
-import { basename, extname, join, resolve, sep } from 'node:path';
+import { basename, extname, join, resolve } from 'node:path';
 import { tmpdir } from 'node:os';
 import { inflateRawSync } from 'node:zlib';
 
@@ -104,6 +104,14 @@ export function expandApprovedArchive(name: string, data: Buffer, enabled=false)
   if(extname(name).toLowerCase()!=='.zip' || !enabled) reject('ARCHIVE_DISABLED');
   if(data.length===0 || data.length>MAX_SOURCE_BYTES) reject('SIZE');
   return zipEntries(data).map(member => validateSource(member.name.split('/').pop()!,member.data));
+}
+export async function readArchiveFile(path:string):Promise<Buffer> {
+  if(extname(path).toLowerCase()!=='.zip')reject('ARCHIVE_EXTENSION');
+  const s=await lstat(path);
+  if(!s.isFile()||s.isSymbolicLink()||!s.size||s.size>MAX_SOURCE_BYTES)reject('UNSAFE_ARCHIVE');
+  const handle=await open(path,constants.O_RDONLY|constants.O_NOFOLLOW);
+  try{const f=await handle.stat();if(!f.isFile()||f.ino!==s.ino||f.dev!==s.dev||f.size!==s.size)reject('RACE_DETECTED');return await handle.readFile();}
+  finally{await handle.close();}
 }
 export async function withPrivateStage<T>(run: (stage:string)=>Promise<T>): Promise<T> {
   const stage=await mkdtemp(join(tmpdir(),'knowledge-stage-'));

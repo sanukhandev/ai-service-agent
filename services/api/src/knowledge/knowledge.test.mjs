@@ -168,3 +168,45 @@ test('Google provider classifies 429, fails closed on unknown annotation identit
  await assert.rejects(google.getStore('fileSearchStores/test-123'),e=>e.code==='rate_limit');
  const answer=await google.retrieve('gemini-3.5-flash','fileSearchStores/test-123','policy?');assert.deepEqual(answer.documentResources,[]);
 });
+
+test('valid minimal PDF and OOXML DOCX, rejects malformed DOCX',()=>{
+ const pdf=Buffer.from('%PDF-1.7\n1 0 obj <<>> endobj\n%%EOF');
+ assert.equal(validateSource('policy.pdf',pdf).format,'pdf');
+ const docx=(()=>{
+   const names=[['[Content_Types].xml','<Types/>'],['word/document.xml','<w:document><w:body><w:p><w:r><w:t>Approved passage</w:t></w:r></w:p></w:body></w:document>']];
+   const parts=[],dirs=[];let offset=0;
+   for(const [name,content] of names){const n=Buffer.from(name),b=Buffer.from(content);let crc=-1;for(const x of b){crc^=x;for(let i=0;i<8;i++)crc=(crc>>>1)^((crc&1)?0xedb88320:0);}crc=(crc^-1)>>>0;
+     const h=Buffer.alloc(30+n.length);h.writeUInt32LE(0x04034b50);h.writeUInt16LE(20,4);h.writeUInt32LE(crc,14);h.writeUInt32LE(b.length,18);h.writeUInt32LE(b.length,22);h.writeUInt16LE(n.length,26);n.copy(h,30);parts.push(h,b);
+     const d=Buffer.alloc(46+n.length);d.writeUInt32LE(0x02014b50);d.writeUInt16LE(20,4);d.writeUInt16LE(20,6);d.writeUInt32LE(crc,16);d.writeUInt32LE(b.length,20);d.writeUInt32LE(b.length,24);d.writeUInt16LE(n.length,28);d.writeUInt32LE(offset,42);n.copy(d,46);dirs.push(d);offset+=h.length+b.length;
+   }
+   const directory=Buffer.concat(dirs),end=Buffer.alloc(22);end.writeUInt32LE(0x06054b50);end.writeUInt16LE(2,8);end.writeUInt16LE(2,10);end.writeUInt32LE(directory.length,12);end.writeUInt32LE(offset,16);
+   return Buffer.concat([...parts,directory,end]);
+ })();
+ assert.equal(validateSource('policy.docx',docx).format,'docx');
+ assert.throws(()=>validateSource('fake.docx',mkzip('inside.txt','irrelevant')),/INVALID_DOCX/);
+});
+test('failed indexing operation does not advance publication',async()=>seeded(async({pipeline,google,db})=>{
+ google.failOperation=true;
+ await assert.rejects(pipeline.index(AGENT,VERSION,DOC,REV),/INDEX_FAILED/);
+ assert.equal(await db.currentPublishedVersion(AGENT),null);
+}));
+test('foreign extra provider document prevents verification',async()=>seeded(async({pipeline,google})=>{
+ await pipeline.index(AGENT,VERSION,DOC,REV);
+ const foreign=google.store+'/documents/foreign-123';google.docs.set(foreign,{name:foreign,state:'STATE_ACTIVE',customMetadata:[]});
+ await assert.rejects(pipeline.verify(AGENT,VERSION,probes),/UNAPPROVED_PROVIDER_DOCUMENT/);
+}));
+test('irreversible deletion requires explicit confirmation, retired state and no pinned sessions',async()=>seeded(async({pipeline,google,db})=>{
+ await pipeline.index(AGENT,VERSION,DOC,REV);await pipeline.verify(AGENT,VERSION,probes);await pipeline.publish(AGENT,VERSION,null);
+ await assert.rejects(pipeline.deleteRetiredStore(AGENT,VERSION,'delete'),/DELETE_CONFIRMATION_REQUIRED/);
+ const correct=`DELETE:${AGENT}:${VERSION}`;
+ await assert.rejects(pipeline.deleteRetiredStore(AGENT,VERSION,correct),/DELETE_REQUIRES_RETIREMENT/);
+ db.current.set(AGENT,VERSION2);db.pins.set(db.key(AGENT,VERSION),1);await db.markVersion(AGENT,VERSION,'retired');
+ await assert.rejects(pipeline.deleteRetiredStore(AGENT,VERSION,correct),/DELETE_PINNED_OR_ACTIVE/);
+ db.pins.set(db.key(AGENT,VERSION),0);await pipeline.deleteRetiredStore(AGENT,VERSION,correct);
+ assert.equal(google.docs.size,0);assert.equal((await db.listDocuments(AGENT,VERSION)).length,1);
+}));
+test('provider timeout is classified as retryable',async()=>{
+ const fetcher=async()=>{throw new Error('connection lost');};
+ const p=new GoogleFileSearchProvider('private-key',fetcher,1);
+ await assert.rejects(p.getStore('fileSearchStores/test-123'),e=>e.code==='timeout'&&e.retryable===true);
+});
