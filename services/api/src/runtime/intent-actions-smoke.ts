@@ -129,7 +129,7 @@ async function main(){
         ...request,requestId:randomUUID(),
       }),conflict);
       await assert.rejects(()=>actions.submit(scope,ticket.id,"create_lead",request),
-        err=>err instanceof PersistenceError && err.code==="INVALID_INPUT");
+        err=>err instanceof PersistenceError && err.code==="CONFLICT");
       await assert.rejects(()=>context.selectIntent(scope,ticket.id,"company_formation"),conflict);
       const invalidSession=await new GuestSessionRepository(db).create(agent.id);
       const another={agentId:agent.id,owner:{kind:"guest" as const,token:invalidSession.token}};
