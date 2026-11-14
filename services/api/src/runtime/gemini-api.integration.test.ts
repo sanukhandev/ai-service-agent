@@ -36,7 +36,7 @@ test("Gemini HTTP admission: 60-minute session and fresh-ticket isolation",async
     const agentId=agent.rows[0]?.id;
     assert.ok(agentId);
     await db.withAgent(agentId,async client=>{
-      await client.query("UPDATE ai_conversation_sessions SET expires_at=clock_timestamp()-interval '1 second',last_accepted_customer_message_at=clock_timestamp()-interval '61 minutes' WHERE agent_id=$1 AND id=$2",[agentId,ticket.sessionId]);
+      await client.query("WITH t AS (SELECT clock_timestamp()-interval '61 minutes' AS at) UPDATE ai_conversation_sessions s SET last_accepted_customer_message_at=t.at,expires_at=t.at+interval '60 minutes' FROM t WHERE s.agent_id=$1 AND s.id=$2",[agentId,ticket.sessionId]);
     });
     const stale=await app.inject({method:"POST",url:"/api/v1/tickets/"+ticket.id+"/messages",
       headers:{cookie},payload:{requestId:randomUUID(),text:"I had two visas"}});
