@@ -107,6 +107,13 @@ try {
       const path = new URL(url).pathname;
       if (path.includes("/projects")) throw Error("Unexpected Projects API request");
       const mode = process.env.ANCFZ_SEED_FIXTURE;
+      if (mode === "unavailable") throw new TypeError("fetch failed");
+      if (mode === "unauthorized") return new Response("", {status:401});
+      if (mode === "forbidden" && path.includes("/credentials")) return new Response("", {status:403});
+      if (mode === "missing-api") return new Response("", {status:404});
+      if (mode === "prefixed" && !path.startsWith("/n8n/api/v1/")) {
+        return new Response("", {status:404});
+      }
       const data = path.includes("/credentials")
         ? (mode === "empty" ? [] : mode === "partial" ? existingCredentials.slice(0, 1) : existingCredentials)
         : path.includes("/workflows")
@@ -125,7 +132,7 @@ try {
   assert(preloadUrl.startsWith("file://"));
   function simulate(action, fixture) {
     const proc=spawnSync(process.execPath,["--import",preloadUrl,"infra/n8n/ancfz/seed-project.mjs"],{
-      cwd,env:{...process.env,ANCFZ_SEED_FIXTURE:fixture},
+      cwd,env:{...process.env,N8N_PATH:"/n8n/",ANCFZ_SEED_FIXTURE:fixture},
       input:JSON.stringify({...request,action}),encoding:"utf8",
     });
     assert.equal(proc.status,0,proc.stderr);
@@ -158,6 +165,21 @@ try {
   assert.equal(verified.alreadySeeded,true);
   const notSeeded=simulate("verify","empty");
   assert.equal(notSeeded.alreadySeeded,false);
+  const prefixed=simulate("inspect","prefixed");
+  assert.equal(prefixed.ok,true, "Fallback to N8N_PATH public API prefix must work");
+  assert.equal(prefixed.status,"ready");
+  const unauthorized=simulate("inspect","unauthorized");
+  assert.equal(unauthorized.ok,false);
+  assert.equal(unauthorized.code,"API_UNAUTHORIZED");
+  const forbidden=simulate("inspect","forbidden");
+  assert.equal(forbidden.ok,false);
+  assert.equal(forbidden.code,"API_FORBIDDEN");
+  const missingApi=simulate("inspect","missing-api");
+  assert.equal(missingApi.ok,false);
+  assert.equal(missingApi.code,"API_ENDPOINT_UNAVAILABLE");
+  const unavailable=simulate("inspect","unavailable");
+  assert.equal(unavailable.ok,false);
+  assert.equal(unavailable.code,"API_UNAVAILABLE");
 } finally {
   rmSync(testDir,{recursive:true,force:true});
 }

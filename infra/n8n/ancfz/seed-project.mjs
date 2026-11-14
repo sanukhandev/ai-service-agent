@@ -40,27 +40,78 @@ async function main() {
     throw new Error("Invalid workspace bootstrap parameters");
   }
 
-  async function api(method, path, body) {
-    const res = await fetch(new URL("/api/v1" + path, URL_BASE), {
-      method,
-      headers: {
-        "X-N8N-API-KEY": apiKey.trim(),
-        Accept: "application/json",
-        ...(body ? { "Content-Type": "application/json" } : {}),
-      },
-      ...(body ? { body: JSON.stringify(body) } : {}),
-      signal: AbortSignal.timeout(15000),
-    });
-    if (!res.ok) {
-      if ((res.status === 402 || res.status === 403) && path.startsWith("/projects")) {
-        throw new Error("n8n Projects API is not available for this key/edition. Use --workspace=personal (the default) or grant project permissions.");
-      }
-      if (res.status === 401) throw new Error("n8n API key is invalid or expired for " + path.split("?")[0]);
-      if (res.status === 403) throw new Error("n8n API key is missing permission for " + path.split("?")[0]);
-      throw new Error("n8n API " + method + " " + path.split("?")[0] + " failed with HTTP " + res.status);
+  // On some n8n releases the local API is mounted under N8N_PATH,
+  // while strip-prefix proxy deployments expose it at the container root.
+  // Discover only through authenticated read-only calls; never retry writes.
+  const normalizedPath = String(process.env.N8N_PATH || "/")
+    .replace(/^\/+|\/+$/g, "");
+  const apiRoots = [...new Set([
+    "/api/v1",
+    ...(normalizedPath ? ["/" + normalizedPath + "/api/v1"] : []),
+  ])];
+  let selectedApiRoot = null;
+
+  class SeedApiError extends Error {
+    constructor(code, message) {
+      super(message);
+      this.code = code;
     }
-    if (res.status === 204) return {};
-    return res.json();
+  }
+
+  async function api(method, path, body) {
+    const roots = selectedApiRoot ? [selectedApiRoot] : apiRoots;
+    for (let index = 0; index < roots.length; index++) {
+      const root = roots[index];
+      let res;
+      try {
+        res = await fetch(new URL(root + path, URL_BASE), {
+          method,
+          headers: {
+            "X-N8N-API-KEY": apiKey.trim(),
+            Accept: "application/json",
+            ...(body ? { "Content-Type": "application/json" } : {}),
+          },
+          ...(body ? { body: JSON.stringify(body) } : {}),
+          signal: AbortSignal.timeout(5000),
+        });
+      } catch (error) {
+        if (error instanceof TypeError || error?.name === "TimeoutError" || error?.name === "AbortError") {
+          throw new SeedApiError("API_UNAVAILABLE", "n8n internal API is unreachable or still starting");
+        }
+        throw new SeedApiError("API_REQUEST_FAILED", "n8n internal API request failed");
+      }
+      // Try the alternate configured public-API prefix only when the first
+      // read-only probe returns 404. A 401/403 is never a startup delay.
+      if (res.status === 404 && !selectedApiRoot && method === "GET" && index < roots.length - 1) continue;
+      if (!res.ok) {
+        const endpoint = path.split("?")[0];
+        if ((res.status === 402 || res.status === 403) && endpoint === "/projects") {
+          throw new SeedApiError("PROJECTS_FORBIDDEN", "n8n Projects API is unavailable; use --workspace=personal");
+        }
+        if (res.status === 401) {
+          throw new SeedApiError("API_UNAUTHORIZED", "n8n API key invalid or expired for " + endpoint);
+        }
+        if (res.status === 403) {
+          throw new SeedApiError("API_FORBIDDEN", "n8n API key lacks permission for " + endpoint);
+        }
+        if (res.status === 404 || res.status === 405) {
+          throw new SeedApiError("API_ENDPOINT_UNAVAILABLE", "n8n API endpoint unavailable: " + endpoint +
+            " (HTTP " + res.status + "; checked configured API path)");
+        }
+        if ([502, 503, 504].includes(res.status)) {
+          throw new SeedApiError("API_UNAVAILABLE", "n8n API temporarily unavailable (HTTP " + res.status + ")");
+        }
+        throw new SeedApiError("API_HTTP_ERROR", "n8n API " + method + " " + endpoint + " returned HTTP " + res.status);
+      }
+      selectedApiRoot = root;
+      if (res.status === 204) return {};
+      try {
+        return await res.json();
+      } catch {
+        throw new SeedApiError("API_INVALID_RESPONSE", "n8n API returned non-JSON response for " + path.split("?")[0]);
+      }
+    }
+    throw new SeedApiError("API_ENDPOINT_UNAVAILABLE", "No supported n8n API path found");
   }
 
   async function list(path) {
@@ -98,8 +149,9 @@ async function main() {
 
   // Check every existing record before any CLI import: n8n imports preserve
   // IDs and can overwrite credentials containing real provider secrets.
-  const credentials = await list("/credentials");
+  // Resolve the API base using workflow discovery before credential inspection.
   const workflows = await list("/workflows");
+  const credentials = await list("/credentials");
   const exactCredentials = credentialIds.filter(expected =>
     credentials.some(c => c.id === expected.id && c.name === expected.name));
   const exactInactiveWorkflows = workflowNames.filter(name =>
@@ -163,5 +215,7 @@ try {
   // Return sanitized messages only; never include credentials or request bodies.
   const known = String(error.message || "Workspace operation failed");
   const safe = known.replace(/(n8n_api_[A-Za-z0-9._-]+|Bearer [A-Za-z0-9._-]+)/g, "[redacted]");
-  process.stdout.write(JSON.stringify({ ok: false, error: safe }) + "\n");
+  const code = typeof error.code === "string" && /^[A-Z_]{3,48}$/.test(error.code)
+    ? error.code : "SEED_PREFLIGHT_FAILED";
+  process.stdout.write(JSON.stringify({ ok: false, code, error: safe }) + "\n");
 }
