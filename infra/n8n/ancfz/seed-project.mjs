@@ -1,12 +1,19 @@
 #!/usr/bin/env node
 /**
- * Runs INSIDE the private n8n Docker container.
- * Uses supported /api/v1 endpoints and the caller's owner API key.
- * A missing Projects entitlement MUST NOT silently fall back to personal space.
- * No credentials or API tokens are written to logs/disk.
+ * Private n8n bootstrap helper, executed inside the n8n Docker container.
+ *
+ * Owner-personal workspace (the default) deliberately never calls /projects.
+ * Optional named-project mode requires a Projects entitlement and explicit
+ * --workspace=project from the host seeder.
+ *
+ * Only supported public n8n API reads and project creation are used.
+ * No direct SQLite writes, account resets or credential overwrites.
+ * API keys arrive through stdin and are never logged.
  */
 const URL_BASE = "http://127.0.0.1:5678";
 const MAX_INPUT = 16384;
+const validName = value => typeof value === "string" && value.length >= 3 && value.length < 100;
+const validId = value => typeof value === "string" && /^[0-9a-f-]{36}$/i.test(value);
 
 async function readInput() {
   let data = "";
@@ -16,33 +23,40 @@ async function readInput() {
   }
   return JSON.parse(data);
 }
-const validName = s => typeof s === "string" && s.length >= 3 && s.length < 100;
-const validId = s => typeof s === "string" && /^[0-9a-f-]{36}$/i.test(s);
+
 async function main() {
-  const { action, apiKey, projectName, projectId, credentialIds, workflowNames } = await readInput();
-  if (!["prepare", "verify"].includes(action) || !validName(projectName) ||
-      typeof apiKey !== "string" || apiKey.length < 16 ||
+  const {
+    action, workspace = "personal", apiKey, projectName, projectId,
+    credentialIds, workflowNames,
+  } = await readInput();
+  if (!["prepare", "verify", "inspect"].includes(action) ||
+      !["personal", "project"].includes(workspace) ||
+      (workspace === "project" && !validName(projectName)) ||
+      typeof apiKey !== "string" || apiKey.trim().length < 16 ||
       !Array.isArray(credentialIds) || credentialIds.length !== 4 ||
       !credentialIds.every(c => validId(c.id) && validName(c.name)) ||
       !Array.isArray(workflowNames) || workflowNames.length !== 5 ||
-      !workflowNames.every(validName)) throw new Error("Invalid project bootstrap parameters");
+      !workflowNames.every(validName)) {
+    throw new Error("Invalid workspace bootstrap parameters");
+  }
 
   async function api(method, path, body) {
     const res = await fetch(new URL("/api/v1" + path, URL_BASE), {
       method,
       headers: {
-        "X-N8N-API-KEY": apiKey,
-        "Accept": "application/json",
+        "X-N8N-API-KEY": apiKey.trim(),
+        Accept: "application/json",
         ...(body ? { "Content-Type": "application/json" } : {}),
       },
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: AbortSignal.timeout(15000),
     });
     if (!res.ok) {
-      if ((res.status === 403 || res.status === 402) && path.startsWith("/projects")) {
-        throw new Error("The n8n Projects API is not enabled or the owner key lacks project permissions. Register/activate Projects in n8n or use a licensed edition. No personal-project fallback.");
+      if ((res.status === 402 || res.status === 403) && path.startsWith("/projects")) {
+        throw new Error("n8n Projects API is not available for this key/edition. Use --workspace=personal (the default) or grant project permissions.");
       }
-      if (res.status === 401) throw new Error("n8n owner API key is invalid or expired");
+      if (res.status === 401) throw new Error("n8n API key is invalid or expired for " + path.split("?")[0]);
+      if (res.status === 403) throw new Error("n8n API key is missing permission for " + path.split("?")[0]);
       throw new Error("n8n API " + method + " " + path.split("?")[0] + " failed with HTTP " + res.status);
     }
     if (res.status === 204) return {};
@@ -61,55 +75,93 @@ async function main() {
       results.push(...entries);
       const next = result?.nextCursor;
       if (!next) return results;
-      if (typeof next !== "string" || seen.has(next)) throw new Error("Invalid n8n pagination cursor for " + path);
+      if (typeof next !== "string" || seen.has(next)) {
+        throw new Error("Invalid n8n pagination cursor for " + path);
+      }
       seen.add(next);
       cursor = next;
     }
     throw new Error("n8n API pagination limit exceeded for " + path);
   }
 
-  const projects = await list("/projects");
-  let found = projects.filter(p => p.name === projectName && p.type !== "personal");
-  if (found.length > 1) throw new Error("Multiple n8n projects share this name; operator must resolve ambiguity");
-  let project = found[0] ?? null;
-  if (action === "verify" && (!project || project.id !== projectId)) {
-    throw new Error("Expected n8n project was not found after CLI import");
+  // Project discovery is exclusively for the explicit project path.
+  let project = null;
+  if (workspace === "project") {
+    const projects = await list("/projects");
+    const matches = projects.filter(p => p.name === projectName && p.type !== "personal");
+    if (matches.length > 1) throw new Error("Multiple n8n projects share this name; resolve ambiguity");
+    project = matches[0] ?? null;
+    if (action === "verify" && (!project || project.id !== projectId)) {
+      throw new Error("Expected named n8n project was not found after import");
+    }
   }
-  // Preflight global credential ID collisions even when target project is new.
-  // Importing by matching ID can overwrite an existing credential!
+
+  // Check every existing record before any CLI import: n8n imports preserve
+  // IDs and can overwrite credentials containing real provider secrets.
   const credentials = await list("/credentials");
   const workflows = await list("/workflows");
-  const matchCreds = credentialIds.filter(expected => credentials.some(c => c.id === expected.id && c.name === expected.name));
-  const matchWorkflows = workflowNames.filter(name => workflows.some(w => w.name === name && w.active === false));
-  const foreignCreds = credentialIds.filter(expected => credentials.some(c => c.id === expected.id && c.name !== expected.name));
-  if (foreignCreds.length) throw new Error("Credential ID collision detected; import refused");
+  const exactCredentials = credentialIds.filter(expected =>
+    credentials.some(c => c.id === expected.id && c.name === expected.name));
+  const exactInactiveWorkflows = workflowNames.filter(name =>
+    workflows.some(w => w.name === name && w.active === false));
+  const conflictingCredentials = credentialIds.some(expected =>
+    credentials.some(c =>
+      (c.id === expected.id || c.name === expected.name) &&
+      (c.id !== expected.id || c.name !== expected.name)));
+  const conflictingWorkflows = workflowNames.some(name => {
+    const sameName = workflows.filter(w => w.name === name);
+    return sameName.some(w => w.active !== false) || sameName.length > 1;
+  });
+  const allPresent = exactCredentials.length === credentialIds.length &&
+    exactInactiveWorkflows.length === workflowNames.length;
+  const hasAny = credentialIds.some(expected =>
+    credentials.some(c => c.id === expected.id || c.name === expected.name)) ||
+    workflowNames.some(name => workflows.some(w => w.name === name));
+  const status = conflictingCredentials || conflictingWorkflows ? "conflict" :
+    allPresent ? "ready" : hasAny ? "partial" : "empty";
 
+  if (action === "inspect") {
+    return {
+      ok: true, workspace, status,
+      matchingCredentials: exactCredentials.length,
+      matchingInactiveWorkflows: exactInactiveWorkflows.length,
+      ...(project ? { projectId: project.id } : {}),
+    };
+  }
   if (action === "verify") {
-    const success = matchCreds.length === credentialIds.length && matchWorkflows.length === workflowNames.length;
-    return { ok: true, projectId: project.id, alreadySeeded: success };
+    return {
+      ok: true,
+      workspace,
+      ...(project ? { projectId: project.id } : {}),
+      alreadySeeded: status === "ready",
+    };
   }
 
-  if (matchCreds.length || matchWorkflows.length) {
-    // The public list endpoints do not prove that matching assets belong to
-    // this project. NEVER report success by matching names globally.
-    // Re-importing credentials with the same IDs can overwrite secrets.
-    throw new Error("Existing ANCFZ credentials/workflows detected. Refusing duplicate or partial reseed; verify their project ownership and back up the n8n DB before retry.");
+  // A completed personal import is repeat-safe. Never reimport credentials:
+  // n8n CLI imports can overwrite secrets when an ID already exists.
+  if (status === "ready" && workspace === "personal") {
+    return { ok: true, workspace, alreadySeeded: true };
   }
-  if (!project) {
+  if (status !== "empty") {
+    throw new Error("Existing ANCFZ credentials/workflows detected. Refusing duplicate or partial reseed to protect secrets and existing workflows; inspect and back up before making changes.");
+  }
+
+  if (workspace === "project" && !project) {
     const created = await api("POST", "/projects", { name: projectName });
-    if (!created || typeof created.id !== "string") throw new Error("n8n project creation returned no ID");
+    if (!created || typeof created.id !== "string") {
+      throw new Error("n8n project creation returned no ID");
+    }
     project = created;
   }
-  return { ok: true, projectId: project.id, alreadySeeded: false };
+  return { ok: true, workspace, ...(project ? { projectId: project.id } : {}), alreadySeeded: false };
 }
+
 try {
   const result = await main();
   process.stdout.write(JSON.stringify(result) + "\n");
 } catch (error) {
-  // Never print HTTP request bodies, API keys, cookies or provider credentials.
-  const known = String(error.message || "Project operation failed");
+  // Return sanitized messages only; never include credentials or request bodies.
+  const known = String(error.message || "Workspace operation failed");
   const safe = known.replace(/(n8n_api_[A-Za-z0-9._-]+|Bearer [A-Za-z0-9._-]+)/g, "[redacted]");
   process.stdout.write(JSON.stringify({ ok: false, error: safe }) + "\n");
-  // Controlled API failure is returned as structured JSON for the host orchestrator.
-  // No exception details containing credentials are printed to stderr.
 }
