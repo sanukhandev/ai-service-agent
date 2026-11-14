@@ -32,7 +32,7 @@ Browser → Nginx → Next.js and Node Fastify → Gemini Developer API / Gemini
 ## PostgreSQL, migrations and workers
 
 - All agent-private reads/writes use trusted ticket authorization and transaction-local agent RLS scope. Runtime connects as non-superuser `agent_runtime`; never run application queries under the migration owner.
-- `infra/bootstrap/apply-migrations.sh` applies numbered forward migrations with immutable checksums, then seeds the version-pinned Sara Gemini agent. **Do not edit or delete already-applied SQL migrations (001–015).** Historical column names are not evidence of an active provider path; remove them only through a separately tested forward migration.
+- `infra/bootstrap/apply-migrations.sh` applies numbered forward migrations with immutable checksums, then seeds the version-pinned Sara Gemini agent. **Do not edit or delete already-applied SQL migrations (001–020).** Historical column names are not evidence of an active provider path; remove them only through a separately tested forward migration.
 - Preserve durable ticket/message acceptance, idempotency, queue recovery, event outbox, SSE replay and provider outcome checks. Do not trust an n8n HTTP acknowledgement as a completed business action.
 - Only configure real customer/provider integrations in isolated, explicitly authorized sandbox environments.
 
