@@ -9,12 +9,17 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
 
 # Use the same private .env that Docker Compose uses. Never print secrets.
-if [[ -f .env ]]; then
+if [[ -f .env && -z "${POSTGRES_PASSWORD:-}" ]]; then
   set -a
   # shellcheck source=/dev/null
   source .env
   set +a
 fi
+GEMINI_COMPOSE_PROJECT="${GEMINI_COMPOSE_PROJECT:-ai-service-agent-gemini}"
+case "$GEMINI_COMPOSE_PROJECT" in
+  ai-service-agent-gemini|ai-service-agent-gemini-*) ;;
+  *) echo "Refusing non-Gemini Compose project" >&2; exit 2 ;;
+esac
 if [[ "${ANCFZ_CATALOG_ENV:-}" != "test" ]]; then
   echo "Refusing publication without ANCFZ_CATALOG_ENV=test" >&2
   exit 2
@@ -27,16 +32,16 @@ fi
 #
 # Windows / Git Bash cannot pass the ~90 KiB JSON as one docker.exe argument.
 # Copy the catalog to the PostgreSQL container and read it server-side.
-container_id="$(docker compose -p ai-service-agent-gemini ps -q postgres)"
+container_id="$(docker compose -p "$GEMINI_COMPOSE_PROJECT" ps -q postgres)"
 if [[ -z "$container_id" ]]; then
-  echo "PostgreSQL service is not running. Start with docker compose -p ai-service-agent-gemini up -d." >&2
+  echo "PostgreSQL service is not running. Start with docker compose -p "$GEMINI_COMPOSE_PROJECT" up -d." >&2
   exit 1
 fi
 
 seed_basename="ancfz-test-seed-$(date +%s)-$$-${RANDOM}.json"
 seed_path="/tmp/$seed_basename"
 cleanup() {
-  MSYS_NO_PATHCONV=1 docker compose -p ai-service-agent-gemini exec -T postgres rm -f "$seed_path" >/dev/null 2>&1 || true
+  MSYS_NO_PATHCONV=1 docker compose -p "$GEMINI_COMPOSE_PROJECT" exec -T postgres rm -f "$seed_path" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -46,12 +51,12 @@ MSYS_NO_PATHCONV=1 docker cp \
   "${container_id}:${seed_path}"
 
 # Do not depend on NTFS file mode bits.
-MSYS_NO_PATHCONV=1 docker compose -p ai-service-agent-gemini exec -T postgres chmod 0644 "$seed_path"
+MSYS_NO_PATHCONV=1 docker compose -p "$GEMINI_COMPOSE_PROJECT" exec -T postgres chmod 0644 "$seed_path"
 
 # Only short arguments cross Windows -> Docker Desktop. The JSON data remains
 # inside Postgres' private container, and is never passed via an environment
 # variable or a host process argument.
-MSYS_NO_PATHCONV=1 docker compose -p ai-service-agent-gemini exec -T postgres \
+MSYS_NO_PATHCONV=1 docker compose -p "$GEMINI_COMPOSE_PROJECT" exec -T postgres \
   psql -v ON_ERROR_STOP=1 \
        --username postgres \
        --dbname "${POSTGRES_DB:-ai_service_agent_gemini}" \
