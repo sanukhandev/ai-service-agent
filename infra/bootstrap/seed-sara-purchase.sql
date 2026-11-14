@@ -1,78 +1,97 @@
--- New tickets pin revision 2. Existing revision 1 tickets remain pinned
--- and cannot silently acquire new purchase obligations.
--- Every seeded intent uses the same two identity documents for this POC.
--- These are POC intake rules, not a claim about official ANCFZ regulations.
+-- Publish a fresh immutable purchase/catalog policy after the current catalog.
+-- Safe for 4-intent bootstrap and the separately published 21-intent test catalog.
+-- No existing ticket gets silently re-pinned, and repeat bootstraps are no-ops.
 BEGIN;
-DO $$
+DO $seed$
+DECLARE
+  agent uuid;
+  source_catalog uuid;
+  source_revision integer;
+  destination uuid;
+  new_revision integer;
+  missing_policy boolean;
 BEGIN
-  IF EXISTS (
-    SELECT 1 FROM intent_catalog_versions v
-    JOIN agents a ON a.id=v.agent_id AND a.agent_key='ancfz'
-    JOIN intents i ON i.agent_id=v.agent_id AND i.catalog_version_id=v.id
-    WHERE v.revision=2 AND NOT 'purchase_quotation'=ANY(i.allowed_actions)
-  ) THEN
-    RAISE EXCEPTION 'Revision 2 is already in use for a different catalog; do not overwrite';
+  SELECT id INTO agent FROM agents WHERE agent_key='ancfz' AND status='active' FOR UPDATE;
+  IF agent IS NULL THEN RAISE EXCEPTION 'Sara/ANCFZ agent missing'; END IF;
+
+  -- Refuse a corrupt publication state rather than picking an arbitrary revision.
+  IF (SELECT count(*) FROM intent_catalog_versions
+      WHERE agent_id=agent AND status='published') <> 1 THEN
+    RAISE EXCEPTION 'Exactly one published ANCFZ intent catalog is required';
   END IF;
-END $$;
+  SELECT id,revision INTO source_catalog,source_revision
+  FROM intent_catalog_versions
+  WHERE agent_id=agent AND status='published' FOR UPDATE;
 
-INSERT INTO intent_catalog_versions(agent_id,revision,status)
-SELECT id,2,'draft' FROM agents WHERE agent_key='ancfz'
-ON CONFLICT(agent_id,revision) DO NOTHING;
+  -- Documents are universal. Purchase is offered only when a quote can be
+  -- requested; a quote also requires a separately consented Salesforce lead.
+  SELECT EXISTS (
+    SELECT 1 FROM intents i WHERE i.agent_id=agent
+      AND i.catalog_version_id=source_catalog
+      AND (
+        (('generate_quote'=ANY(i.allowed_actions)) AND
+         (NOT 'create_lead'=ANY(i.allowed_actions) OR
+          NOT 'purchase_quotation'=ANY(i.allowed_actions)))
+        OR (SELECT count(*) FROM intent_document_requirements d
+            WHERE d.agent_id=i.agent_id AND d.intent_id=i.id
+              AND d.required AND d.requirement_key IN ('passport','emirates_id')) <> 2
+        OR (SELECT count(*) FROM intent_document_requirements d
+            WHERE d.agent_id=i.agent_id AND d.intent_id=i.id) <> 2
+      )
+  ) INTO missing_policy;
+  IF NOT missing_policy THEN
+    RAISE NOTICE 'Current published ANCFZ catalog already has complete purchase-document policy; unchanged';
+    RETURN;
+  END IF;
 
-INSERT INTO intents(agent_id,catalog_version_id,intent_key,name,description,examples,allowed_actions)
-SELECT i.agent_id,dest.id,i.intent_key,i.name,i.description,i.examples,
-  CASE WHEN 'purchase_quotation'=ANY(i.allowed_actions)
-    THEN i.allowed_actions ELSE array_append(i.allowed_actions,'purchase_quotation') END
-FROM intents i
-JOIN intent_catalog_versions old ON old.agent_id=i.agent_id AND old.id=i.catalog_version_id AND old.revision=1
-JOIN intent_catalog_versions dest ON dest.agent_id=old.agent_id AND dest.revision=2
-JOIN agents a ON a.id=i.agent_id AND a.agent_key='ancfz'
-ON CONFLICT(agent_id,catalog_version_id,intent_key) DO NOTHING;
+  SELECT coalesce(max(revision),0)+1 INTO new_revision
+  FROM intent_catalog_versions WHERE agent_id=agent;
+  INSERT INTO intent_catalog_versions(agent_id,revision,status)
+  VALUES(agent,new_revision,'draft') RETURNING id INTO destination;
 
-INSERT INTO intent_requirements(agent_id,intent_id,requirement_key,label,value_type,required_for,guidance)
-SELECT r.agent_id,next.id,r.requirement_key,r.label,r.value_type,r.required_for,r.guidance
-FROM intent_requirements r
-JOIN intents prior ON prior.agent_id=r.agent_id AND prior.id=r.intent_id
-JOIN intent_catalog_versions old ON old.agent_id=prior.agent_id AND old.id=prior.catalog_version_id AND old.revision=1
-JOIN intent_catalog_versions dest ON dest.agent_id=r.agent_id AND dest.revision=2
-JOIN intents next ON next.agent_id=r.agent_id AND next.catalog_version_id=dest.id AND next.intent_key=prior.intent_key
-JOIN agents a ON a.id=r.agent_id AND a.agent_key='ancfz'
-ON CONFLICT(agent_id,intent_id,requirement_key) DO NOTHING;
+  INSERT INTO intents(
+    agent_id,catalog_version_id,intent_key,name,description,examples,allowed_actions
+  )
+  SELECT i.agent_id,destination,i.intent_key,i.name,i.description,i.examples,
+    CASE WHEN 'generate_quote'=ANY(i.allowed_actions)
+      THEN (
+        SELECT array_agg(DISTINCT a)
+        FROM unnest(i.allowed_actions||ARRAY['create_lead','purchase_quotation']::text[]) AS a
+      )
+      ELSE i.allowed_actions END
+  FROM intents i WHERE i.agent_id=agent AND i.catalog_version_id=source_catalog;
 
--- No business-intent-specific application forms are accepted in the POC.
--- The purchase gate still requires an authorized, verified quotation; a
--- purchase_quotation flag never creates an offering or an approved price.
-INSERT INTO intent_document_requirements(agent_id,intent_id,requirement_key,label,guidance,required,sort_order)
-SELECT i.agent_id,i.id,doc.key,doc.label,doc.guidance,true,doc.ord
-FROM agents a
-JOIN intent_catalog_versions v ON v.agent_id=a.id AND v.revision=2
-JOIN intents i ON i.agent_id=a.id AND i.catalog_version_id=v.id
-CROSS JOIN (VALUES
-  ('passport','Passport','Upload one clear synthetic passport bio-page. The holder name is extracted for the TEST invoice.',1),
-  ('emirates_id','Emirates ID','Upload one clear synthetic Emirates ID image/PDF. The extracted holder name must match the passport.',2)
-) AS doc(key,label,guidance,ord)
-WHERE a.agent_key='ancfz'
-ON CONFLICT(agent_id,intent_id,requirement_key) DO NOTHING;
+  INSERT INTO intent_requirements(
+    agent_id,intent_id,requirement_key,label,value_type,required_for,guidance
+  )
+  SELECT r.agent_id,dest.id,r.requirement_key,r.label,r.value_type,
+    r.required_for,r.guidance
+  FROM intent_requirements r
+  JOIN intents src ON src.agent_id=r.agent_id AND src.id=r.intent_id
+    AND src.catalog_version_id=source_catalog
+  JOIN intents dest ON dest.agent_id=src.agent_id
+    AND dest.catalog_version_id=destination AND dest.intent_key=src.intent_key;
 
--- Avoid treating a revision 2 that was previously populated with other
--- required document types as if it satisfied this revised POC specification.
-DO $$
-BEGIN
- IF EXISTS (
-   SELECT 1 FROM intent_document_requirements req
-   JOIN intents i ON i.agent_id=req.agent_id AND i.id=req.intent_id
-   JOIN intent_catalog_versions v ON v.agent_id=i.agent_id AND v.id=i.catalog_version_id
-   JOIN agents a ON a.id=i.agent_id AND a.agent_key='ancfz'
-   WHERE v.revision=2 AND req.requirement_key NOT IN ('passport','emirates_id')
- ) THEN
-   RAISE EXCEPTION 'Catalog revision 2 has old document requirements; migrate/publish a new revision instead of silently mixing policies';
- END IF;
-END $$;
+  INSERT INTO intent_document_requirements(
+    agent_id,intent_id,requirement_key,label,guidance,required,sort_order
+  )
+  SELECT i.agent_id,i.id,d.key,d.label,d.guidance,true,d.ord
+  FROM intents i CROSS JOIN (VALUES
+    ('passport','Passport','POC: synthetic passport bio page. OCR extracts the invoice billing name.',1),
+    ('emirates_id','Emirates ID','POC: synthetic Emirates ID. OCR extracts holder name for cross-checking.',2)
+  ) AS d(key,label,guidance,ord)
+  WHERE i.agent_id=agent AND i.catalog_version_id=destination;
 
-UPDATE intent_catalog_versions v SET status='retired'
-FROM agents a WHERE v.agent_id=a.id AND a.agent_key='ancfz' AND v.revision=1
-  AND v.status='published';
-UPDATE intent_catalog_versions v SET status='published',published_at=COALESCE(v.published_at,now())
-FROM agents a WHERE v.agent_id=a.id AND a.agent_key='ancfz' AND v.revision=2
-  AND v.status='draft';
+  -- Existing sessions keep the old version; new tickets pin the newly
+  -- published copy. No mutation of old intent IDs, facts or requirements.
+  UPDATE intent_catalog_versions SET status='retired'
+  WHERE agent_id=agent AND id=source_catalog AND status='published';
+  UPDATE intent_catalog_versions
+  SET status='published',published_at=now()
+  WHERE agent_id=agent AND id=destination AND status='draft';
+
+  RAISE NOTICE 'Published ANCFZ intent policy revision % from revision % with % intents',
+    new_revision,source_revision,
+    (SELECT count(*) FROM intents WHERE agent_id=agent AND catalog_version_id=destination);
+END $seed$;
 COMMIT;
