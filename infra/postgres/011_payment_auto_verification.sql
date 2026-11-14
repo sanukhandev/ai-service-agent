@@ -8,7 +8,7 @@ ALTER TABLE ticket_payment_attempts
 
 CREATE INDEX payment_verification_due
   ON ticket_payment_attempts(agent_id,next_verification_at,id)
-  WHERE state IN ('checkout_available','order_created_checkout_unavailable','payment_pending','unknown_outcome');
+  WHERE state IN ('checkout_available','order_created_checkout_unavailable','payment_pending','unknown_outcome','verifying');
 
 GRANT UPDATE(verification_attempts,next_verification_at)
   ON ticket_payment_attempts TO agent_runtime;
