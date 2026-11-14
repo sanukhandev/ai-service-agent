@@ -1,4 +1,6 @@
-# ANCFZ n8n seed — local POC
+# ANCFZ n8n seed — Gemini experiment (localhost:2000)
+
+**Experiment isolation:** These commands operate against the `ai-service-agent-gemini` Compose project from this worktree. They do **not** seed the Foundry main n8n instance. Use a separate experimental `.env`, n8n encryption key and owner API key. Do not copy credentials or database volumes from main. The public editor is `http://localhost:2000/n8n/`.
 
 The default target is the **existing n8n instance owner's personal workspace**.
 It does not require the paid/registered Projects entitlement, does not call the
@@ -45,11 +47,11 @@ From the repository root:
 docker compose --profile workflows up -d n8n gotenberg
 docker compose up -d --build nginx
 docker compose --profile workflows ps -a
-Start-Process "http://localhost/n8n/"
+Start-Process "http://localhost:2000/n8n/"
 ```
 
-Nginx is bound to `127.0.0.1:80`. The n8n editor is
-`http://localhost/n8n/` and **n8n has no exposed host port**. Node
+Nginx is bound to `127.0.0.1:2000`. The n8n editor is
+`http://localhost:2000/n8n/` and **n8n has no exposed host port**. Node
 uses `http://n8n:5678/webhook/...` privately; Nginx blocks
 browser access to webhook/form/MCP endpoints.
 
