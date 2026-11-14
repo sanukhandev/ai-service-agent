@@ -13,7 +13,8 @@
     "@ai-service-agent/contracts": "0.1.0",
     "@google/genai": "2.32.0",
     "fastify": "^5.7.0",
-    "pg": "^8.16.0"
+    "pg": "^8.16.0",
+    "pdf-parse": "2.4.5"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
