@@ -102,7 +102,7 @@ try {
   report.authorizedFunction=intent.kind==="candidate" &&
     intent.candidate.functionCalls.some(x=>x.name==="find_intents");
   if(!report.authorizedFunction)fail("FUNCTION_CALL_NOT_PROVEN");
-  process.stdout.write(JSON.stringify({status:"G1_LIVE_COMPATIBILITY_PASS",...report},null,2)+"\n");
+  // Emit PASS only after the finally cleanup attempt completes.
 } finally {
   if(store){
     try{
@@ -117,3 +117,6 @@ try {
     }
   }
 }
+
+if(!report.cleanup)fail("CLEANUP_UNVERIFIED");
+process.stdout.write(JSON.stringify({status:"G1_LIVE_COMPATIBILITY_PASS",...report},null,2)+"\\n");
