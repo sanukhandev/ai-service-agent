@@ -15,11 +15,14 @@ const cwd = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 assert.equal(OWNER_EMAIL, "admin@techcarrot.ae");
 assert.equal(PROJECT_NAME, "anzfc");
 assert.equal(WORKFLOWS.length, 5);
-assert.equal(parseArgs([]).stage, "all");
+assert.equal(parseArgs([]).stage, "inspect");
+assert.throws(() => parseArgs(["--stage=all"]));
+assert.throws(() => parseArgs(["--allow-owner-update"]));
 assert.equal(parseArgs([]).workspace, "personal");
 assert.equal(parseArgs(["--workspace=personal", "--stage=import"]).workspace, "personal");
 assert.equal(parseArgs(["--workspace=project"]).workspace, "project");
 assert.equal(parseArgs(["--stage=owner"]).stage, "owner");
+assert.equal(parseArgs(["--stage=inspect"]).stage, "inspect");
 assert.equal(parseArgs(["--stage=import"]).stage, "import");
 assert.equal(parseArgs(["--dry-run"]).dryRun, true);
 assert.throws(() => parseArgs(["--workspace=unknown"]));
@@ -68,7 +71,7 @@ const creds=JSON.parse(readFileSync(new URL("../infra/n8n/ancfz/credentials.temp
 assert.equal(creds.length,4);
 assert.equal(creds.find(c => c.type === "oAuth2Api").data.clientId,"xxxx");
 
-let run=spawnSync(process.execPath,["scripts/seed-n8n-anzfc.mjs","--stage=all","--dry-run"],{cwd,encoding:"utf8"});
+let run=spawnSync(process.execPath,["scripts/seed-n8n-anzfc.mjs","--dry-run"],{cwd,encoding:"utf8"});
 assert.equal(run.status,0,run.stderr);
 assert(run.stdout.includes("No Docker, database, provider or network calls made"));
 assert(run.stdout.includes("workspace=personal"));
@@ -96,9 +99,9 @@ try {
       if (path.includes("/projects")) throw Error("Unexpected Projects API request");
       const mode = process.env.ANCFZ_SEED_FIXTURE;
       const data = path.includes("/credentials")
-        ? (mode === "empty" ? [] : existingCredentials)
+        ? (mode === "empty" ? [] : mode === "partial" ? existingCredentials.slice(0, 1) : existingCredentials)
         : path.includes("/workflows")
-          ? (mode === "empty" ? [] : existingWorkflows)
+          ? (mode === "empty" ? [] : mode === "partial" ? existingWorkflows.slice(0, 1) : existingWorkflows)
           : (() => { throw Error("Unexpected API request: " + path); })();
       return new Response(JSON.stringify({data}), {status:200,headers:{"Content-Type":"application/json"}});
     };
@@ -120,7 +123,21 @@ try {
   assert.equal(empty.workspace,"personal");
   assert.equal(empty.projectId,undefined);
   assert.equal(empty.alreadySeeded,false);
-  const blocked=simulate("prepare","existing");
+  const completed=simulate("prepare","existing");
+  assert.equal(completed.ok,true);
+  assert.equal(completed.alreadySeeded,true, "A complete inactive setup must not overwrite anything");
+  const ready=simulate("inspect","existing");
+  assert.equal(ready.ok,true);
+  assert.equal(ready.status,"ready");
+  assert.equal(ready.matchingCredentials,4);
+  assert.equal(ready.matchingInactiveWorkflows,5);
+  const none=simulate("inspect","empty");
+  assert.equal(none.status,"empty");
+  const partial=simulate("inspect","partial");
+  assert.equal(partial.status,"partial");
+  assert.equal(partial.matchingCredentials,1);
+  assert.equal(partial.matchingInactiveWorkflows,1);
+  const blocked=simulate("prepare","partial");
   assert.equal(blocked.ok,false);
   assert.match(blocked.error,/Refusing duplicate or partial reseed/);
   const verified=simulate("verify","existing");
@@ -132,4 +149,4 @@ try {
   rmSync(testDir,{recursive:true,force:true});
 }
 
-console.log("ANCFZ n8n seed PASS: personal default, no Projects API, collision guard, verified inactive imports, optional named project, dry run");
+console.log("ANCFZ n8n seed PASS: default inspect, personal workspace, idempotent complete import, partial import rejection, no Projects API, inactive imports");
