@@ -2,6 +2,13 @@
 
 **Gemini experiment branch override (this branch only):** On `experiment/gemini-file-search-poc`, follow [the Gemini experimental implementation plan](docs/gemini-experiment-implementation-plan.md) for AI provider, knowledge, infrastructure and conversation-session behavior; it supersedes conflicting Foundry-only directions below. Preserve `main` unchanged and never merge/cherry-pick Gemini changes into it. **AI memory is session-only: 60 minutes of inactivity from the last accepted customer message; expiration starts a fresh AI conversation with no carryover.** PostgreSQL retains historical tickets/messages; Redis is only active-context cache. The Foundry instructions below describe the original baseline and are not the active model-integration target on this branch.
 
+## Experiment branch safety — mandatory
+
+- Directional integration is **one-way only**: `main` → `experiment/gemini-file-search-poc`. Never merge, cherry-pick, copy experimental Gemini implementation into `main`, or create a pull request targeting `main` from the experiment/any descendant branch.
+- All Gemini-related code, documentation, environment changes, model bindings and tests must be committed to `experiment/gemini-file-search-poc` or short-lived child branches targeting that experiment, **never to `main`**.
+- Review and verify both heads before and after importing upstream changes. GitHub currently reports `main` is not protected; do not mistake a written policy or optional CI check for server-side protection.
+- See [permanent directional merge policy](.github/GEMINI_BRANCH_POLICY.md) and [PR rejection check](.github/workflows/reject-gemini-to-main.yml). Enable a repository-admin-owned required gate for enforceable protection.
+
 ## 1. Current scope (POC)
 
 Build one generic, **agent-centric** business assistant platform. Sara / ANCFZ is an example configuration. The repository is a clean rebuild, not a migration of old `agentic-rag-ai` code.
