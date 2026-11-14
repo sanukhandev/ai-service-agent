@@ -41,7 +41,7 @@ try {
     ' const old={name:oldNodes[i],type:i===1?"n8n-nodes-base.httpRequest":"n8n-nodes-base.code",',
     '   credentials:i===1?payCred:undefined,parameters:i===1?{method:"POST"}:{jsCode:"return []"}};',
     ' const priorInvoice=structuredClone(d);',
-    ' if(i===0)priorInvoice.nodes.find(n=>n.name==="Prepare Escaped HTML").parameters.jsCode="if(b.documentType===\\'invoice\\' && b.paymentVerified!==true) throw new Error(\\'Invoice requires verified test payment\\');";',
+    " if(i===0)priorInvoice.nodes.find(n=>n.name==='Prepare Escaped HTML').parameters.jsCode=\"if(b.documentType==='invoice' && b.paymentVerified!==true) throw new Error('Invoice requires verified test payment');\";",
     ' const content=legacy?(i===0?priorInvoice:{name:oldNames[i],nodes:[web,old],',
     '   connections:{},settings:d.settings}):{...d};',
     ' return {...content,id:"wf-"+i,active:mode==="active"&&i===0};',
