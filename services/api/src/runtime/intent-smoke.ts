@@ -58,6 +58,7 @@ async function main() {
       intentKey:"company_formation",
       facts:[
         {key:"business_activity",value:"IT services"},
+        {key:"customer_email",value:"demo@example.invalid"},
         {key:"visa_count",value:1},
         {key:"office_preference",value:"shared office"},
       ],
@@ -72,7 +73,7 @@ async function main() {
     assert.ok((offers.offerings as Array<{price?:unknown}>).every(x=>!x.price),"Do not synthesize pricing");
     const correctionContext:TrustedToolContext={...context,sourceCustomerMessageId:correctionMessageId};
     await invoke("record_ticket_facts",{
-      intentKey:"company_formation",facts:[{key:"visa_count",value:2}],
+      intentKey:"company_formation",facts:[{key:"visa_count",value:2},{key:"shareholder_count",value:2}],
     },correctionContext);
     const stored=await new ConversationContextRepository(db).read(scope,ticketId);
     assert.equal(stored.activeIntent,"company_formation");
@@ -85,7 +86,7 @@ async function main() {
       );
       return Number(result.rows[0]?.count??0);
     });
-    assert.equal(events,1,"Customer correction must retain provenance");
+    assert.equal(events,2,"Customer correction must retain provenance");
     const denied=await registry.execute({
       name:"execute_workflow",callId:"forbidden",argumentsJson:"{}",
     },context);
