@@ -46,6 +46,10 @@ services:
       ANCFZ_TEST_OTP_ENABLED: ${ANCFZ_TEST_OTP_ENABLED:-false}
       ANCFZ_OTP_MOCK_ENABLED: ${ANCFZ_OTP_MOCK_ENABLED:-false}
       ANCFZ_OTP_PEPPER: ${ANCFZ_OTP_PEPPER:-}
+      # Identity extraction provider: Azure by default, synthetic-only Gemini opt-in.
+      IDENTITY_OCR_PROVIDER: ${IDENTITY_OCR_PROVIDER:-azure}
+      ALLOW_SYNTHETIC_GEMINI_OCR: ${ALLOW_SYNTHETIC_GEMINI_OCR:-NO}
+      GEMINI_ID_OCR_MODEL_ID: ${GEMINI_ID_OCR_MODEL_ID:-gemini-3.8-flash}
       # Optional separately approved Azure identity OCR; disabled without keys.
       AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
       AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}

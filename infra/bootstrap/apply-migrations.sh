@@ -111,5 +111,6 @@ psql -v ON_ERROR_STOP=1 \
 # This optional ANCFZ purchase policy only extends the published test catalog.
 # It does not activate payments, invoice dispatch or an OCR provider.
 psql -v ON_ERROR_STOP=1 -f /scripts/seed-sara-purchase.sql
+psql -v ON_ERROR_STOP=1 -f /scripts/seed-agent-action-bindings.sql
 
-echo "Gemini migrations (003-022), Sara bootstrap and ANCFZ purchase policy validated"
+echo "Gemini migrations (003-022), Sara bootstrap, action bindings and ANCFZ purchase policy validated"

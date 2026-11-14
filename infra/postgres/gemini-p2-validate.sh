@@ -83,6 +83,10 @@ SELECT count(*) FROM pg_class WHERE relkind='r' AND oid IN (
  to_regclass('public.agent_action_bindings'))")"
 test "$table_count" = '9'
 echo 'Gemini and ANCFZ migrations 001-022 coexist without number collisions'
+bindings="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT count(*) FROM agent_action_bindings b JOIN agents a ON a.id=b.agent_id
+WHERE a.agent_key='ancfz' AND b.enabled=true")"
+test "$bindings" = '10'
 echo 'TEST 3: Fail closed on migration checksum change'
 tampered="$(mktemp)"
 cp infra/postgres/009_gemini_bindings.sql "$tampered"

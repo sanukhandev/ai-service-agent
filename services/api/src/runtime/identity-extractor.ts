@@ -95,7 +95,7 @@ export function parseGeminiVisionResult(raw:unknown,kind:IdentityKind):Extracted
   const name=typeof value["fullName"]==="string"
     ? normalizeBillingName(value["fullName"]):"";
   if(name.length<3||name.length>200||name.split(" ").length<2||
-     !/[\\p{L}]/u.test(name)||/[^\\p{L}\\p{M}\\p{N} .'’-]/u.test(name))
+     !/[\p{L}]/u.test(name)||/[^\p{L}\p{M}\p{N} .'’-]/u.test(name))
     throw new PersistenceError("CONFLICT","Extracted name is not sufficiently reliable");
   const number=typeof value["documentNumber"]==="string"
     ? value["documentNumber"].replace(/[^A-Za-z0-9]/g,"").toUpperCase():"";
