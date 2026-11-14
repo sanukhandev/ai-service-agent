@@ -5,6 +5,7 @@ import {PersistenceDatabase} from "../database/pool.js";
 import {GuestSessionRepository} from "./tickets.js";
 import {GeminiSessionRepository} from "./gemini.js";
 import {ConversationContextRepository} from "./context.js";
+import {TicketMessageRepository} from "./messages.js";
 import {extractiveSummary,buildSessionContext} from "../runtime/conversation-continuity.js";
 
 test("Gemini 56-message timeline uses latest messages, excludes future turns and preserves corrected facts (real disposable PostgreSQL)",async()=>{
@@ -66,5 +67,33 @@ test("Gemini 56-message timeline uses latest messages, excludes future turns and
     assert.equal(uiHistory.messages.length,56);
     assert.equal(uiHistory.messages[0]?.text,"I need two visas");
     assert.equal(uiHistory.messages.at(-1)?.text,"Correction: three visas, not two");
+    // A citation from an older assistant message must remain owner-accessible
+    // after it disappears from the latest-200 UI snapshot.
+    const messageRepo=new TicketMessageRepository(db);
+    const sourceId="synthetic-source-"+randomUUID();
+    await messageRepo.createAssistantMessage(scope,session.ticketId,randomUUID(),
+      "Synthetic cited response",[{sourceId,title:"Synthetic approved-file fixture"}]);
+    await db.withAgent(agentId,async client=>{
+      const expanded=await client.query<{last_message_sequence:string}>(
+        "UPDATE tickets SET last_message_sequence=last_message_sequence+205 WHERE agent_id=$1 AND id=$2 RETURNING last_message_sequence",
+        [agentId,session.ticketId]);
+      const last=Number(expanded.rows[0]?.last_message_sequence);
+      assert(Number.isSafeInteger(last));
+      await client.query(
+        `INSERT INTO ticket_messages(agent_id,ticket_id,role,content,message_sequence)
+         SELECT $1,$2,'customer','Archived synthetic turn '||seq,seq
+         FROM generate_series($3::bigint,$4::bigint) AS seq`,
+        [agentId,session.ticketId,last-204,last]);
+    });
+    const latestUi=await messageRepo.recentMessages(scope,session.ticketId,200);
+    assert.equal(latestUi.length,200);
+    assert(!latestUi.some(m=>m.sourceReferences.some(r=>r.sourceId===sourceId)));
+    const located=await messageRepo.findSourceReference(scope,session.ticketId,sourceId);
+    assert.equal(located?.title,"Synthetic approved-file fixture");
+    const otherGuest=await new GuestSessionRepository(db).create(agentId);
+    await assert.rejects(()=>messageRepo.findSourceReference({
+      agentId,owner:{kind:"guest" as const,token:otherGuest.token},
+    },session.ticketId,sourceId));
+
   }finally{await db.close();}
 });
