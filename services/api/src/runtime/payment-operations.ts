@@ -68,6 +68,11 @@ export function parseAuthorize(raw:unknown) {
     challengeId:b.challengeId.toLowerCase(),code:b.code,
   };
 }
+async function requireAncfz(client:PoolClient,agentId:string):Promise<void>{
+  const r=await client.query<{id:string}>(
+    "SELECT id FROM agents WHERE id=$1 AND agent_key='ancfz' AND status='active'",[agentId]);
+  if(!r.rows[0])throw new PersistenceError("NOT_FOUND","ANCFZ payment operation unavailable");
+}
 async function quote(client:PoolClient,agentId:string,ticketId:string,quotationId:string):Promise<Quote>{
   const result=await client.query<Quote>(
     `SELECT q.id,q.amount::text,q.currency,op.state,
@@ -118,6 +123,7 @@ export class PaymentOperations {
     const challengeId=randomUUID();
     const created=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
+      await requireAncfz(client,scope.agentId);
       const q=await quote(client,scope.agentId,ticketId,input.quotationId);
       if(q.amount!==input.amount||q.currency.trim()!==input.currency)
         throw new PersistenceError("CONFLICT","Price or currency changed; request a fresh quote");
@@ -181,6 +187,7 @@ export class PaymentOperations {
     const attemptId=randomUUID(),externalReference="ANCFZ-"+attemptId.replace(/-/g,"");
     const outcome=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
+      await requireAncfz(client,scope.agentId);
       const q=await quote(client,scope.agentId,ticketId,input.quotationId);
       const dup=await client.query<PaymentRow>(
         `SELECT id,quotation_id,request_id,external_reference,amount::text,currency,state,
@@ -255,6 +262,7 @@ export class PaymentOperations {
     requireUuid(ticketId,"ticketId");
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
+      await requireAncfz(client,scope.agentId);
       const rows=await client.query<PaymentRow>(
         `SELECT id,quotation_id,request_id,external_reference,amount::text,currency,
           state,order_reference,checkout_url,provider_status,verified_at,created_at
@@ -280,6 +288,7 @@ export class PaymentOperations {
     this.requireEnabled();requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
     const claim=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
+      await requireAncfz(client,scope.agentId);
       const selected=await client.query<{
         id:string;quotation_id:string;external_reference:string;amount:string;
         currency:string;state:string;order_reference:string|null;verification_started_at:Date|null;
@@ -368,6 +377,7 @@ export class PaymentOperations {
     requireUuid(ticketId,"ticketId");requireUuid(invoiceId,"invoiceId");
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
+      await requireAncfz(client,scope.agentId);
       const result=await client.query<{bytes:Buffer;document_number:string}>(
         `SELECT i.bytes,i.document_number FROM ticket_payment_invoices i
           JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id AND p.ticket_id=i.ticket_id
