@@ -1,5 +1,5 @@
 /**
- * Node-owned Foundry function registry. Foundry sees descriptions, but only
+ * Node-owned Gemini function registry. Gemini sees allowlisted descriptions, but only
  * Node executes the application functions with server-derived ticket scope.
  * No n8n/CRM callback or execution entry point is registered as a model tool.
  */
