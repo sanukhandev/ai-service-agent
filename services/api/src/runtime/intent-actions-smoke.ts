@@ -52,7 +52,8 @@ async function main(){
     ];
     for(const entry of candidates){
       assert(isServiceAction(entry.action));
-      const ticket=await new GeminiSessionRepository(db).startNew(scope,"P5 synthetic "+entry.intent);
+      const aiSession=await new GeminiSessionRepository(db).startNew(scope,"P5 synthetic "+entry.intent);
+      const ticket={id:aiSession.ticketId};
       await context.selectIntent(scope,ticket.id,entry.intent);
       const before=await actions.catalog(scope,ticket.id);
       assert.equal(before.intentKey,entry.intent);
