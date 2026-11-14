@@ -109,6 +109,14 @@ SELECT
 (SELECT count(*) FROM offering_catalog_versions WHERE agent_id=a.id AND status='published' AND source_authority='unapproved')
 FROM agents a WHERE a.agent_key='ancfz'")"
 test "$counts" = '21,97,55,1,1'
+echo 'TEST 5A: Operator-only Gemini tools publish without mutating versions'
+compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" < infra/bootstrap/publish-gemini-operation-tools.sql
+compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" < infra/bootstrap/publish-gemini-operation-tools.sql
+scoped_tools="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT count(*) FROM agents a JOIN agent_versions v ON v.id=a.active_version_id
+WHERE a.agent_key='ancfz' AND v.allowed_node_tools @> ARRAY[
+ 'preflight_operation','propose_operation']::text[]")"
+test "$scoped_tools" = '1'
 echo 'TEST 6: Node repositories against actual PostgreSQL'
 compose build api
 compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini.integration.test.js dist/runtime/gemini-api.integration.test.js dist/runtime/gemini-worker.integration.test.js
