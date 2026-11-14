@@ -6,7 +6,7 @@ for await (const chunk of process.stdin) {
   if (input.length > 4096) throw Error("Invalid local test request size");
 }
 try {
-  if (process.env.APP_ENV === "production" || process.env.ANCFZ_OTP_MOCK_ENABLED !== "true") {
+  if (process.env.APP_ENV !== "development" || process.env.ANCFZ_OTP_MOCK_ENABLED !== "true") {
     throw Error("Synthetic OTP smoke is not enabled in this n8n container");
   }
   const payload = JSON.parse(input);
