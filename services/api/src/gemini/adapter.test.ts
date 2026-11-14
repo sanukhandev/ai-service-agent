@@ -245,3 +245,42 @@ test("no business handler execution or side effect in adapter",async()=>{
   const out=await adapter.runTurn(request(),{phase:"functions"});
   assert.equal(out.kind,"candidate");assert.equal(executed,0);
 });
+
+test("schema-invalid function arguments rejected before business execution",async()=>{
+  const bad={candidates:[{content:{role:"model",parts:[{functionCall:{
+    id:"call-1",name:"find_intents",args:{query:27}
+  }}]}}]};
+  const f=fake([bad]);
+  const adapter=new GeminiModelAdapter(f.client,{pendingStore:new Store(),
+    declarations:()=>[{name:"find_intents",description:"Find intent",parameters:{
+      type:"object",properties:{query:{type:"string"}},required:["query"],additionalProperties:false
+    }}]});
+  expectFailure(await adapter.runTurn(request(),{phase:"functions"}),"TOOL_NOT_AUTHORIZED");
+});
+
+test("multi-turn history is carried only from supplied current session",async()=>{
+  const q=request({currentSessionHistory:[
+    {role:"customer",text:"I need an IT trade license",sourceMessageId:"m1"},
+    {role:"assistant",text:"How many visas?",sourceMessageId:"m2"}
+  ],customerMessage:"Two visas"});
+  const f=fake(); const out=await make(f.client).runTurn(q);
+  assert.equal(out.kind,"candidate");
+  assert.deepEqual((f.received[0] as {contents:GeminiContent[]}).contents.map(x=>x.parts[0]?.text),
+    ["I need an IT trade license","How many visas?","Two visas"]);
+});
+
+test("unsupported factual question receives no fabricated citations",async()=>{
+  const f=fake([response("I do not have approved evidence for that claim.")]);
+  const out=await make(f.client).runTurn(request());
+  assert.equal(out.kind,"candidate");
+  if(out.kind==="candidate") {
+    assert.deepEqual(out.candidate.sourceAnnotations,[]);
+    assert.equal(out.candidate.continuation,null);
+  }
+});
+
+test("expired session denied before model invocation",async()=>{
+  const f=fake();const q=request();
+  expectFailure(await make(f.client).runTurn(request({session:{...q.session,expiresAt:new Date(0).toISOString()}})),"MODEL_OUTPUT_INVALID");
+  assert.equal(f.received.length,0);
+});

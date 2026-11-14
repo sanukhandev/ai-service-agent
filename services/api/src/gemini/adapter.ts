@@ -110,6 +110,58 @@ function jsonObject(value: unknown): ObjectValue | null {
   }
   return item;
 }
+/** Validate the trusted Node registry schema before passing arguments to Node dispatch. */
+function matchesSchema(value: unknown, schemaValue: unknown, depth = 0): boolean {
+  const schema = obj(schemaValue);
+  if (!schema || depth > 12) return false;
+  if (Array.isArray(schema.enum) && !schema.enum.some(item => encode(item) === encode(value))) return false;
+  switch (schema.type) {
+    case "object": {
+      const item = obj(value);
+      if (!item) return false;
+      const props = obj(schema.properties) ?? {};
+      const required = Array.isArray(schema.required) ? schema.required : [];
+      if (required.some(key => typeof key !== "string" || !Object.hasOwn(item, key))) return false;
+      for (const [key, field] of Object.entries(item)) {
+        if (Object.hasOwn(props, key)) {
+          if (!matchesSchema(field, props[key], depth + 1)) return false;
+        } else if (schema.additionalProperties === false) return false;
+        else if (obj(schema.additionalProperties) && !matchesSchema(field, schema.additionalProperties, depth + 1)) return false;
+      }
+      return true;
+    }
+    case "string":
+      return typeof value === "string" &&
+        (typeof schema.minLength !== "number" || value.length >= schema.minLength) &&
+        (typeof schema.maxLength !== "number" || value.length <= schema.maxLength);
+    case "integer": return Number.isSafeInteger(value) &&
+      (typeof schema.minimum !== "number" || (value as number) >= schema.minimum) &&
+      (typeof schema.maximum !== "number" || (value as number) <= schema.maximum);
+    case "number": return typeof value === "number" && Number.isFinite(value) &&
+      (typeof schema.minimum !== "number" || value >= schema.minimum) &&
+      (typeof schema.maximum !== "number" || value <= schema.maximum);
+    case "boolean": return typeof value === "boolean";
+    case "array": return Array.isArray(value) && value.length <= 256 &&
+      (typeof schema.maxItems !== "number" || value.length <= schema.maxItems) &&
+      (typeof schema.minItems !== "number" || value.length >= schema.minItems) &&
+      value.every(item => matchesSchema(item, schema.items, depth + 1));
+    case "null": return value === null;
+    default: return false;
+  }
+}
+function schemasFromTools(tools: readonly ObjectValue[]): ReadonlyMap<string, unknown> {
+  const schemas = new Map<string, unknown>();
+  for (const tool of tools) {
+    if (!Array.isArray(tool.functionDeclarations)) continue;
+    for (const raw of tool.functionDeclarations) {
+      const def = obj(raw);
+      if (!def || typeof def.name !== "string" || schemas.has(def.name)) throw new AdapterFailure("TOOL_NOT_AUTHORIZED", false);
+      schemas.set(def.name, def.parametersJsonSchema);
+    }
+  }
+  return schemas;
+}
+
 function assertBinding(req: ModelTurnRequest): void {
   if (!req.requestId || !req.acceptedCustomerMessageId || !req.session?.sessionId || !req.agent?.agentId ||
     !req.agent.agentVersionId || req.agent.provider !== "gemini" ||
@@ -223,7 +275,8 @@ interface Parsed {
   readonly candidate: Omit<ModelTurnCandidate, "continuation">;
   readonly content: GeminiContent;
 }
-function parseResponse(raw: unknown, req: ModelTurnRequest, maxCalls: number, maxArgumentBytes: number): Parsed {
+function parseResponse(raw: unknown, req: ModelTurnRequest, maxCalls: number, maxArgumentBytes: number,
+  schemas: ReadonlyMap<string, unknown>): Parsed {
   const resp = obj(raw);
   const candidates = resp && Array.isArray(resp.candidates) ? resp.candidates : null;
   if (!candidates || candidates.length !== 1) throw new AdapterFailure("MODEL_OUTPUT_INVALID", false);
@@ -246,7 +299,8 @@ function parseResponse(raw: unknown, req: ModelTurnRequest, maxCalls: number, ma
     const id = str(fc?.id);
     const args = jsonObject(fc?.args);
     if (!id || !name || !req.allowedBusinessToolNames.includes(name as NodeBusinessToolName) ||
-      !args || ids.has(id) || bytes(encode(args)) > maxArgumentBytes) {
+      !args || !schemas.has(name) || !matchesSchema(args, schemas.get(name)) ||
+      ids.has(id) || bytes(encode(args)) > maxArgumentBytes) {
       throw new AdapterFailure("TOOL_NOT_AUTHORIZED", false);
     }
     ids.add(id);
@@ -352,7 +406,8 @@ export class GeminiModelAdapter {
       const phase = options.phase ?? (req.allowedBuiltinTools.length ? "knowledge" : "functions");
       const tools = this.tools(req, phase);
       const contents = history(req);
-      const parsed = parseResponse(await this.generate(req, contents, tools, options.signal), req, this.maxCalls, this.maxArgumentBytes);
+      const parsed = parseResponse(await this.generate(req, contents, tools, options.signal), req,
+        this.maxCalls, this.maxArgumentBytes, schemasFromTools(tools));
       return await this.pack(req, parsed, contents, 1, 0, [], []);
     } catch (error) { return failure(error, options.signal?.aborted); }
   }
@@ -382,7 +437,7 @@ export class GeminiModelAdapter {
       const contents: GeminiContent[] = [...state.contents, { role: "user", parts: resultParts }];
       const tools = this.tools(req, options.phase ?? "functions");
       const parsed = parseResponse(await this.generate(req, contents, tools, options.signal), req,
-        this.maxCalls - state.totalCalls, this.maxArgumentBytes);
+        this.maxCalls - state.totalCalls, this.maxArgumentBytes, schemasFromTools(tools));
       return await this.pack(req, parsed, contents, state.round + 1, state.totalCalls,
         state.seenCallIds, state.originalAnnotations);
     } catch (error) { return failure(error, options.signal?.aborted); }
