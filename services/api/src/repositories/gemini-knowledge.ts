@@ -2,7 +2,8 @@
  * Operator-only PostgreSQL implementation of P3 KnowledgeRepository.
  * Import from the ingestion CLI, never from a customer/API handler.
  */
-import { readFile,realpath } from "node:fs/promises";
+import { readFile,realpath,writeFile } from "node:fs/promises";
+import { normalizedSourceText } from "../knowledge/normalizer.js";
 import { isAbsolute,relative,resolve,sep,join } from "node:path";
 import { createHash } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
@@ -102,16 +103,23 @@ export class PgGeminiKnowledgeRepository implements KnowledgeRepository {
     const original=await realpath(d.originalPath);
     const subpath=safeRelative(realRoot,original);
     const storedPath=join(CONTAINER_ROOT,subpath);
-    const isText=["text/plain","text/markdown"].includes(d.mime);
-    let normalizedDigest:string|null=null;
-    if(isText){
-      const bytes=await readFile(d.originalPath);
-      if(createHash("sha256").update(bytes).digest("hex")!==d.sha256)
-        throw new PersistenceError("CONFLICT","Original bytes differ from approved intake");
-      const text=new TextDecoder("utf-8",{fatal:true}).decode(bytes);
-      if(!text.trim())throw new PersistenceError("INVALID_INPUT","Empty normalized source");
-      normalizedDigest=createHash("sha256").update(text,"utf8").digest("hex");
+    // Independent verifier reads the retained, private normalized source, not
+    // a model-provided excerpt. Scanned PDFs without text require approved OCR.
+    const originalBytes=await readFile(original);
+    if(createHash("sha256").update(originalBytes).digest("hex")!==d.sha256)
+      throw new PersistenceError("CONFLICT","Original bytes differ from approved intake");
+    const normalized=await normalizedSourceText(originalBytes,d.mime);
+    const normalizedDigest=createHash("sha256").update(normalized,"utf8").digest("hex");
+    const normalizedPath=original+".verified.txt";
+    try{
+      await writeFile(normalizedPath,normalized,{flag:"wx",mode:0o600});
+    }catch(error){
+      if((error as NodeJS.ErrnoException).code!=="EEXIST")throw error;
+      const existing=await readFile(normalizedPath,"utf8");
+      if(createHash("sha256").update(existing,"utf8").digest("hex")!==normalizedDigest)
+        throw new PersistenceError("CONFLICT","Private normalized source hash collision");
     }
+    const normalizedRef=join(CONTAINER_ROOT,subpath+".verified.txt");
     await this.db.withAgent(d.agentId,async c=>{
       await c.query(
         `INSERT INTO gemini_source_documents(agent_id,id,source_key,title)
@@ -122,7 +130,7 @@ export class PgGeminiKnowledgeRepository implements KnowledgeRepository {
         `INSERT INTO gemini_source_revisions(agent_id,id,document_id,revision,source_sha256,
            original_storage_ref,normalized_text_ref,normalized_text_sha256)
          VALUES($1,$2,$3,1,$4,$5,$6,$7)`,
-        [d.agentId,d.documentVersionId,d.documentId,d.sha256,storedPath,storedPath,normalizedDigest],
+        [d.agentId,d.documentVersionId,d.documentId,d.sha256,storedPath,normalizedRef,normalizedDigest],
       );
       await c.query(
         `INSERT INTO gemini_knowledge_documents(agent_id,knowledge_version_id,document_id,document_version_id,
