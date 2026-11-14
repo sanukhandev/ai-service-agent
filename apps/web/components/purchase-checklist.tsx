@@ -111,9 +111,11 @@ export function PurchaseChecklist({
   </p>;
   return <section aria-label="Purchase documents and confirmation" className="mt-3 space-y-3 rounded-lg border border-slate-200 p-3">
     <h3 className="font-semibold text-slate-900">Passport and Emirates ID</h3>
-    <p className="text-xs text-slate-700">Upload the documents configured for
-      <strong> {data.intentKey?.replaceAll("_"," ")}</strong>, then confirm the exact approved
-      {quote?<span> quote of <strong>{quote.currency} {quote.amount}</strong>.</span>:<span> before receiving an approved quotation.</span>}</p>
+    <p className="text-xs text-slate-700">Upload passport and Emirates ID for
+      <strong> {data.intentKey?.replaceAll("_"," ")}</strong>.
+      {quote?<span> Then confirm the approved quotation amount:
+        <strong> {quote.currency} {quote.amount}</strong>.</span>:
+        <span> Purchase confirmation becomes available after the quotation is approved.</span>}</p>
     <p className="text-xs text-amber-800">Development-only sandbox checklist.
       Use synthetic documents only; these are not verified regulatory requirements.
       Local HTTP is not suitable for real passport or identity files.</p>
