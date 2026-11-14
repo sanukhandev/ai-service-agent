@@ -73,7 +73,7 @@ function schema(properties: Record<string, unknown>, required: string[] = []) {
 function matchScore(query: string, intent: IntentEntry): number {
   const q = query.toLowerCase();
   const tokens = q.match(/[a-z0-9]{3,}/g) ?? [];
-  const phrases = [...intent.examplePhrases, intent.name, intent.key.replaceAll("_", " ")];
+  const phrases = [...intent.examplePhrases, intent.name, intent.description, intent.key.replaceAll("_", " ")];
   return phrases.reduce((best, phrase) => {
     const candidate = phrase.toLowerCase();
     const score = (q.includes(candidate) ? 10 : 0) +
@@ -112,6 +112,8 @@ export function registerIntentTools(
       description: "Discover supported business goals from this agent's published intent catalog. Call for actionable customer goals, not greetings or ordinary FAQ requests.",
       parameters: schema({
         query: { type: "string", maxLength: 500, description: "Customer's goal in plain language" },
+        offset: { type: "integer", minimum: 0, maximum: 10000 },
+        limit: { type: "integer", minimum: 1, maximum: 50 },
       }, ["query"]),
       async execute(ctx, args) {
         const query = requireText(args["query"], "query");
@@ -119,11 +121,22 @@ export function registerIntentTools(
         const sorted = all
           .map((intent) => ({ intent, score: matchScore(query, intent) }))
           .sort((a, b) => b.score - a.score);
-        // Catalog discovery is inclusive; avoid false rejections from keywords.
-        const max = sorted.some((entry) => entry.score > 0) ? 8 : 12;
+        // Lexical scoring affects ordering only. Return the entire published
+        // catalog for the small ANCFZ corpus; large catalogs can be paged.
+        const offset = typeof args["offset"] === "number" ? args["offset"] : 0;
+        const limit = typeof args["limit"] === "number" ? args["limit"] : 50;
+        if (!Number.isSafeInteger(offset) || offset < 0 || offset > 10000 ||
+            !Number.isSafeInteger(limit) || limit < 1 || limit > 50) {
+          throw new Error("Invalid intent catalog pagination");
+        }
         return {
           catalogVersion: ctx.intentCatalogRevision,
-          candidates: sorted.slice(0, max).map(({ intent }) => ({
+          total: sorted.length,
+          offset,
+          returned: Math.min(limit, Math.max(0, sorted.length-offset)),
+          hasMore: offset + limit < sorted.length,
+          nextOffset: offset + limit < sorted.length ? offset + limit : null,
+          candidates: sorted.slice(offset,offset+limit).map(({ intent }) => ({
             intentKey: intent.key,
             name: intent.name,
             description: intent.description,

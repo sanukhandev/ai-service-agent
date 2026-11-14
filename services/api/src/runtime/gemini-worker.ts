@@ -16,10 +16,11 @@ import { resolveGeminiEvidence } from "./gemini-evidence.js";
 import { TurnQueue,type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
+import { ActionProposalOperations, registerOperationTools } from "./action-proposals.js";
 
 const TOOL_NAMES: ReadonlySet<string> = new Set([
   "find_intents","select_ticket_intent","get_intent_requirements",
-  "record_ticket_facts","get_offerings",
+  "record_ticket_facts","get_offerings","preflight_operation","propose_operation",
 ]);
 const FALLBACK="I don't have confirmed information in the approved documents for that question. Could you clarify what you need?";
 function fallbackDecision(): GroundingDecision {
@@ -103,6 +104,7 @@ export class GeminiTurnWorker {
       const repositories=scopedIntentToolRepositories(this.db,scope,turn.ticketId);
       const purchases=new PurchaseOperations(this.db);
       const intentActions=new IntentActionOperations(this.db);
+      const proposals=new ActionProposalOperations(this.db);
       registerIntentTools(registry,repositories.catalog,repositories.facts,repositories.ticketIntents,
         async()=>{
           const p=await purchases.read(scope,turn.ticketId);
@@ -119,6 +121,7 @@ export class GeminiTurnWorker {
               ready:x.ready,missing:x.missing,status:x.request?.status??null})),
             unknownActions:status.unknownActions};
         });
+      registerOperationTools(registry,proposals,scope);
       const allowed=new Set<RegisteredToolName>(agent.authorizedToolNames.filter(
         (name): name is RegisteredToolName=>TOOL_NAMES.has(name)));
       const toolContext:TrustedToolContext={
