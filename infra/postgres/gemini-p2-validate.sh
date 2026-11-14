@@ -165,7 +165,7 @@ BEGIN
     intent_catalog_version_id,offering_catalog_version_id,persona_config
   ) VALUES(owner_id,new_number,'gemini',current.model_id,
     'sara-gemini-persona-v1','Synthetic prior persona for disposable migration testing.',
-    current.allowed_node_tools,current.knowledge_status,current.knowledge_version_id,
+    current.allowed_node_tools[1:5],current.knowledge_status,current.knowledge_version_id,
     current.intent_catalog_version_id,current.offering_catalog_version_id,
     '{"name":"Sara","tone":"generic","language":"auto"}'::jsonb)
   RETURNING id INTO legacy_id;
@@ -187,7 +187,10 @@ test "$repeat_id" = "$new_id"
 persona_upgrade="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
 SELECT CASE WHEN v.persona_version='sara-gemini-persona-v2'
   AND v.system_instructions LIKE '%preflight_operation%'
-  AND v.allowed_node_tools=p.allowed_node_tools
+  AND v.allowed_node_tools @> p.allowed_node_tools
+  AND v.allowed_node_tools @> ARRAY[
+    'preflight_operation','propose_operation']::text[]
+  AND cardinality(v.allowed_node_tools)=cardinality(p.allowed_node_tools)+2
   AND v.model_id=p.model_id
   AND v.knowledge_version_id IS NOT DISTINCT FROM p.knowledge_version_id
   AND v.intent_catalog_version_id IS NOT DISTINCT FROM p.intent_catalog_version_id

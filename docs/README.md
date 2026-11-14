@@ -10,6 +10,8 @@ The only active AI runtime on `experiment/gemini-file-search-poc` is the Node-ow
 - [P7 implementation and certification status](gemini-p7-status.md) — verified tests, outstanding provider/UAT requirements
 - [Main → Gemini integration record](gemini-main-sync.md) — ANCFZ catalog, 2Checkout mock, document workflow and migration conflict resolutions
 - [P7 integration preflight](gemini-p7-preflight.md) — branch/source integration evidence
+- [Sara Gemini persona v2](sara-gemini-persona.md) — full instruction ownership, safe operating rules and versioned publication
+- [Gemini live-test readiness](gemini-live-test-readiness.md) — private environment variables, preflight and G1 smoke
 
 ## Architecture and engineering guides
 

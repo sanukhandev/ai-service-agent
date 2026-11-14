@@ -47,8 +47,11 @@ experiment `.env` and run `docker compose run --rm migrate`.
 This explicitly runs `publish-sara-persona.sql`, which:
 1. Requires an active published Gemini Sara agent, checks a known prior v1
    (or no-ops when v2 is already identical), and refuses newer/custom personas.
-2. Preserves the current model ID, authorized tool allowlist, pinned published
-   knowledge version and intent/offering catalog identities.
+2. Preserves the current model ID, existing authorized tools, pinned published
+   knowledge version and intent/offering catalog identities. For historical
+   Sara v1 configurations missing the two explicitly approved P1 tools, the
+   operator-published v2 adds only `preflight_operation` and
+   `propose_operation`; it does not enable n8n dispatch.
 3. Inserts a new immutable v2 agent version and atomically points future tickets
    at it. Existing tickets and sessions retain their prior version binding.
 4. Fails if current knowledge is revoked or the same v2 label has different text.
@@ -60,7 +63,8 @@ an independently reviewed publication process.
 ## Acceptance
 
 The disposable PostgreSQL test verifies fresh v2 seeding, repeat migration
-idempotence, deliberate v1→v2 publication, preservation of data bindings and
+idempotence, deliberate v1→v2 publication from the historical five-tool
+allowlist, preservation of model/catalog/knowledge bindings, and
 immutability of the historical v1 row. G0/P7 CI validates API/Next build and
 the offline Gemini adapter. Live G1 File Search/tool continuation and real Sara
 conversations still require separate Google-provider testing.

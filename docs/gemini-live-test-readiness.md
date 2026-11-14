@@ -48,7 +48,8 @@ docker compose run --rm migrate
 ```
 
 The publication is idempotent and preserves the existing model, catalog,
-knowledge binding and tool allowlist. Existing tickets remain pinned to
+knowledge binding and prior tools; it adds only the two approved inert
+operation-proposal tools if absent. Existing tickets remain pinned to
 their original persona/version. Do not run a public or customer PII session
 on this local HTTP POC.
 

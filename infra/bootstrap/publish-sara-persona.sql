@@ -14,6 +14,13 @@ DECLARE
   desired_version text := current_setting('gemini_seed.sara_persona_version');
   desired_instructions text := current_setting('gemini_seed.sara_system_instructions');
   desired_config jsonb := current_setting('gemini_seed.sara_persona_config')::jsonb;
+  required_tools text[] := ARRAY[
+    'find_intents','select_ticket_intent','get_intent_requirements',
+    'record_ticket_facts','get_offerings'
+  ]::text[];
+  proposal_tools text[] := ARRAY[
+    'preflight_operation','propose_operation'
+  ]::text[];
 BEGIN
   SELECT a.id INTO owner_id
   FROM agents a WHERE a.agent_key='ancfz' AND a.status='active'
@@ -28,10 +35,16 @@ BEGIN
   IF previous.id IS NULL THEN
     RAISE EXCEPTION 'Sara active version is not published Gemini';
   END IF;
+  IF NOT previous.allowed_node_tools @> required_tools THEN
+    RAISE EXCEPTION 'Sara is missing required catalog tools; refusing persona publication';
+  END IF;
   IF previous.persona_version=desired_version THEN
     IF previous.system_instructions IS DISTINCT FROM desired_instructions
        OR previous.persona_config IS DISTINCT FROM desired_config THEN
       RAISE EXCEPTION 'Persona version label was reused with changed content; choose a new revision';
+    END IF;
+    IF NOT previous.allowed_node_tools @> proposal_tools THEN
+      RAISE EXCEPTION 'Sara v2 persona is published without proposal tools; use explicit tool-version publication';
     END IF;
     RAISE NOTICE 'Sara persona % already published; no changes', desired_version;
     RETURN;
@@ -56,7 +69,11 @@ BEGIN
     intent_catalog_version_id,offering_catalog_version_id,persona_config
   ) VALUES(
     owner_id,next_number,'gemini',previous.model_id,desired_version,
-    desired_instructions,previous.allowed_node_tools,
+    desired_instructions,
+    previous.allowed_node_tools || ARRAY(
+      SELECT tool_name FROM unnest(proposal_tools) AS tool_name
+      WHERE NOT (tool_name=ANY(previous.allowed_node_tools))
+    ),
     previous.knowledge_status,previous.knowledge_version_id,
     previous.intent_catalog_version_id,previous.offering_catalog_version_id,
     desired_config

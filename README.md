@@ -44,6 +44,16 @@ Host ingress is restricted to `127.0.0.1:2000`; the optional n8n editor uses `ht
 
 The migration entrypoint installs numbered SQL migrations `003`–`022` with checksum verification, seeds the pinned Sara Gemini agent and its approved action bindings. Migrations `001`/`002` and restricted runtime-role bootstrap initialize fresh PostgreSQL volumes. Never reset a real database simply to re-run init scripts.
 
+## Sara agent persona and instructions
+
+Sara's system instructions are versioned in PostgreSQL rather than stored in
+`.env` or supplied by the customer. The single source of truth is
+[`infra/bootstrap/sara-persona.sql`](infra/bootstrap/sara-persona.sql), with
+[persona rules and an explicit existing-DB publication procedure](docs/sara-gemini-persona.md).
+A fresh isolated database publishes v2 automatically. Existing deployments
+require deliberate operator publication; active conversations keep their old
+version.
+
 ## First real-time test readiness
 
 Run the [non-billable local preflight](docs/gemini-live-test-readiness.md) before starting a live session. It checks configuration and, optionally, published Sara state and local API health, without sending any Google or n8n requests. A separate explicitly billable G1 probe verifies live Gemini and File Search compatibility. Do not enable financial dispatch for the initial conversation test.
