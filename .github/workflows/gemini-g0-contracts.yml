@@ -1,0 +1,25 @@
+name: Gemini G0 frozen contracts
+on:
+  push:
+    branches:
+      - experiment/gemini-file-search-poc
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  g0-contracts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install locked dependencies (no lifecycle scripts)
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Compile contract with compile-time denial tests
+        run: npx tsc -p packages/contracts/tsconfig.gemini.json
+      - name: Assert experiment-only static G0 invariants
+        run: node scripts/check-gemini-g0.mjs

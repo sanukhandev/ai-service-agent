@@ -123,6 +123,9 @@ Source-download handling must use exact authorized source mappings. Do not trans
 
 ## 5. Executable work plan: shared contract, six parallel streams, single integration owner
 
+**G0 contract artifact:** [gemini-v1.ts](../packages/contracts/gemini-v1.ts) + [G0 freeze record](gemini-g0-contracts.md). G0 defines the types and static policy; live Docker isolation, real Gemini SDK compatibility and end-to-end grounding remain separate explicit acceptance gates. The exact GEMINI_FREEZE_SHA is the direct experiment commit containing these files; record that SHA before creating P1–P6 child worktrees.
+
+
 ### 5.1 Immutable branch and environment rules (apply to every task)
 
 **Only permitted destination:** `experiment/gemini-file-search-poc` in `sanukhandev/ai-service-agent`. All child feature branches are **temporary implementation branches under the experiment**, not independent products. Every workstream MUST use an explicit repository ref, and every PR MUST target `experiment/gemini-file-search-poc`. No commit, PR, merge, cherry-pick, deployment or configuration change from this experiment may target `main`. The only cross-branch flow permitted is a separately reviewed, one-way `main` → experiment upstream sync coordinated by the integration owner.

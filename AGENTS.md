@@ -13,6 +13,9 @@
 
 ## Gemini parallel execution contract — mandatory
 
+- G0 contract authority: [packages/contracts/gemini-v1.ts](packages/contracts/gemini-v1.ts) and [G0 freeze record](docs/gemini-g0-contracts.md). P1–P6 must import or conform to this frozen v1 contract; no competing agent/store/evidence/session interfaces, no outside-document factual fallback, no web tool. Only integration owner updates this shared contract.
+
+
 - The **single authoritative task plan** is [§5 of the Gemini experimental implementation plan](docs/gemini-experiment-implementation-plan.md), including P1–P6 branch names, ownership boundaries, shared contracts, quality gates and exact-head reporting. Do not execute the older Foundry worktracks below on this branch.
 - **Before P1–P6 begin**, the integration owner commits/finalizes shared contracts and records the same exact `GEMINI_FREEZE_SHA` for all worktrees. Never create a Gemini child branch from `main`, nor start from another workstream's head.
 - Individual streams modify **only their allocated paths**; the integration owner alone controls `packages/contracts/**`, `services/api/src/runtime/turn-worker.ts`, `services/api/src/runtime/turn-queue.ts`, `services/api/src/index.ts`, root dependencies/lockfiles, Compose and Nginx. Any change to a frozen contract requires a coordinated plan amendment first.
