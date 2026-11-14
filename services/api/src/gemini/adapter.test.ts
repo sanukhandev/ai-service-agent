@@ -107,6 +107,26 @@ test("only exact document resource is used as evidence identity",async()=>{
     "fileSearchStores/approved/documents/doc-123");
 });
 
+test("File Search custom metadata is preserved, but not treated as authority",async()=>{
+  const f=fake([response("Supported claim",[{retrievedContext:{
+    fileSearchStore:"fileSearchStores/approved",text:"Verified passage",
+    customMetadata:[
+      {key:"agentId",stringValue:"00000000-0000-4000-8000-000000000001"},
+      {key:"knowledgeVersionId",stringValue:"00000000-0000-4000-8000-000000000002"},
+      {key:"documentVersionId",stringValue:"00000000-0000-4000-8000-000000000003"},
+      {key:"sha256",stringValue:"a".repeat(64)},
+    ],
+  }}])]);
+  const out=await make(f.client).runTurn(request());
+  assert.equal(out.kind,"candidate");
+  if(out.kind==="candidate"){
+    const citation=out.candidate.sourceAnnotations[0];
+    assert.equal(citation?.providerResourceName,null,"Store alone cannot identify a document");
+    assert.equal(citation?.sourceMetadata?.documentVersionId,
+      "00000000-0000-4000-8000-000000000003");
+  }
+});
+
 test("unknown source provenance is not fabricated",async()=>{
   const f=fake([response("Quoted",[{retrievedContext:{title:"Untyped document",text:"Evidence"}}])]);
   const out=await make(f.client).runTurn(request());
