@@ -132,7 +132,7 @@ export class IntentActionOperations {
       const intent=await activeIntent(client,scope.agentId,ticketId);
       if(!intent||!intent.allowed_actions.includes(action))
         throw new PersistenceError("CONFLICT","The selected intent does not allow this request");
-      const {missing,sourceFacts}=await actionRequirements(
+      const {requirements,missing,sourceFacts}=await actionRequirements(
         client,scope.agentId,ticketId,intent.id,action);
       if(missing.length)
         throw new PersistenceError("CONFLICT","Provide the missing required information before this action");
@@ -150,8 +150,9 @@ export class IntentActionOperations {
       const requestId=randomUUID();
       // Facts have customer-message provenance. Do not include raw passport
       // bytes or OCR output, and do not dispatch any unknown third party.
+      const relevant=new Set(requirements.map(r=>r.key));
       const facts=Object.fromEntries(sourceFacts.filter(f=>
-        f.verification_status!=="disputed"&&availableValue(f.value)
+        relevant.has(f.fact_key)&&f.verification_status!=="disputed"&&availableValue(f.value)
       ).map(f=>[f.fact_key,{value:f.value,sourceMessageId:f.source_message_id}]));
       const inserted=await client.query<RequestRow>(
         `INSERT INTO ticket_service_requests(
