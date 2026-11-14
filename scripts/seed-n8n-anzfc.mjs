@@ -148,8 +148,11 @@ function privateApiRequest(payload) {
   try { response = JSON.parse(out); }
   catch { throw new Error("Private n8n project helper returned non-JSON data; inspect the n8n instance locally"); }
   if (!response || response.ok !== true) {
-    // Diagnostic has no secrets; helper returns fixed sanitized messages.
-    throw new Error(response?.error || "n8n project operation failed");
+    // Keep the helper's safe structured error code. Credentials never appear
+    // in returned errors, even when the upstream public API rejects the key.
+    const error = new Error(response?.error || "n8n workspace preflight failed");
+    error.code = typeof response?.code === "string" ? response.code : "PREFLIGHT_FAILED";
+    throw error;
   }
   return response;
 }
@@ -250,19 +253,25 @@ export async function setupWorkspace({ workspace = "personal" } = {}) {
   let ready = false;
   for (let attempt = 0; attempt < 20; attempt++) {
     try {
-      privateApiRequest(inspect);
+      const inventory = privateApiRequest(inspect);
+      if (!["empty", "ready", "partial", "conflict"].includes(inventory.status)) {
+        throw new Error("Unexpected n8n workspace inventory state");
+      }
       ready = true;
       break;
     } catch (error) {
-      const message = String(error?.message || "");
-      if (/API key is invalid|API key is missing permission|Projects API is not available/.test(message)) {
-        throw error;
+      // Only an unreachable/starting HTTP service may be retried. Wrong keys,
+      // unavailable endpoints, missing permissions, invalid JSON, and Docker
+      // exec failures are deterministic errors and must surface immediately.
+      if (error?.code !== "API_UNAVAILABLE") throw error;
+      if (attempt === 19) {
+        throw new Error("n8n internal API remained unavailable after 20 read-only checks. " +
+          "Check 'docker compose --profile workflows ps -a' and the n8n logs.");
       }
-      if (attempt === 19) throw new Error("n8n API did not become ready; inspect Docker logs and run --stage=inspect");
       await sleep(1000);
     }
   }
-  if (!ready) throw new Error("n8n API unavailable");
+  if (!ready) throw new Error("n8n internal API unavailable");
   // Import is deliberately invoked only once after readiness, not inside a retry loop.
   seedWorkspace({ workspace });
 }
