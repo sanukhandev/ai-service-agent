@@ -1,0 +1,93 @@
+# ANCFZ purchase journey — catalog, document intake, consent, OTP, order, invoice
+
+## Scope and evidence status
+
+The Sara/ANCFZ POC uses a ticket-pinned, versioned intent catalog. Revision 1
+only permitted `create_lead` and `generate_quote` for `company_formation`.
+Revision 2 additionally permits `purchase_quotation` and defines two
+**provisional demo-only** required document types. This is *not* a verified
+list of all documents required by ANCFZ authorities. Obtain and publish an
+approved checklist before using real identity information or customer funds.
+
+The purchase flow does not run solely because the model detects an intent.
+Only the authenticated ticket owner can upload required documents and
+explicitly confirm purchase; only Node can initiate an OTP, validate it,
+enqueue an order and independently verify provider evidence.
+
+## Sequence
+
+1. Model selects an active supported `company_formation` ticket intent.
+2. Existing Node lead and quotation paths produce a verified, pinned-priced
+   quotation PDF. A mere chat statement is not an approved quote.
+3. Customer sees the configured private document checklist. The POC requires
+   a synthetic combined shareholder identity pack and an application sample.
+   Only catalog-linked PDF/PNG/JPEG files up to 1 MiB are accepted. The bytes
+   are persisted in `ticket_purchase_documents` with SHA256 and tenant-free
+   agent/ticket-scoped RLS; raw bytes are never sent to Foundry or n8n.
+   A 'received' state does not certify document authenticity.
+4. Customer confirms the exact quote and the specific
+   `PURCHASE_CONSENT` wording. Node creates a durable
+   `ticket_purchase_confirmations` row; documents cannot be changed after
+   confirmation. The model cannot grant or forge consent.
+5. Node's payment OTP endpoints independently assert supported intent,
+   verified quote, full configured document set and exact quote confirmation.
+   Synthetic OTP is recorded only to the private n8n test Data Table with
+   rate limiting, HMAC digest, expiration and max failures.
+6. Successful OTP authorizes exactly one durable sandbox order POST.
+   The returned checkout URL is **not** evidence of payment.
+7. After order creation, a bounded worker polls the private n8n authenticated
+   GET endpoint (max 60 checks, minimum 30 seconds apart, one-day order window).
+   Matching `COMPLETE` + amount + currency + reference + ticket + quotation
+   grants `verified_test_payment`; `DECLINED` and `REFUNDED` never do.
+8. Verified payment queues a Gotenberg PDF TEST invoice. Before committing
+   the result, the invoice worker rechecks that payment remains verified.
+   A durable assistant ticket message then carries a same-origin,
+   ticket-owner-authorized **Download your TEST invoice** attachment link.
+9. For gateway decline/refund, the Node service adds an idempotent,
+   persona-named/tone-adjusted assistant reply. Chat shows the current
+   payment state; failed or uncertain payment never authorizes a PDF.
+
+## Endpoints
+
+- `GET /api/v1/tickets/:ticketId/purchase`: selected intent, checklist, consent
+  status and OTP readiness; never returns document bytes
+- `POST /api/v1/tickets/:ticketId/purchase/documents`: private base64 PDF/PNG/JPEG
+  intake using `requirementKey, fileName, contentType, dataBase64`
+- `GET /api/v1/tickets/:ticketId/purchase/documents/:documentId`: owner-only file
+- `POST /api/v1/tickets/:ticketId/purchase/confirm`: explicit confirmation for
+  `requestId, quotationId, amount, currency, consent, consentText`
+- Existing `/payments/otp`, `/payments/authorize`, `/payments/:id/verify`,
+  `/invoices/:id/pdf` remain customer-owned; all operations are disabled
+  unless existing development-only flags are enabled.
+
+## Versioning and deployment
+
+- Migrations `010` and `011` are forward-only. Database and workflows
+  are never reset.
+- `seed-sara-purchase.sql` is idempotent, publishes intent revision 2
+  and retires revision 1. Existing tickets retain their pinned old catalog;
+  open a **new ticket** to exercise the v2 purchase journey.
+- Existing offering revisions, knowledge and Foundry agent are untouched.
+  The trusted turn context instructs Sara to retrieve the catalog's purchase
+  requirements without asking for OTP, identity files or card details in chat.
+- Required document rows are provisional. Do not enable real PII uploads over
+  localhost HTTP. Production needs TLS, encryption at rest, retention policy,
+  malware scan, document authenticity review and a legally approved matrix.
+- The gateway docs have not established AED support, the accepted GET identifier
+  or actual sandbox response behavior. Leave
+  `ANCFZ_PAYMENT_DISPATCH_ENABLED=false` until manually confirmed. The
+  automated GET worker and invoice worker are gated by that same flag.
+- Payment failure replies are deterministic Node persona adaptations, not
+  a new Foundry-generated inference. Republishing Sara's remote Foundry
+  instructions can improve dialogue, but it does not authorize side effects.
+
+## Validation
+
+Run the static build/CI gates and a disposable database with a ticket pinned
+to catalog revision 2. Verify missing documents and missing consent both block
+OTP. Exercise duplicate uploads, cross-ticket document reads, incorrect OTP,
+repeated order authorization, PENDING and DECLINED/REFUNDED, no invoice before
+matching COMPLETE, and exactly one owner-only PDF attachment after completion.
+
+The 2Checkout sandbox must be validated with synthetic data only. No
+successful CI smoke is evidence of a live merchant transaction.
