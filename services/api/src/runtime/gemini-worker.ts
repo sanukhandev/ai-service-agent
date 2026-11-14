@@ -28,7 +28,7 @@ function failureCode(code:string):string {
   return /^[A-Z_]{3,64}$/.test(code)?code:"GEMINI_RUNTIME_FAILED";
 }
 
-/** One provider path; the old Foundry worker is not started on this branch. */
+/** Sole model turn worker for this experiment; Node owns tool authorization and response qualification. */
 export class GeminiTurnWorker {
   private busy=false;
   private stopped=false;
