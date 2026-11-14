@@ -120,6 +120,22 @@ function extractedBillingName(docs:DocRow[]):string{
     throw new PersistenceError("CONFLICT","Passport and Emirates ID holder names differ; request review");
   return passport.extracted_full_name as string;
 }
+export async function identityDocumentReadinessTx(
+ client:PoolClient,agentId:string,ticketId:string,intentId:string,
+):Promise<{ready:boolean;missing:string[]}>{
+  const docs=await getRequirements(client,agentId,ticketId,intentId);
+  const missing=docs.filter(d=>d.required&&
+    (d.state!=="received"||d.extraction_status!=="extracted")).map(d=>d.requirement_key);
+  if(missing.length)return {ready:false,missing};
+  try{extractedBillingName(docs);return {ready:true,missing:[]};}
+  catch{return {ready:false,missing:["identity_name_mismatch"]};}
+}
+export async function assertIdentityDocumentsReadyTx(
+ client:PoolClient,agentId:string,ticketId:string,intentId:string,
+):Promise<string>{
+  const docs=await getRequirements(client,agentId,ticketId,intentId);
+  return extractedBillingName(docs);
+}
 export async function invoiceBillingName(
  client:PoolClient,agentId:string,ticketId:string,quotationId:string,
 ):Promise<string>{
