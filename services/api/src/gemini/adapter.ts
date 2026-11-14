@@ -266,7 +266,7 @@ function annotations(candidate: ObjectValue, expectedStore: string | null): Prov
     const documentCandidates = [context.documentName, context.sourceUri, context.uri]
       .filter((x):x is string=>typeof x==="string");
     const documentName = documentCandidates.find(value =>
-      expectedStore !== null && /^fileSearchStores\\/[A-Za-z0-9_-]+\\/documents\\/[A-Za-z0-9_-]+$/.test(value)
+      expectedStore !== null && /^fileSearchStores\/[A-Za-z0-9_-]+\/documents\/[A-Za-z0-9_-]+$/.test(value)
       && value.startsWith(expectedStore+"/documents/")) ?? null;
     const source: ProviderSourceAnnotation = {
       providerResourceName: documentName,
