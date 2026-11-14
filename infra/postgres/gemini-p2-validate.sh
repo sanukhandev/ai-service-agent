@@ -121,6 +121,90 @@ SELECT count(*) FROM agents a JOIN agent_versions v ON v.id=a.active_version_id
 WHERE a.agent_key='ancfz' AND v.allowed_node_tools @> ARRAY[
  'preflight_operation','propose_operation']::text[]")"
 test "$scoped_tools" = '1'
+echo 'TEST 5B: Sara v2 persona is published on first bootstrap'
+persona_version="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT v.persona_version FROM agents a
+JOIN agent_versions v ON v.agent_id=a.id AND v.id=a.active_version_id
+WHERE a.agent_key='ancfz'")"
+test "$persona_version" = 'sara-gemini-persona-v2'
+persona_rules="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT CASE WHEN length(v.system_instructions)>1800
+ AND v.system_instructions LIKE '%find_intents%'
+ AND v.system_instructions LIKE '%propose_operation%'
+ AND v.system_instructions LIKE '%File Search%'
+ AND v.persona_config->>'name'='Sara'
+ AND v.persona_config->>'language'='auto'
+ AND v.persona_config->>'personaRevision'='2'
+ THEN 'ready' ELSE 'missing' END
+FROM agents a JOIN agent_versions v ON v.id=a.active_version_id
+WHERE a.agent_key='ancfz'")"
+test "$persona_rules" = 'ready'
+echo 'TEST 5C: Simulated existing Sara v1 upgrades through owner-only version publication'
+# This is a disposable DB ONLY; the new v1 row simulates a previous published
+# installation. Current published v2 remains immutable in the audit history.
+compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" <<'SQL'
+DO $simulate_old$
+DECLARE
+  owner_id uuid;
+  current agent_versions%ROWTYPE;
+  legacy_id uuid;
+  new_number integer;
+BEGIN
+  SELECT id INTO owner_id FROM agents WHERE agent_key='ancfz' FOR UPDATE;
+  IF EXISTS(SELECT 1 FROM tickets WHERE agent_id=owner_id) THEN
+    RAISE EXCEPTION 'Refusing to simulate old persona with existing tickets';
+  END IF;
+  SELECT v.* INTO STRICT current
+    FROM agents a JOIN agent_versions v ON v.id=a.active_version_id
+    WHERE a.id=owner_id AND v.persona_version='sara-gemini-persona-v2';
+  SELECT coalesce(max(version_number),0)+1 INTO new_number
+    FROM agent_versions WHERE agent_id=owner_id;
+  INSERT INTO agent_versions(
+    agent_id,version_number,provider,model_id,persona_version,
+    system_instructions,allowed_node_tools,knowledge_status,knowledge_version_id,
+    intent_catalog_version_id,offering_catalog_version_id,persona_config
+  ) VALUES(owner_id,new_number,'gemini',current.model_id,
+    'sara-gemini-persona-v1','Synthetic prior persona for disposable migration testing.',
+    current.allowed_node_tools,current.knowledge_status,current.knowledge_version_id,
+    current.intent_catalog_version_id,current.offering_catalog_version_id,
+    '{"name":"Sara","tone":"generic","language":"auto"}'::jsonb)
+  RETURNING id INTO legacy_id;
+  UPDATE agent_versions SET publication_state='ready' WHERE id=legacy_id;
+  UPDATE agent_versions SET publication_state='published' WHERE id=legacy_id;
+  UPDATE agents SET active_version_id=legacy_id WHERE id=owner_id;
+END $simulate_old$;
+SQL
+legacy_id="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT a.active_version_id FROM agents a WHERE a.agent_key='ancfz'")"
+compose run --rm -e GEMINI_SARA_PUBLISH_PERSONA=YES migrate
+new_id="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT a.active_version_id FROM agents a WHERE a.agent_key='ancfz'")"
+test "$new_id" != "$legacy_id"
+compose run --rm -e GEMINI_SARA_PUBLISH_PERSONA=YES migrate
+repeat_id="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT a.active_version_id FROM agents a WHERE a.agent_key='ancfz'")"
+test "$repeat_id" = "$new_id"
+persona_upgrade="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT CASE WHEN v.persona_version='sara-gemini-persona-v2'
+  AND v.system_instructions LIKE '%preflight_operation%'
+  AND v.allowed_node_tools=p.allowed_node_tools
+  AND v.model_id=p.model_id
+  AND v.knowledge_version_id IS NOT DISTINCT FROM p.knowledge_version_id
+  AND v.intent_catalog_version_id IS NOT DISTINCT FROM p.intent_catalog_version_id
+  AND v.offering_catalog_version_id IS NOT DISTINCT FROM p.offering_catalog_version_id
+  AND p.system_instructions='Synthetic prior persona for disposable migration testing.'
+  AND p.publication_state='published'
+  THEN 'pass' ELSE 'fail' END
+FROM agents a JOIN agent_versions v ON v.id=a.active_version_id
+JOIN agent_versions p ON p.id='$legacy_id'::uuid WHERE a.agent_key='ancfz'")"
+test "$persona_upgrade" = 'pass'
+if compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" \
+  -c "UPDATE agent_versions SET system_instructions='modified' WHERE id='$legacy_id'::uuid" \
+  >/dev/null 2>&1; then
+  echo 'Published historical Sara persona was unexpectedly mutable' >&2
+  exit 1
+fi
+echo 'Sara persona publication, idempotency, pin preservation and immutability PASS'
 echo 'TEST 6: Node repositories against actual PostgreSQL'
 compose build api
 compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini.integration.test.js dist/runtime/gemini-api.integration.test.js dist/runtime/gemini-worker.integration.test.js
