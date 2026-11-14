@@ -262,14 +262,17 @@ export class PaymentOperations {
           ORDER BY created_at DESC LIMIT 10`,
         [scope.agentId,ticketId]);
       const invoice=await client.query<{
-        id:string;payment_id:string;state:string;document_number:string;
-      }>(`SELECT id,payment_id,state,document_number FROM ticket_payment_invoices
-             WHERE agent_id=$1 AND ticket_id=$2 LIMIT 1`,[scope.agentId,ticketId]);
+        id:string;payment_id:string;state:string;document_number:string;payment_state:string;
+      }>(`SELECT i.id,i.payment_id,i.state,i.document_number,p.state AS payment_state
+             FROM ticket_payment_invoices i
+             JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id AND p.ticket_id=i.ticket_id
+               AND p.id=i.payment_id
+             WHERE i.agent_id=$1 AND i.ticket_id=$2 LIMIT 1`,[scope.agentId,ticketId]);
       return {enabled:paymentEnabled(),payments:rows.rows.map(paymentView),
         invoice:invoice.rows[0] ? {
           id:invoice.rows[0].id,paymentId:invoice.rows[0].payment_id,
           state:invoice.rows[0].state,documentNumber:invoice.rows[0].document_number,
-          pdfAvailable:invoice.rows[0].state==="verified_completed",
+          pdfAvailable:invoice.rows[0].state==="verified_completed" && invoice.rows[0].payment_state==="verified_test_payment",
         }:null};
     });
   }
