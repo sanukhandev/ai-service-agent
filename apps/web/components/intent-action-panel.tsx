@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { LeadSubmission } from "./lead-submission";
 import { QuotationRequest } from "./quotation-request";
 import { PaymentCheckout } from "./payment-checkout";
+import { PurchaseChecklist } from "./purchase-checklist";
 
 const consentText =
   "I ask ANCFZ to record this POC service request using the information I provided in this ticket. I understand this does not submit an application to a bank, government body or external partner.";
@@ -19,6 +20,7 @@ type Catalog={
   intentKey:string|null;intentName?:string;
   actions:Action[];unknownActions:string[];
 };
+const noopReady=(_ready:boolean)=>{};
 export function IntentActionPanel({ticketId}:{ticketId:string}){
   const [catalog,setCatalog]=useState<Catalog|null>(null);
   const [selected,setSelected]=useState<string|null>(null);
@@ -75,6 +77,11 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
     <p className="text-xs font-semibold text-slate-700">
       Available actions for {catalog.intentName??catalog.intentKey.replaceAll("_"," ")}
     </p>
+    {/* Passport and Emirates ID intake applies to ALL intents, even those
+        without a priced quotation or an authorized payment path. */}
+    {!actions.some(a=>a.kind==="purchase")&&
+      <PurchaseChecklist ticketId={ticketId} quote={null} onReady={noopReady}/>}
+
     {actions.map(action=>{
       if(action.kind==="salesforce_lead")return <LeadSubmission key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
       if(action.kind==="quotation")return <QuotationRequest key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
