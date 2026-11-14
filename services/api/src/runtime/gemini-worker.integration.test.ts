@@ -18,7 +18,7 @@ test("Gemini worker records supported reply and audit atomically (real disposabl
     async runTurn(request:ModelTurnRequest):Promise<ModelTurnResult>{
       modelRequests.push(request);
       return {kind:"candidate",candidate:{
-        provider:"gemini",modelId:request.agent.modelId,text:"Hello!",
+        provider:"gemini",modelId:request.agent.modelId,text:request.customerMessage.startsWith("What") ? "A company license costs AED 9999." : "Hello!",
         sourceAnnotations:[],functionCalls:[],continuation:null,
         usage:{inputTokens:1,outputTokens:2},finishReason:"STOP",
       }};
@@ -73,5 +73,33 @@ test("Gemini worker records supported reply and audit atomically (real disposabl
     assert.equal(saved.audits[0]?.grounding_status,"supported");
     assert.equal(saved.audits[0]?.assistant_message_id,assistant.id);
     assert.ok(saved.events.includes("assistant.message"),"Assistant event must be persisted before SSE");
+    // Factual text without approved evidence must never be published, even
+    // when a model invents a plausible-sounding price.
+    const unsupportedRequestId=randomUUID();
+    const unsupported=await new GeminiSessionRepository(db).admitCustomerMessage(
+      scope,session.sessionId,unsupportedRequestId,"What does the license cost?");
+    assert.equal(unsupported.kind,"accepted");
+    assert.ok(unsupported.message);
+    await queue.enqueue(scope,session.ticketId,unsupported.message.id,unsupportedRequestId);
+    let safeReply=null;
+    for(let i=0;i<100;i++){
+      const history=await new TicketMessageRepository(db).listTicketMessages(scope,session.ticketId,"0",20);
+      safeReply=history.find(x=>x.role==="assistant" && x.requestId===unsupportedRequestId)??null;
+      if(safeReply)break;
+      await new Promise(resolve=>setTimeout(resolve,60));
+    }
+    assert.ok(safeReply,"Safe abstention reply was not committed");
+    assert.ok(safeReply.text.includes("don't have confirmed information"),safeReply.text);
+    assert.ok(!safeReply.text.includes("9999"),"Unsupported price escaped qualification");
+    const safeAudit=await db.withAgent(agentId,async client=>{
+      const result=await client.query<{category:string;grounding_status:string;assistant_message_id:string}>(
+        "SELECT category,grounding_status,assistant_message_id FROM gemini_response_qualifications WHERE agent_id=$1 AND session_id=$2 AND assistant_message_id=$3",
+        [agentId,session.sessionId,safeReply!.id]);
+      return result.rows[0];
+    });
+    assert.equal(safeAudit?.category,"clarification");
+    assert.equal(safeAudit?.grounding_status,"supported");
+    assert.equal(modelRequests.length,2);
+
   } finally {worker.stop();await db.close();}
 });
