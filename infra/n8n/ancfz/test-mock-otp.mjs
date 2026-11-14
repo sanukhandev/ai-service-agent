@@ -24,6 +24,8 @@ try {
     },
     body: JSON.stringify({
       agentKey: "ancfz",
+      testOnly: true,
+      deliveryMode: "mock_datatable",
       ticketId: payload.ticketId,
       email: payload.email,
       otp: payload.otp,
