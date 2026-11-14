@@ -8,6 +8,9 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { TicketMessageRepository } from "../repositories/messages.js";
+import { createHash } from "node:crypto";
+import { PurchaseOperations } from "./purchase-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled,
   verifyPaymentStatus, type PaymentIdentity } from "./payment-evidence.js";
@@ -374,6 +377,27 @@ export class PaymentOperations {
         });
       }
     });
+    if(result?.state==="payment_declined"||result?.state==="payment_refunded"){
+      // This is a durable assistant ticket message, not a gateway success claim.
+      // A repeated GET for the same terminal state cannot spam the transcript.
+      const brand=await new PurchaseOperations(this.db).read(scope,ticketId);
+      const name=brand.persona.name;
+      const formal=brand.persona.tone==="formal";
+      const copy=result.state==="payment_declined"
+        ? (formal
+          ? "The gateway has declined the test payment. The quotation remains available; no paid invoice has been issued. Please contact the service team to review the next available options."
+          : "The test payment was declined by the gateway. Your quotation is still available, and no invoice has been issued. I can help you review the next steps.")
+        : (formal
+          ? "The gateway now reports this test payment as refunded. The TEST invoice download is no longer available. Please contact the service team for assistance."
+          : "The gateway reports that your test payment was refunded. I've disabled access to the earlier TEST invoice; I can help you with the next steps.");
+      const digest=createHash("sha256").update(paymentId+":"+result.state).digest("hex");
+      const noticeId=digest.slice(0,8)+"-"+digest.slice(8,12)+"-4"+digest.slice(13,16)+
+        "-8"+digest.slice(17,20)+"-"+digest.slice(20,32);
+      try{
+        await new TicketMessageRepository(this.db).createAssistantMessage(
+          scope,ticketId,noticeId,name+": "+copy,[]);
+      }catch{/* Payment evidence remains authoritative even if message delivery fails. */}
+    }
     return this.get(scope,ticketId);
   }
   async invoicePdf(scope:TicketScope,ticketId:string,invoiceId:string){
