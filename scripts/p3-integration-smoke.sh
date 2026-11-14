@@ -131,6 +131,13 @@ docker compose exec -T -e P5_PURCHASE_OFFLINE_SMOKE=1 -e P3_TEST_TICKET="$ticket
   api node dist/runtime/purchase-smoke.js
 purchase_status=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/purchase")
 printf '%s' "$purchase_status" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["supported"];assert d["readyForOtp"];assert d["confirmed"];assert len(d["requirements"])==2'
+# Contract-level DB execution of every non-provider action in the bootstrap
+# catalog, including authorization, fact provenance and durable chat notice.
+service_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname='ticket_service_requests' AND relrowsecurity AND relforcerowsecurity")
+test "$service_rls" = 1
+docker compose exec -T -e P5_INTENT_ACTION_SMOKE=1 api node dist/runtime/intent-actions-smoke.js
+
 
 # P5 customer payment routes are still disabled without explicit test-mode flags.
 unauthorized_payment=$(curl --silent -o /dev/null -w '%{http_code}' \
