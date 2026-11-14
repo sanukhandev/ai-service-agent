@@ -34,11 +34,11 @@ docker compose ps
 
 Use a private approved-originals root for operator-side ingestion and a read-only normalized-text mount for Node verification. Approved documents must be explicitly published. `GEMINI_MODEL_ID` pins **newly seeded** agent versions; changing an existing published agent requires controlled version publication, not an implicit rewrite.
 
-The API requires its Gemini key and encryption key and does not fall back to another model. Before starting on an existing DB, verify versioned agent configuration and migrations.
+The API requires its Gemini key and encryption key and does not fall back to another model. Imported ANCFZ sandbox OTP/payment dispatch defaults to disabled, and identity OCR is unavailable until a separate provider is explicitly configured. Before starting on an existing DB, verify versioned agent configuration and migrations.
 
 ## PostgreSQL bootstrapping
 
-A fresh Postgres volume initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then the role bootstrap `infra/bootstrap/003-app-runtime-role.sh`. The one-off `migrate` service applies sequential forward migrations `003`–`015` with immutable checksums and idempotently seeds the Sara Gemini version. The Node API connects only as `agent_runtime`; it must not use the migration-owner password.
+A fresh Postgres volume initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then the role bootstrap `infra/bootstrap/003-app-runtime-role.sh`. The one-off `migrate` service applies sequential forward migrations `003`–`020` with immutable checksums and idempotently seeds the Sara Gemini version. The Node API connects only as `agent_runtime`; it must not use the migration-owner password.
 
 Do not edit historical SQL migration content; the migration runner rejects changed checksums. Do not delete a persistent volume to re-run initialization. Test isolated changes using `bash infra/postgres/gemini-p2-validate.sh` in a disposable Compose project.
 
