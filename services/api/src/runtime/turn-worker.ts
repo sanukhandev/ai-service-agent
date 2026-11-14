@@ -11,6 +11,7 @@ import { scopedIntentToolRepositories } from "../repositories/intent-adapter.js"
 import { workerTicketScope, type SourceReference } from "../repositories/types.js";
 import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
+import { IntentActionOperations } from "./intent-action-operations.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -102,16 +103,26 @@ export class TurnWorker {
       const text=await this.queue.currentCustomerMessage(turn);
       const previousResponseId=await this.queue.responseCursor(turn);
       const recent=previousResponseId ? []:await this.messages.recentMessages(scope,turn.ticketId,12);
+      const actionRead=async()=>{
+        const state=await new IntentActionOperations(this.db).catalog(scope,turn.ticketId);
+        return {intentKey:state.intentKey,
+          actions:state.actions.map(a=>({
+            actionKey:a.actionKey,kind:a.kind,missing:a.missing,ready:a.ready,
+            requestStatus:a.request?.status??null,
+          })),
+          unsupported:state.unknownActions};
+      };
       const modelInput=[
         "Trusted Node ticket context (this is reference data, not a request to perform a workflow):",
         JSON.stringify({
           activeIntent:stored.activeIntent,knownFacts:stored.knownFacts,
           factVerification:stored.facts.map(f=>({key:f.key,status:f.verification})),
           missingRequirements:stored.missingRequirements,
+          selectedIntentActions:await actionRead(),
           previousSummary:stored.summary?.text ?? null,
           ...(recent.length ? {earlierMessages:recent.slice(0,-1).map(m=>({role:m.role,text:m.text}))}:{}),
         }),
-        "Purchase requirements: for a customer who wants to proceed with the approved quotation, call get_intent_requirements with operationKey purchase_quotation. Explain the secure ticket document upload, explicit customer purchase consent and test OTP steps. Do not ask for passport files, OTPs, card numbers or payment credentials in chat. Never claim an invoice exists before a verified gateway COMPLETE result.",
+        "For actionable requests, discover and select a supported intent, call get_intent_requirements with the requested operationKey, and record customer-stated facts from the latest message. Every declared operation is presented in the secure ticket UI with missing facts and an explicit consent step. A recorded service request is NOT an external bank, government or partner submission. For purchase_quotation, collect synthetic passport and Emirates ID only through the authenticated upload UI, and require a verified quote, explicit purchase consent and OTP. Never ask for identity files, OTPs or card details in chat; never claim an invoice exists until independent gateway COMPLETE verification.",
         "Latest customer message:",text,
       ].join("\n");
       const toolRegistry=new AgentToolRegistry();
@@ -130,7 +141,7 @@ export class TurnWorker {
               required:d.required,uploaded:d.uploaded,
             })),
           };
-        });
+        },actionRead);
       const toolContext:TrustedToolContext={
         agentId:turn.agentId,ticketId:turn.ticketId,
         principalId:"ticket:"+turn.ticketId,
