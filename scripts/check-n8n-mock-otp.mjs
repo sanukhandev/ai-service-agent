@@ -76,6 +76,7 @@ assert(Math.abs(new Date(rows[0].json.expiresAt).getTime() -
    new Date(rows[0].json.issuedAt).getTime() - 300000) < 100);
 assert(new Date(rows[0].json.issuedAt).getTime() >= start - 1000);
 await assert.rejects(executeGate(input, {...enabled,APP_ENV:"production"}),/disabled/i);
+await assert.rejects(executeGate(input, {...enabled,APP_ENV:"staging"}),/disabled/i);
 await assert.rejects(executeGate(input, {...enabled,ANCFZ_OTP_MOCK_ENABLED:"false"}),/disabled/i);
 await assert.rejects(executeGate({first:()=>({json:{body:{...input.first().json.body,otp:"bad"}}})},enabled),/Invalid test OTP/);
 
