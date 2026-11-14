@@ -10,6 +10,7 @@ import { TicketMessageRepository } from "../repositories/messages.js";
 import { scopedIntentToolRepositories } from "../repositories/intent-adapter.js";
 import { workerTicketScope, type SourceReference } from "../repositories/types.js";
 import { TurnQueue, type PendingTurn } from "./turn-queue.js";
+import { PurchaseOperations } from "./purchase-operations.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -110,11 +111,13 @@ export class TurnWorker {
           previousSummary:stored.summary?.text ?? null,
           ...(recent.length ? {earlierMessages:recent.slice(0,-1).map(m=>({role:m.role,text:m.text}))}:{}),
         }),
+        "Purchase requirements: for a customer who wants to proceed with the approved quotation, call get_intent_requirements with operationKey purchase_quotation. Explain the secure ticket document upload, explicit customer purchase consent and test OTP steps. Do not ask for passport files, OTPs, card numbers or payment credentials in chat. Never claim an invoice exists before a verified gateway COMPLETE result.",
         "Latest customer message:",text,
       ].join("\n");
       const toolRegistry=new AgentToolRegistry();
       const adapters=scopedIntentToolRepositories(this.db,scope,turn.ticketId);
-      registerIntentTools(toolRegistry,adapters.catalog,adapters.facts,adapters.ticketIntents);
+      registerIntentTools(toolRegistry,adapters.catalog,adapters.facts,adapters.ticketIntents,
+        ()=>new PurchaseOperations(this.db).read(scope,turn.ticketId));
       const toolContext:TrustedToolContext={
         agentId:turn.agentId,ticketId:turn.ticketId,
         principalId:"ticket:"+turn.ticketId,
