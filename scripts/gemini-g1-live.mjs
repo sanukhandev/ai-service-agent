@@ -96,21 +96,19 @@ try {
   if(!seen.some(c=>c.providerResourceName===documentName ||
     c.sourceMetadata?.documentVersionId===documentVersionId))
     fail("ADAPTER_CITATION_IDENTITY_UNVERIFIED");
-  const intent=await adapter.runTurn({...baseRequest,requestId:randomUUID(),
+  const intentRequest={...baseRequest,requestId:randomUUID(),
     acceptedCustomerMessageId:randomUUID(),
     customerMessage:"Use the find_intents function to search query 'company setup' now.",
-    allowedBuiltinTools:[],allowedBusinessToolNames:["find_intents"]},{phase:"functions"});
+    allowedBuiltinTools:[],allowedBusinessToolNames:["find_intents"]};
+  const intent=await adapter.runTurn(intentRequest,{phase:"functions"});
   report.authorizedFunction=intent.kind==="candidate" &&
     intent.candidate.functionCalls.some(x=>x.name==="find_intents");
   if(!report.authorizedFunction)fail("FUNCTION_CALL_NOT_PROVEN");
   const call=intent.candidate.functionCalls.find(x=>x.name==="find_intents");
   const state=intent.candidate.continuation?.pendingToolStateRef;
   if(!call||!state)fail("FUNCTION_PENDING_STATE_MISSING");
-  const continued=await adapter.continueWithFunctionOutputs({
-    ...baseRequest,requestId:intent.candidate.continuation?.opaqueRef??baseRequest.requestId,
-    customerMessage:"Use the find_intents function to search query 'company setup' now.",
-    allowedBuiltinTools:[],allowedBusinessToolNames:["find_intents"],
-  },state,[{callId:call.callId,outputJson:JSON.stringify({
+  const continued=await adapter.continueWithFunctionOutputs(
+    intentRequest,state,[{callId:call.callId,outputJson:JSON.stringify({
     ok:true,data:{candidates:[{intentKey:"company_formation",
       name:"Start Company",description:"Synthetic function response"}]},
   })}],{phase:"functions"});
