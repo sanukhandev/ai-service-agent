@@ -139,6 +139,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
+  // Changes only when durable SSE events arrive (or a connection is restored).
+  // Child action forms refresh from this revision instead of periodic GET polling.
+  const [eventRevision, setEventRevision] = useState(0);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
   const [showLatest, setShowLatest] = useState(false);
@@ -227,6 +230,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
   const handleEvent = useCallback(
     (event: TicketEvent) => {
+      if (!["assistant.processing", "agent.processing", "agent.response.started"].includes(event.name)) {
+        setEventRevision((previous) => previous + 1);
+      }
       const incomingMessage = messageFromEvent(event.data);
       const incomingTicket = ticketFromEvent(event.data);
       if (
@@ -291,7 +297,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     [agentKey, ticket?.id, refresh],
   );
 
-  const stream = useTicketEvents(ticket?.id ?? null, handleEvent, refresh);
+  const stream = useTicketEvents(ticket?.id ?? null, handleEvent, () => {
+    void refresh();
+    setEventRevision((previous) => previous + 1);
+  });
 
   const send = useCallback(
     async (text: string) => {
@@ -369,7 +378,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     turnState === "accepted" ||
     turnState === "processing" ||
     (ticket?.status === "processing" && turnState !== "sending");
-  const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isProcessing;
+  // Subsequent messages are durable and queued; TurnQueue preserves per-ticket
+  // Foundry cursor ordering while a worker is processing earlier messages.
+  const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isSending;
 
   const currentStatus = ticket ? statusConfig[ticket.status] : null;
 
@@ -683,7 +694,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           )}
 
           {/* Selected catalog actions have one authoritative Node UI. */}
-          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} />}
+          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} revision={eventRevision} />}
 
           <ChatComposer
             onSend={send}
