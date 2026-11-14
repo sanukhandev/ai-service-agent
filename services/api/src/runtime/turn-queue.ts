@@ -1,5 +1,6 @@
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import type { GroundingDecision } from "@ai-service-agent/contracts/gemini-v1";
 import { authorizedTicket, workerTicketScope, type SourceReference, type TicketScope } from "../repositories/types.js";
 
 export interface PendingTurn {
@@ -215,6 +216,97 @@ export class TurnQueue {
       const envelope={message:{id:message.id,role:"assistant",text,createdAt:message.created_at.toISOString(),sourceReferences:enrichedRefs}};
       const payload=Buffer.byteLength(JSON.stringify(envelope),"utf8") <= 30000
         ? envelope : {messageId:message.id,requestId:turn.requestId};
+      await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.message",payload);
+      await appendEventTx(client,turn.agentId,turn.ticketId,"ticket.updated",{status:"awaiting_customer"});
+    });
+  }
+
+  /**
+   * Gemini: one transaction creates the independently verified evidence audit,
+   * assistant message, and SSE event. No Foundry resp_ cursor is fabricated.
+   * Unverified model output cannot enter the message stream.
+   */
+  async completeGemini(turn: PendingTurn, sessionId: string, text: string,
+    refs: readonly SourceReference[], decision: GroundingDecision): Promise<void> {
+    if (decision.status !== "supported" || decision.claims.some(x=>!x.supported) ||
+        (!["social","clarification"].includes(decision.category) && !decision.claims.length)) {
+      throw new PersistenceError("CONFLICT","Unverified Gemini response cannot be published");
+    }
+    if (!text.trim() || text.length > 30000 || refs.length > 50 ||
+      Buffer.byteLength(JSON.stringify(refs),"utf8") > 16000) {
+      throw new PersistenceError("INVALID_INPUT","Invalid Gemini completion");
+    }
+    const allowedDocs = new Set(decision.claims.flatMap(x=>x.evidence)
+      .filter(e=>e.authority==="approved_file_search").map(e=>e.evidenceId));
+    for (const ref of refs) {
+      if (!ref.sourceId || !allowedDocs.has(ref.sourceId)) {
+        throw new PersistenceError("CONFLICT","Source not covered by approved evidence");
+      }
+    }
+    await this.db.withAgent(turn.agentId,async client=>{
+      const scope=workerTicketScope(turn.agentId,turn.ticketId);
+      await authorizedTicket(client,scope,turn.ticketId,true);
+      const claimed=await client.query<{id:string}>(
+        "SELECT id FROM ticket_turns WHERE agent_id=$1 AND id=$2 AND ticket_id=$3 AND customer_message_id=$4 AND state='processing' AND lease_token=$5 FOR UPDATE",
+        [turn.agentId,turn.id,turn.ticketId,turn.messageId,turn.leaseToken],
+      );
+      if(!claimed.rows[0]) throw new PersistenceError("CONFLICT","Turn lease lost");
+      const session=await client.query<{id:string}>(
+        "SELECT id FROM ai_conversation_sessions WHERE agent_id=$1 AND id=$2 AND ticket_id=$3 AND status='active' AND expires_at>clock_timestamp() FOR UPDATE",
+        [turn.agentId,sessionId,turn.ticketId],
+      );
+      if(!session.rows[0]) throw new PersistenceError("CONFLICT","AI session expired");
+      const dupe=await client.query(
+        "SELECT 1 FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND request_id=$3",
+        [turn.agentId,turn.ticketId,turn.requestId],
+      );
+      if(dupe.rowCount) throw new PersistenceError("CONFLICT","Assistant message already published");
+      const v=await client.query<{id:string}>(
+        "INSERT INTO gemini_response_qualifications(agent_id,session_id,ticket_id,customer_message_id,category,grounding_status,verifier_version,reason_code) VALUES($1,$2,$3,$4,$5,$6,$7,$8) RETURNING id",
+        [turn.agentId,sessionId,turn.ticketId,turn.messageId,decision.category,
+          decision.status,decision.verifierVersion,decision.reasonCode],
+      );
+      const qualificationId=v.rows[0]?.id;
+      if(!qualificationId)throw new PersistenceError("DATABASE_ERROR","Qualification insert failed");
+      for(const claim of decision.claims){
+        const added=await client.query<{id:string}>(
+          "INSERT INTO gemini_response_claims(agent_id,qualification_id,claim_key,claim_text,supported,reason) VALUES($1,$2,$3,$4,$5,$6) RETURNING id",
+          [turn.agentId,qualificationId,claim.claimId,claim.claimText,true,claim.reason],
+        );
+        for(const e of claim.evidence){
+          if(e.agentId!==turn.agentId || e.claimId!==claim.claimId)
+            throw new PersistenceError("CONFLICT","Evidence scope mismatch");
+          await client.query(
+            "INSERT INTO gemini_response_evidence(agent_id,claim_id,authority,knowledge_version_id,document_version_id,evidence_reference) VALUES($1,$2,$3,$4,$5,$6)",
+            [turn.agentId,added.rows[0].id,e.authority,e.knowledgeVersionId,e.documentVersionId,e.evidenceId],
+          );
+        }
+      }
+      const ticket=await client.query<{last_message_sequence:string}>(
+        "UPDATE tickets SET last_message_sequence=last_message_sequence+1,status='awaiting_customer',updated_at=clock_timestamp() WHERE agent_id=$1 AND id=$2 RETURNING last_message_sequence",
+        [turn.agentId,turn.ticketId],
+      );
+      const sequence=ticket.rows[0]?.last_message_sequence;
+      if(!sequence)throw new PersistenceError("DATABASE_ERROR","Assistant sequence missing");
+      const saved=await client.query<{id:string;created_at:Date}>(
+        "INSERT INTO ticket_messages(agent_id,ticket_id,role,content,request_id,source_references,message_sequence) VALUES($1,$2,'assistant',$3,$4,$5::jsonb,$6) RETURNING id,created_at",
+        [turn.agentId,turn.ticketId,text,turn.requestId,JSON.stringify(refs),sequence],
+      );
+      const message=saved.rows[0];
+      if(!message)throw new PersistenceError("DATABASE_ERROR","Assistant message missing");
+      const linked=await client.query(
+        "UPDATE gemini_response_qualifications SET assistant_message_id=$4 WHERE agent_id=$1 AND id=$2 AND session_id=$3 AND assistant_message_id IS NULL RETURNING id",
+        [turn.agentId,qualificationId,sessionId,message.id],
+      );
+      if(!linked.rowCount)throw new PersistenceError("CONFLICT","Qualification link failed");
+      await client.query(
+        "UPDATE ticket_turns SET state='completed',lease_token=NULL,lease_until=NULL,provider_response_id=NULL,updated_at=clock_timestamp() WHERE agent_id=$1 AND id=$2 AND lease_token=$3",
+        [turn.agentId,turn.id,turn.leaseToken],
+      );
+      const envelope={message:{id:message.id,role:"assistant",text,
+        createdAt:message.created_at.toISOString(),sourceReferences:refs}};
+      const payload=Buffer.byteLength(JSON.stringify(envelope),"utf8")<=30000
+        ? envelope:{messageId:message.id,requestId:turn.requestId};
       await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.message",payload);
       await appendEventTx(client,turn.agentId,turn.ticketId,"ticket.updated",{status:"awaiting_customer"});
     });
