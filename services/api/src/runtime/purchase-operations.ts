@@ -121,7 +121,7 @@ export async function invoiceBillingName(
  client:PoolClient,agentId:string,ticketId:string,quotationId:string,
 ):Promise<string>{
   const q=await findQuote(client,agentId,ticketId);
-  if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed"
+  if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed")
     throw new PersistenceError("CONFLICT","Invoice identity is not linked to the approved quotation");
   const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
   return extractedBillingName(docs);
@@ -130,7 +130,7 @@ export async function assertPurchaseReady(
   client:PoolClient,agentId:string,ticketId:string,quotationId:string,
 ):Promise<void>{
   const q=await findQuote(client,agentId,ticketId);
-  if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed"
+  if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed")
     throw new PersistenceError("CONFLICT","Select a purchase-enabled intent and obtain a verified quotation");
   const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
   // A catalog with no configured requirements is not authorization to skip intake.
