@@ -3,6 +3,9 @@
 # and both public ingress routes. No customer data, Foundry or n8n actions.
 set -euo pipefail
 
+# Always target the Gemini experiment, regardless of a shell-level COMPOSE_PROJECT_NAME.
+compose() { docker compose --project-name ai-service-agent-gemini "$@"; }
+
 : "${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD}"
 : "${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD}"
 if [[ "$POSTGRES_PASSWORD" == "$POSTGRES_APP_PASSWORD" ]]; then
@@ -10,8 +13,8 @@ if [[ "$POSTGRES_PASSWORD" == "$POSTGRES_APP_PASSWORD" ]]; then
   exit 1
 fi
 
-docker compose config --quiet
-docker compose up -d --build postgres redis api web nginx
+compose config --quiet
+compose up -d --build postgres redis api web nginx
 
 printf '%s\n' "Checking http://127.0.0.1:2000/api/health (Gemini experiment)..."
 curl --fail --silent --show-error --retry-all-errors \
@@ -26,7 +29,7 @@ curl --fail --silent --show-error --retry-all-errors \
 grep -q 'Sara' /tmp/p0-gemini-web-home.html
 
 printf '%s\n' "Checking fresh schema and restricted runtime DB role..."
-docker compose exec -T postgres sh -ec '
+compose exec -T postgres sh -ec '
   PGPASSWORD="$POSTGRES_APP_PASSWORD" psql \
     -h 127.0.0.1 -U agent_runtime -d "$POSTGRES_DB" \
     -v ON_ERROR_STOP=1 -tAc \
