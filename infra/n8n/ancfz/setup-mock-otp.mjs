@@ -100,6 +100,11 @@ async function main() {
   const [tables, workflows] = await Promise.all([
     listAll(api, "/data-tables"), listAll(api, "/workflows"),
   ]);
+  // Same webhook path is used by the original SMTP delivery workflow.
+  // Two active handlers would make OTP delivery ambiguous.
+  if (workflows.some(w => w.name === "ANCFZ | Deliver Payment OTP (Node Generated)" && w.active === true)) {
+    fail("SMTP_WORKFLOW_ACTIVE", "Deactivate the original SMTP OTP workflow before installing the mock alternative");
+  }
   const matches = tables.filter(t => t.name === TABLE_NAME);
   if (matches.length > 1) fail("TABLE_CONFLICT", "Multiple mock OTP tables share the expected name");
   let table = matches[0] || null;
