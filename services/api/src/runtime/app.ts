@@ -43,13 +43,52 @@ function cookieToken(request:FastifyRequest):string|null {
   const token=matches[0]?.slice("sa_guest=".length) ?? "";
   return /^[a-f0-9]{64}$/.test(token) ? token : null;
 }
+function isAllowedOrigin(originStr: string, hostStr?: string): boolean {
+  try {
+    const originUrl = new URL(originStr);
+    const originHost = originUrl.hostname.toLowerCase();
+
+    // 1. Exact host match (with or without port)
+    if (hostStr) {
+      const cleanHost = hostStr.split(":")[0].toLowerCase();
+      if (originHost === cleanHost) return true;
+    }
+
+    // 2. Localhost & Loopback (allow any port for local development)
+    if (originHost === "localhost" || originHost === "127.0.0.1") return true;
+
+    // 3. Dev Tunnels (*.devtunnels.ms)
+    if (originHost.endsWith(".devtunnels.ms")) return true;
+
+    // 4. GitHub Codespaces (*.github.dev, *.preview.app.github.dev)
+    if (originHost.endsWith(".github.dev") || originHost.endsWith(".preview.app.github.dev")) return true;
+
+    // 5. PUBLIC_BASE_URL if configured
+    if (process.env.PUBLIC_BASE_URL) {
+      try {
+        const publicUrl = new URL(process.env.PUBLIC_BASE_URL);
+        if (originHost === publicUrl.hostname.toLowerCase()) return true;
+      } catch {
+        // ignore invalid PUBLIC_BASE_URL
+      }
+    }
+
+    return false;
+  } catch {
+    return false;
+  }
+}
 function rejectCrossSite(request:FastifyRequest):void {
   const origin=request.headers.origin;
   const host=request.headers.host;
-  if(origin && (!host || new URL(origin).host.toLowerCase()!==host.toLowerCase())) {
-    throw new PersistenceError("INVALID_INPUT","Cross-site request denied");
+  if(origin) {
+    if(!isAllowedOrigin(origin, host)) {
+      throw new PersistenceError("INVALID_INPUT","Cross-site request denied");
+    }
+    return;
   }
-  if(request.headers["sec-fetch-site"] === "cross-site") {
+  const secFetchSite=request.headers["sec-fetch-site"];
+  if(secFetchSite === "cross-site") {
     throw new PersistenceError("INVALID_INPUT","Cross-site request denied");
   }
 }
@@ -96,8 +135,37 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
         error.code==="CONFLICT"?409:error.code==="NOT_CONFIGURED"?503:500;
       return reply.code(status).send({code:error.code,message:status===500?"Service temporarily unavailable":error.message,requestId:request.id});
     }
-    request.log.error({errorCode:(error as Error).name, requestId:request.id},"API request failed");
+    request.log.error({errorCode:(error as Error).name, errorMessage:(error as Error).message, errorStack:(error as Error).stack, requestId:request.id},"API request failed");
     return reply.code(500).send({code:"INTERNAL_ERROR",message:"Service temporarily unavailable",requestId:request.id});
+  });
+
+  // Handle CORS preflight across all API routes
+  app.options("*", async (request, reply) => {
+    const origin = request.headers.origin;
+    const host = request.headers.host;
+    if (origin && isAllowedOrigin(origin, host)) {
+      reply.header("Access-Control-Allow-Origin", origin);
+      reply.header("Access-Control-Allow-Credentials", "true");
+      reply.header("Access-Control-Allow-Methods", "GET, HEAD, POST, PUT, DELETE, OPTIONS");
+      reply.header(
+        "Access-Control-Allow-Headers",
+        request.headers["access-control-request-headers"] ||
+          "Content-Type, Authorization, Cookie, X-Requested-With, X-Tunnel-Skip-Anti-Phishing-Page, Accept, Origin",
+      );
+      reply.header("Access-Control-Max-Age", "86400");
+    }
+    return reply.code(204).send();
+  });
+
+  // Attach CORS response headers for allowed origins
+  app.addHook("onSend", async (request, reply) => {
+    const origin = request.headers.origin;
+    const host = request.headers.host;
+    if (origin && isAllowedOrigin(origin, host)) {
+      reply.header("Access-Control-Allow-Origin", origin);
+      reply.header("Access-Control-Allow-Credentials", "true");
+      reply.header("Vary", "Origin");
+    }
   });
 
   app.get("/api/health",async()=>({status:"ok",service:"api"}));
@@ -111,12 +179,21 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     if(!token || !(await sessions.isValid(agent.id,token))) {
       token=(await sessions.create(agent.id)).token;
       const host=request.headers.host ?? "";
+      const forwardedProto=request.headers["x-forwarded-proto"];
+      const isHttps =
+        forwardedProto === "https" ||
+        request.protocol === "https" ||
+        host.includes(".devtunnels.ms") ||
+        host.includes(".github.dev") ||
+        (process.env.PUBLIC_BASE_URL?.startsWith("https://") ?? false);
+
       const local=host.startsWith("localhost") || host.startsWith("127.0.0.1");
-      const secure=process.env.PUBLIC_BASE_URL?.startsWith("https://") ?? false;
-      if(!secure && !local && process.env.APP_ENV==="production") {
+      if(!isHttps && !local && process.env.APP_ENV==="production") {
         throw new PersistenceError("NOT_CONFIGURED","HTTPS is required for public customer sessions");
       }
-      reply.header("Set-Cookie","sa_guest="+token+"; Path=/api; HttpOnly; SameSite=Lax"+(secure?"; Secure":""));
+      const sameSite = isHttps ? "None" : "Lax";
+      const secureFlag = isHttps ? "; Secure; Partitioned" : "";
+      reply.header("Set-Cookie",`sa_guest=${token}; Path=/api; HttpOnly; SameSite=${sameSite}${secureFlag}`);
     }
     const scope:TicketScope={agentId:agent.id,owner:{kind:"guest",token}};
     const ticket=await tickets.create(scope);
@@ -295,11 +372,20 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     }
     reply.hijack();
     const res=reply.raw;
+    const origin=request.headers.origin;
+    const host=request.headers.host;
+    const corsHeaders:Record<string,string>={};
+    if(origin && isAllowedOrigin(origin, host)) {
+      corsHeaders["Access-Control-Allow-Origin"]=origin;
+      corsHeaders["Access-Control-Allow-Credentials"]="true";
+      corsHeaders["Vary"]="Origin";
+    }
     res.writeHead(200,{
       "Content-Type":"text/event-stream; charset=utf-8",
       "Cache-Control":"no-cache, no-transform",
       "Connection":"keep-alive",
       "X-Accel-Buffering":"no",
+      ...corsHeaders,
     });
     let stopped=false;
     let busy=false;

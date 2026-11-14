@@ -34,10 +34,10 @@ export function QuotationRequest({ticketId}:{ticketId:string}) {
       try{
         const [available,stored]=await Promise.all([
           fetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/quotation-options`,{
-            credentials:"same-origin",cache:"no-store",
+            credentials:"include",cache:"no-store",
           }),
           fetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/quotations`,{
-            credentials:"same-origin",cache:"no-store",
+            credentials:"include",cache:"no-store",
           }),
         ]);
         if(!available.ok||!stored.ok)return;
@@ -82,7 +82,7 @@ export function QuotationRequest({ticketId}:{ticketId:string}) {
     requestId.current=id;
     try{
       const response=await fetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/quotations`,{
-        method:"POST",credentials:"same-origin",
+        method:"POST",credentials:"include",
         headers:{"Content-Type":"application/json",Accept:"application/json"},
         body:JSON.stringify({
           requestId:id,offeringKey:chosen.offeringKey,

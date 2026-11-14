@@ -96,7 +96,7 @@ async function request(path: string, init: RequestInit, expectedStatus: number):
     response = await fetch(path, {
       ...init,
       cache: "no-store",
-      credentials: "same-origin",
+      credentials: "include",
       headers: {
         Accept: "application/json",
         ...(init.body ? { "Content-Type": "application/json" } : {}),

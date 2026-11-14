@@ -29,7 +29,7 @@ export function LeadSubmission({ticketId}:{ticketId:string}) {
     setOperation(null);
     setExpanded(false);
     fetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/operations`,{
-      credentials:"same-origin",cache:"no-store",
+      credentials:"include",cache:"no-store",
     }).then(async response=>{
       if(!response.ok) throw new Error("Operation status unavailable");
       return await response.json();
@@ -54,7 +54,7 @@ export function LeadSubmission({ticketId}:{ticketId:string}) {
     requestId.current=id;
     try {
       const response=await fetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/operations/salesforce-lead`,{
-        method:"POST",credentials:"same-origin",
+        method:"POST",credentials:"include",
         headers:{"Content-Type":"application/json",Accept:"application/json"},
         body:JSON.stringify({...fields,consent:true,consentText,requestId:id}),
       });
