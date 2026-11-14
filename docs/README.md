@@ -17,6 +17,7 @@
 | [Customer UI](08-ui-guidelines.md) | Minimal Next.js, Tailwind and self-hosted Inter |
 | [Testing and acceptance](09-testing-and-acceptance.md) | Smoke vs deferred H1 hardening |
 | [POC phases](10-implementation-plan.md) | P0–P7 delivery plan |
+| [Foundry live acceptance](foundry-live-acceptance.md) | Verified implementation scope, publication procedure, external-provider gates and evidence record |
 | [Intent-driven employee conversation](11-intent-conversation-and-node-ownership.md) | How Node catalog, ticket facts and Foundry tools work |
 | [Service employee instructions](../services/api/prompts/sara-service-employee.md) | Sara's natural, non-robotic prompt |
 
