@@ -8,6 +8,7 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled,
   verifyPaymentStatus, type PaymentIdentity } from "./payment-evidence.js";
 
@@ -125,6 +126,7 @@ export class PaymentOperations {
       await authorizedTicket(client,scope,ticketId,true);
       await requireAncfz(client,scope.agentId);
       const q=await quote(client,scope.agentId,ticketId,input.quotationId);
+      await assertPurchaseReady(client,scope.agentId,ticketId,input.quotationId);
       if(q.amount!==input.amount||q.currency.trim()!==input.currency)
         throw new PersistenceError("CONFLICT","Price or currency changed; request a fresh quote");
       const count=await client.query<{count:string;last:Date|null}>(
@@ -189,6 +191,7 @@ export class PaymentOperations {
       await authorizedTicket(client,scope,ticketId,true);
       await requireAncfz(client,scope.agentId);
       const q=await quote(client,scope.agentId,ticketId,input.quotationId);
+      await assertPurchaseReady(client,scope.agentId,ticketId,input.quotationId);
       const dup=await client.query<PaymentRow>(
         `SELECT id,quotation_id,request_id,external_reference,amount::text,currency,state,
           order_reference,checkout_url,provider_status,verified_at,created_at
