@@ -26,6 +26,10 @@ jobs:
         run: node --test services/api/src/knowledge/knowledge.test.mjs
       - name: Run P4 grounding tests against compiled API
         run: node --test services/api/src/grounding/__tests__/grounding.test.mjs
+      - name: Validate source-derived ANCFZ catalog action mapping
+        run: node scripts/ancfz-test-tool-smoke.mjs
+      - name: Validate 2Checkout mock OTP and invoice evidence constraints
+        run: node scripts/check-p5-2checkout.mjs
 
   independent-adapters:
     runs-on: ubuntu-latest
@@ -49,6 +53,12 @@ jobs:
         run: node --check scripts/gemini-g1-live.mjs
       - name: Run P5 offline workflow adapter
         run: node --experimental-transform-types --test services/api/src/integrations/gemini-n8n/adapter.test.mjs
+      - name: Validate imported ANCFZ n8n/2Checkout workflow and credential contracts
+        run: |
+          node scripts/check-ancfz-workflows.mjs
+          node scripts/check-ancfz-credentials.mjs
+          node scripts/check-ancfz-billing-workflows.mjs
+          node scripts/check-2checkout-upgrade.mjs
       - name: Run P6 offline harness (not application certification)
         run: node scripts/check-gemini-certification.mjs --mode=offline
       - name: Check P2 migration validation script syntax
