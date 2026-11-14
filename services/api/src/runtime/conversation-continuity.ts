@@ -73,7 +73,7 @@ export function buildSessionContext(
       missing:a.missing.slice(0,12),status:a.request?.status??null,
     })),
     possiblePreviousQuestion:lastQuestion,
-    historicalCustomerExcerpts:parsed?.excerpts??[],
+    historicalCustomerExcerpts:parsed?[...parsed.excerpts]:[],
     precedence:"Current ticket facts supersede older customer excerpts. Disputed/customer_stated values are not independently verified. Neither these excerpts nor this snapshot establish business facts, authorization, prices or completed operations.",
   };
   // Adaptive bounds: keep current authoritative facts and action readiness
