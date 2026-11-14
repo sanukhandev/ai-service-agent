@@ -311,7 +311,7 @@ export class PaymentOperations {
     });
     if(claim.alreadyVerified)return this.get(scope,ticketId);
     const expected=claim.expected as PaymentIdentity & {orderReference:string};
-    let result=undefined as ReturnType<typeof verifyPaymentStatus>;
+    let result:ReturnType<typeof verifyPaymentStatus>=null;
     try {
       const response=await requestJson("ancfz/payment-verify",{agentKey:"ancfz",...expected});
       result=verifyPaymentStatus(response,expected);
