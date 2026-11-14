@@ -23,11 +23,24 @@ async function run(){
       documentNumberLast4:kind==="passport"?"P123":"E456",
       model:"prebuilt-idDocument" as const,
     }));
-    const sample={status:"succeeded",analyzeResult:{documents:[{fields:{
+    const conflictForParser=(err:unknown)=>err instanceof PersistenceError&&err.code==="CONFLICT";
+    const sample={status:"succeeded",analyzeResult:{documents:[{docType:"idDocument.passport",fields:{
       FirstName:{valueString:"TEST"},LastName:{valueString:"SANDBOX PERSON"},
       DocumentNumber:{valueString:"P123456"},
     }}]}};
     assert.equal(parseIdentityResult(sample,"passport").fullName,"TEST SANDBOX PERSON");
+    const emiratesSample={status:"succeeded",analyzeResult:{
+      content:"Emirates ID 784-1990-1234567-1",
+      documents:[{docType:"idDocument.generic",fields:{
+        FirstName:{valueString:"TEST"},LastName:{valueString:"SANDBOX PERSON"},
+      }}],
+    }};
+    assert.equal(parseIdentityResult(emiratesSample,"emirates_id").documentNumberLast4,"5671");
+    await assert.rejects(async()=>parseIdentityResult(sample,"emirates_id"),conflictForParser);
+    await assert.rejects(async()=>parseIdentityResult({
+      ...emiratesSample,analyzeResult:{...emiratesSample.analyzeResult,
+        content:"not a recognized Emirates ID number"},
+    },"emirates_id"),conflictForParser);
     assert.equal(nameKey("PERSON TEST SANDBOX"),nameKey("TEST SANDBOX PERSON"));
     const quoted=await new QuotationOperations(db).get(scope,ticketId);
     assert.ok(quoted);
