@@ -110,8 +110,25 @@ BEGIN
     ) VALUES (
       a, iv, r->>'key', r->>'name', r->>'description',
       ARRAY(SELECT jsonb_array_elements_text(r->'examplePhrases')),
-      ARRAY(SELECT jsonb_array_elements_text(r->'allowedActions'))
+      CASE WHEN 'generate_quote' IN (
+        SELECT jsonb_array_elements_text(r->'allowedActions')
+      ) THEN ARRAY(SELECT DISTINCT action FROM (
+        SELECT jsonb_array_elements_text(r->'allowedActions') AS action
+        UNION ALL SELECT 'create_lead'
+        UNION ALL SELECT 'purchase_quotation'
+      ) allowed)
+      ELSE array_remove(ARRAY(SELECT jsonb_array_elements_text(r->'allowedActions')),
+        'purchase_quotation') END
     ) RETURNING id INTO ix;
+    -- Only synthetic identity documents are accepted for this isolated POC.
+    -- Document receipt is not independent identity verification.
+    INSERT INTO intent_document_requirements(
+      agent_id,intent_id,requirement_key,label,guidance,required,sort_order
+    ) VALUES
+      (a,ix,'passport','Passport',
+       'POC: synthetic passport bio page; extract name only after explicit consent',true,1),
+      (a,ix,'emirates_id','Emirates ID',
+       'POC: synthetic Emirates ID; cross-check name without storing full ID',true,2);
     FOR req IN SELECT value FROM jsonb_array_elements(r->'requirements') LOOP
       INSERT INTO intent_requirements(
         agent_id, intent_id, requirement_key, label, value_type,
