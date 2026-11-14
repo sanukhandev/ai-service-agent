@@ -2,7 +2,7 @@
   "name": "ai-service-agent",
   "private": true,
   "version": "0.1.0",
-  "description": "Agent-centric Foundry AI service platform (POC)",
+  "description": "Agent-centric Gemini File Search service platform (experimental POC)",
   "engines": {
     "node": ">=22"
   },
