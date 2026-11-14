@@ -7,6 +7,7 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { extractIdentityDocument, nameKey, type ExtractedIdentity, type IdentityKind } from "./identity-extractor.js";
 
 export const PURCHASE_CONSENT =
   "I confirm that I want to proceed with this ANCFZ sandbox purchase for the exact approved quotation amount and that the required test documents have been submitted.";
@@ -16,12 +17,13 @@ const MAX_FILE=1048576;
 type PurchaseQuote={id:string;intent_id:string;intent_key:string;amount:string;currency:string;state:string};
 type DocRow={id:string;requirement_key:string;label:string;guidance:string|null;
   required:boolean;sort_order:number;file_name:string|null;content_type:string|null;
-  state:string|null;created_at:Date|null};
+  state:string|null;created_at:Date|null;extracted_full_name:string|null;
+  extraction_status:string|null};
 export type PurchaseStatus={
   supported:boolean;intentKey:string|null;quotationId:string|null;amount:string|null;currency:string|null;
   requirements:Array<{key:string;label:string;guidance:string|null;required:boolean;
     uploaded:boolean;fileName:string|null;documentId:string|null;status:string}>;
-  confirmed:boolean;readyForOtp:boolean;missing:string[];
+  confirmed:boolean;readyForOtp:boolean;missing:string[];billingName:string|null;
   persona:{name:string;tone:string};
 };
 async function findQuote(client:PoolClient,agentId:string,ticketId:string):Promise<PurchaseQuote|null>{
@@ -49,7 +51,8 @@ async function findQuote(client:PoolClient,agentId:string,ticketId:string):Promi
 async function getRequirements(client:PoolClient,agentId:string,ticketId:string,intentId:string):Promise<DocRow[]>{
   const r=await client.query<DocRow>(
     `SELECT r.id,r.requirement_key,r.label,r.guidance,r.required,r.sort_order,
-       d.file_name,d.content_type,d.state,d.created_at
+       d.file_name,d.content_type,d.state,d.created_at,
+       d.extracted_full_name,d.extraction_status
      FROM intent_document_requirements r
      LEFT JOIN ticket_purchase_documents d
        ON d.agent_id=r.agent_id AND d.ticket_id=$2
@@ -96,6 +99,29 @@ function validateBase64(b:unknown,contentType:unknown):Buffer{
      (contentType==="image/jpeg" && jpg))return bytes;
   throw new PersistenceError("INVALID_INPUT","File signature does not match PDF, PNG or JPEG content type");
 }
+function extractedBillingName(docs:DocRow[]):string{
+  const allowed=new Set(["passport","emirates_id"]);
+  if(docs.length!==2||docs.some(d=>!allowed.has(d.requirement_key)))
+    throw new PersistenceError("CONFLICT","This POC accepts only passport and Emirates ID");
+  const passport=docs.find(d=>d.requirement_key==="passport");
+  const emirates=docs.find(d=>d.requirement_key==="emirates_id");
+  if(!passport||!emirates||[passport,emirates].some(d=>
+    d.state!=="received"||d.extraction_status!=="extracted"||
+    !d.extracted_full_name))
+    throw new PersistenceError("CONFLICT","Both ID documents must be read before purchase");
+  if(nameKey(passport.extracted_full_name as string)!==nameKey(emirates.extracted_full_name as string))
+    throw new PersistenceError("CONFLICT","Passport and Emirates ID holder names differ; request review");
+  return passport.extracted_full_name as string;
+}
+export async function invoiceBillingName(
+ client:PoolClient,agentId:string,ticketId:string,quotationId:string,
+):Promise<string>{
+  const q=await findQuote(client,agentId,ticketId);
+  if(!q||q.id!==quotationId||q.state!=="verified_completed")
+    throw new PersistenceError("CONFLICT","Invoice identity is not linked to the approved quotation");
+  const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
+  return extractedBillingName(docs);
+}
 export async function assertPurchaseReady(
   client:PoolClient,agentId:string,ticketId:string,quotationId:string,
 ):Promise<void>{
@@ -104,13 +130,15 @@ export async function assertPurchaseReady(
     throw new PersistenceError("CONFLICT","Select a purchase-enabled intent and obtain a verified quotation");
   const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
   // A catalog with no configured requirements is not authorization to skip intake.
-  if(!docs.length||docs.some(d=>d.required && d.state!=="received"))
-    throw new PersistenceError("CONFLICT","Required purchase documents have not been collected");
+  extractedBillingName(docs);
   if(!(await confirmation(client,agentId,ticketId,q)))
     throw new PersistenceError("CONFLICT","Customer purchase confirmation is required before OTP");
 }
 export class PurchaseOperations {
-  constructor(private readonly db:PersistenceDatabase){}
+  constructor(
+    private readonly db:PersistenceDatabase,
+    private readonly extract:(bytes:Buffer,kind:IdentityKind)=>Promise<ExtractedIdentity>=extractIdentityDocument,
+  ){}
   async read(scope:TicketScope,ticketId:string):Promise<PurchaseStatus>{
     requireUuid(ticketId,"ticketId");
     return this.db.withAgent(scope.agentId,async client=>{
@@ -118,19 +146,23 @@ export class PurchaseOperations {
       const q=await findQuote(client,scope.agentId,ticketId);
       const branding=await persona(client,scope.agentId,ticketId);
       if(!q)return {supported:false,intentKey:null,quotationId:null,amount:null,currency:null,
-        requirements:[],confirmed:false,readyForOtp:false,missing:[],persona:branding};
+        requirements:[],confirmed:false,readyForOtp:false,missing:[],billingName:null,persona:branding};
       const documents=await getRequirements(client,scope.agentId,ticketId,q.intent_id);
       const confirmed=await confirmation(client,scope.agentId,ticketId,q);
-      const missing=documents.filter(d=>d.required&&d.state!=="received").map(d=>d.requirement_key);
+      const missing=documents.filter(d=>d.required&&
+        (d.state!=="received"||d.extraction_status!=="extracted")).map(d=>d.requirement_key);
+      let billingName:string|null=null;
+      try{billingName=extractedBillingName(documents);}catch{/* Keep checklist pending on mismatch. */}
+      if(!billingName && missing.length===0)missing.push("identity_name_mismatch");
       const reqs=documents.map(d=>({
         key:d.requirement_key,label:d.label,guidance:d.guidance,required:d.required,
-        uploaded:d.state==="received",fileName:d.file_name??null,
+        uploaded:d.state==="received"&&d.extraction_status==="extracted",fileName:d.file_name??null,
         documentId:d.state==="received"?d.id:null,status:d.state??"missing",
       }));
       return {supported:true,intentKey:q.intent_key,quotationId:q.id??null,
         amount:q.amount??null,currency:q.currency?.trim()??null,
         requirements:reqs,confirmed,readyForOtp:confirmed&&documents.length>0&&missing.length===0
-          &&q.state==="verified_completed",missing,persona:branding};
+          &&billingName!==null&&q.state==="verified_completed",missing,billingName,persona:branding};
     });
   }
   async upload(scope:TicketScope,ticketId:string,raw:unknown){
@@ -138,13 +170,28 @@ export class PurchaseOperations {
     if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new PersistenceError("INVALID_INPUT","Document request required");
     const v=raw as Record<string,unknown>;
     if(Object.keys(v).some(k=>!["requirementKey","fileName","contentType","dataBase64"].includes(k))||
-       typeof v.requirementKey!=="string"||!key.test(v.requirementKey)||
+       typeof v.requirementKey!=="string"||!["passport","emirates_id"].includes(v.requirementKey)||
        typeof v.fileName!=="string"||v.fileName.length>150||v.fileName.length<1||
        !/^[A-Za-z0-9][A-Za-z0-9_. -]{0,149}$/.test(v.fileName)||
        !["application/pdf","image/png","image/jpeg"].includes(String(v.contentType)))
       throw new PersistenceError("INVALID_INPUT","Invalid document metadata");
     const bytes=validateBase64(v.dataBase64,v.contentType);
     const digest=createHash("sha256").update(bytes).digest("hex");
+    // Check eligibility before sending identity bytes to the OCR service.
+    await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const q=await findQuote(client,scope.agentId,ticketId);
+      if(!q||!q.id||q.state!=="verified_completed")
+        throw new PersistenceError("CONFLICT","A verified quotation and supported intent are required");
+      if(await confirmation(client,scope.agentId,ticketId,q))
+        throw new PersistenceError("CONFLICT","Purchase documents are locked");
+      const req=await client.query(
+        "SELECT 1 FROM intent_document_requirements WHERE agent_id=$1 AND intent_id=$2 AND requirement_key=$3",
+        [scope.agentId,q.intent_id,v.requirementKey]);
+      if(req.rowCount!==1)
+        throw new PersistenceError("INVALID_INPUT","Unsupported document requirement");
+    });
+    const extracted=await this.extract(bytes,v.requirementKey as IdentityKind);
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
@@ -172,9 +219,11 @@ export class PurchaseOperations {
       const documentId=randomUUID();
       await client.query(
         `INSERT INTO ticket_purchase_documents(
-          id,agent_id,ticket_id,intent_id,requirement_id,file_name,content_type,bytes,sha256)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-        [documentId,scope.agentId,ticketId,q.intent_id,reqId,v.fileName,v.contentType,bytes,digest],
+          id,agent_id,ticket_id,intent_id,requirement_id,file_name,content_type,bytes,sha256,
+          extracted_full_name,document_number_last4,extraction_model,extraction_status)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'extracted')`,
+        [documentId,scope.agentId,ticketId,q.intent_id,reqId,v.fileName,v.contentType,bytes,digest,
+          extracted.fullName,extracted.documentNumberLast4,extracted.model],
       );
       await appendEventTx(client,scope.agentId,ticketId,"purchase.document.received",{
         documentId,requirementKey:v.requirementKey,sha256:digest});
@@ -199,8 +248,8 @@ export class PurchaseOperations {
          q.amount!==v.amount||q.currency.trim()!==v.currency)
         throw new PersistenceError("CONFLICT","Verified quoted amount and intent do not match");
       const docs=await getRequirements(client,scope.agentId,ticketId,q.intent_id);
-      if(!docs.length||docs.some(d=>d.required&&d.state!=="received"))
-        throw new PersistenceError("CONFLICT","All configured purchase documents must be uploaded first");
+      // Validation uses OCR-derived names, not untrusted chat or uploaded filenames.
+      extractedBillingName(docs);
       const existing=await client.query<{request_id:string}>(
         `SELECT request_id FROM ticket_purchase_confirmations
           WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3`,
