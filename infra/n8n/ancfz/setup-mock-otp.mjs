@@ -90,7 +90,7 @@ async function listAll(api, pathname) {
   fail("INVALID_API_RESPONSE", "n8n API list exceeded pagination bound");
 }
 async function main() {
-  if (process.env.APP_ENV === "production") fail("DISABLED", "Mock OTP add-on is prohibited in production");
+  if (process.env.APP_ENV !== "development") fail("DISABLED", "Mock OTP add-on is prohibited in production");
   const input = await readInput();
   if (!input || !["inspect", "prepare", "verify"].includes(input.action) ||
       typeof input.apiKey !== "string" || input.apiKey.trim().length < 16) {
