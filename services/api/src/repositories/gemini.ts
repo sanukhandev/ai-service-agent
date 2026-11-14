@@ -141,7 +141,7 @@ export class GeminiSessionRepository {
       if(!ticketId) throw new PersistenceError("DATABASE_ERROR", "Ticket insert failed");
       const ts=await clock(client);
       const session=await client.query<AiSessionRow>(
-        "INSERT INTO ai_conversation_sessions(agent_id,ticket_id,agent_version_id,knowledge_version_id,intent_catalog_version_id,offering_catalog_version_id,model_id,created_at,last_accepted_customer_message_at,expires_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$8,$8 + interval '60 minutes',$8) RETURNING *",
+        "INSERT INTO ai_conversation_sessions(agent_id,ticket_id,agent_version_id,knowledge_version_id,intent_catalog_version_id,offering_catalog_version_id,model_id,created_at,last_accepted_customer_message_at,expires_at,updated_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8::timestamptz,$8::timestamptz,$8::timestamptz + interval '60 minutes',$8::timestamptz) RETURNING *",
         [scope.agentId,ticketId,b.version_id,b.knowledge_version_id,b.intent_catalog_id,b.offering_catalog_id,b.model_id,ts],
       );
       await appendEventTx(client,scope.agentId,ticketId,"ticket.created",{ticketId,subject});
