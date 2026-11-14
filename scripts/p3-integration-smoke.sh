@@ -125,7 +125,7 @@ otp_disabled=$(curl --silent -o /dev/null -w '%{http_code}' -b "$jar" \
   -H 'Content-Type: application/json' -d '{}' \
   "http://localhost/api/v1/tickets/$ticket_id/payments/otp")
 test "$otp_disabled" = 503
-printf '%s\\n' 'P5 scoped payment tables and disabled-by-default routes PASS'
+printf '%s\n' 'P5 scoped payment tables and disabled-by-default routes PASS'
 
 
 
