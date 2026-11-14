@@ -117,7 +117,7 @@ function frame(event:EventRecord):string {
 
 export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const app=Fastify({
-    logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","req.body.phone","req.body.name","req.body.company","req.body.description","res.headers.set-cookie"]},
+    logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","req.body.phone","req.body.name","req.body.company","req.body.description","req.body.code","req.body.otp","req.body.merchantSecret","res.headers.set-cookie"]},
     trustProxy:false,
     bodyLimit:32768,
     maxParamLength:2048,
