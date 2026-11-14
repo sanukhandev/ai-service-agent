@@ -8,6 +8,12 @@ create leads, orders, documents, referrals or invoices on their own. After
 an intent is selected, the Node-owned **intent action panel** reads the
 ticket-pinned catalog and presents **only actions allowed by that intent**.
 
+For the POC, all seven ticket-request actions also require the customer's
+passport and Emirates ID to have been uploaded, OCR-extracted and cross-matched.
+The secure document checklist is visible for all selected intents, including
+those without a priced quotation. No invoice is generated solely from document
+uploads.
+
 Each action requires the appropriate customer-controlled authorization.
 Unknown/unimplemented future catalog actions are explicitly shown as
 unavailable, not silently attempted.
@@ -68,9 +74,11 @@ new seed version is still an explicit owner action, not a conversation action.
 - Static 21-intent matrix asserts every published source action maps to a
   defined Node executor; unknown actions fail the contract test.
 - P3 disposable DB executes `create_enquiry`,
-  `create_renewal_request` and `create_referral`, including missing-fact
-  rejection, consent refusal, replay/idempotency, cross-ticket ownership
-  and a stable staff-review chat notice.
+  `create_renewal_request` and `create_referral` through the common
+  service-request handler, including required passport/Emirates ID upload
+  before any price exists, OCR name matching, missing-fact rejection,
+  consent refusal, replay/idempotency, cross-ticket ownership and a
+  stable staff-review chat notice.
 - Lead, quotation, passport/Emirates ID readiness, OTP gating, order
   correlations, invoice and payment safety retain separate offline tests.
 - CI does not prove live Foundry tool selection for each of 21 example
