@@ -102,7 +102,12 @@ function confirmExpectedBindings(detail,source,d){
     fail("CREDENTIAL_CONFLICT","Existing webhook credential binding differs: "+d.path);
   const merchant=detail.nodes.find(n=>n.name===d.oldNode||n.name===d.newNode);
   const sourceMerchant=source.nodes.find(n=>n.name===d.newNode);
-  if(credentialId(merchant)!==expectedMerchant || credentialId(sourceMerchant)!==expectedMerchant)
+  // The historical verification workflow was intentionally fail-closed and
+  // had no gateway HTTP node or merchant credential. That is expected pre-upgrade.
+  const isLegacyVerifier=d.oldNode==="Reject Unverified Demo Order" &&
+    !detail.nodes.some(n=>n.name===d.newNode);
+  if(credentialId(sourceMerchant)!==expectedMerchant ||
+     (!isLegacyVerifier && credentialId(merchant)!==expectedMerchant))
     fail("CREDENTIAL_CONFLICT","Merchant credential binding differs: "+d.path);
 }
 function assertUpgradedMatches(detail,source,d){
