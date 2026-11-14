@@ -5,9 +5,10 @@ set -eu
 : "${PGDATABASE:?}"
 : "${PGUSER:?}"
 : "${PGPASSWORD:?}"
-: "${FOUNDRY_PROJECT_ENDPOINT:?Set FOUNDRY_PROJECT_ENDPOINT}"
-: "${FOUNDRY_AGENT_NAME:?Set FOUNDRY_AGENT_NAME}"
-: "${FOUNDRY_AGENT_VERSION:?Set FOUNDRY_AGENT_VERSION}"
+: "${GEMINI_MODEL_ID:=gemini-2.5-flash}"
+case "$GEMINI_MODEL_ID" in
+  *[!a-zA-Z0-9._-]*|'') echo "Invalid Gemini model identifier" >&2; exit 2 ;;
+esac
 
 psql -v ON_ERROR_STOP=1 -c "
  CREATE TABLE IF NOT EXISTS public.schema_migrations (
@@ -62,7 +63,7 @@ SQL
   esac
 }
 
-for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql; do
+for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_gemini_bindings.sql /migrations/010_gemini_knowledge.sql /migrations/011_gemini_sessions_and_evidence.sql; do
   name=$(basename "$file")
   checksum=$(sha256sum "$file" | cut -d ' ' -f 1)
   current=$(psql -At -v ON_ERROR_STOP=1 -v file_name="$name" <<'SQL'
@@ -104,9 +105,7 @@ SQL
 done
 
 psql -v ON_ERROR_STOP=1 \
-  -v foundry_endpoint="$FOUNDRY_PROJECT_ENDPOINT" \
-  -v foundry_name="$FOUNDRY_AGENT_NAME" \
-  -v foundry_version="$FOUNDRY_AGENT_VERSION" \
+  -v gemini_model="$GEMINI_MODEL_ID" \
   -f /scripts/seed-sara.sql
 
-echo "P3 migrations and Sara bootstrap completed without resetting PGDATA"
+echo "Gemini P2 migrations and Sara bootstrap completed without resetting PGDATA"

@@ -12,12 +12,7 @@ CREATE TEMP TABLE _ancfz_catalog_input (payload jsonb NOT NULL) ON COMMIT DROP;
 -- Never pass the 90 KiB payload through docker.exe arguments on Windows.
 INSERT INTO _ancfz_catalog_input(payload) VALUES (pg_read_file(:'seed_file')::jsonb);
 
--- PSQL variables are SQL-escaped by :'<variable>'; do not interpolate
--- untrusted shell strings into a DO block.
-SELECT set_config('ancfz_seed.foundry_endpoint', :'foundry_endpoint', true);
-SELECT set_config('ancfz_seed.foundry_name', :'foundry_name', true);
-SELECT set_config('ancfz_seed.foundry_version', :'foundry_version', true);
-
+-- Store metadata and explicit test provenance only; no model publication.
 CREATE TABLE IF NOT EXISTS ancfz_test_catalog_seed_receipts (
   agent_id uuid NOT NULL REFERENCES agents(id) ON DELETE RESTRICT,
   seed_key text NOT NULL,
@@ -28,11 +23,22 @@ CREATE TABLE IF NOT EXISTS ancfz_test_catalog_seed_receipts (
   PRIMARY KEY (agent_id, seed_key)
 );
 
+ALTER TABLE ancfz_test_catalog_seed_receipts ENABLE ROW LEVEL SECURITY;
+ALTER TABLE ancfz_test_catalog_seed_receipts FORCE ROW LEVEL SECURITY;
+DO $policy$
+BEGIN
+ IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE schemaname='public'
+   AND tablename='ancfz_test_catalog_seed_receipts' AND policyname='agent_scope') THEN
+  CREATE POLICY agent_scope ON ancfz_test_catalog_seed_receipts
+   USING (agent_id=nullif(current_setting('app.agent_id',true),'')::uuid)
+   WITH CHECK(agent_id=nullif(current_setting('app.agent_id',true),'')::uuid);
+ END IF;
+END $policy$;
+
 DO $seed$
 DECLARE
   p jsonb;
   a uuid;
-  av uuid;
   iv uuid;
   ov uuid;
   ix uuid;
@@ -43,10 +49,6 @@ DECLARE
   price jsonb;
   checksum text;
   existing_receipt record;
-  endpoint text;
-  foundry_name text;
-  foundry_version text;
-  next_version integer;
 BEGIN
   SELECT payload INTO STRICT p FROM _ancfz_catalog_input;
 
@@ -63,22 +65,16 @@ BEGIN
     RAISE EXCEPTION 'Refusing invalid or non-test ANCFZ catalog payload';
   END IF;
 
-  endpoint := nullif(current_setting('ancfz_seed.foundry_endpoint', true), '');
-  foundry_name := nullif(current_setting('ancfz_seed.foundry_name', true), '');
-  foundry_version := nullif(current_setting('ancfz_seed.foundry_version', true), '');
-  IF endpoint IS NULL OR endpoint NOT LIKE 'https://%/api/projects/%'
-    OR foundry_name IS NULL OR foundry_version IS NULL THEN
-    RAISE EXCEPTION 'Require explicit published Foundry project endpoint/name/version';
-  END IF;
   checksum := md5(p::text);
 
-  INSERT INTO agents(agent_key, display_name, status)
-  VALUES ('ancfz', p->>'agentDisplayName', 'active')
-  ON CONFLICT (agent_key) DO UPDATE
-    SET display_name = EXCLUDED.display_name,
-        status = 'active',
-        updated_at = now();
-  SELECT id INTO STRICT a FROM agents WHERE agent_key = 'ancfz' FOR UPDATE;
+
+  SELECT id INTO STRICT a FROM agents WHERE agent_key='ancfz' AND status='active' FOR UPDATE;
+  IF NOT EXISTS(
+    SELECT 1 FROM agent_versions v JOIN agents ag ON ag.active_version_id=v.id
+     AND ag.id=v.agent_id
+    WHERE ag.id=a AND v.provider='gemini' AND v.publication_state='published'
+  ) THEN RAISE EXCEPTION 'Publish the Gemini Sara agent before publishing test catalogs'; END IF;
+
 
   SELECT payload_md5, intent_catalog_version_id, offering_catalog_version_id
     INTO existing_receipt
@@ -101,34 +97,9 @@ BEGIN
     RAISE EXCEPTION 'Catalog revision collision. Use fresh, immutable test revisions.';
   END IF;
 
-  SELECT id INTO av
-  FROM agent_versions
-  WHERE agent_id = a
-    AND foundry_project_endpoint = endpoint
-    AND foundry_agent_name = foundry_name
-    AND foundry_agent_version = foundry_version
-    AND published_at IS NOT NULL
-  ORDER BY version_number DESC LIMIT 1;
 
-  IF av IS NULL THEN
-    SELECT coalesce(max(version_number), 0) + 1 INTO next_version
-    FROM agent_versions WHERE agent_id = a;
-    INSERT INTO agent_versions (
-      agent_id, version_number, foundry_project_endpoint,
-      foundry_agent_name, foundry_agent_version, persona_config, published_at
-    ) VALUES (
-      a, next_version, endpoint, foundry_name, foundry_version,
-      jsonb_build_object(
-        'catalogEnvironment', 'test',
-        'sourceReviewStatus', p->>'reviewStatus',
-        'catalogSeedKey', p->>'seedKey'
-      ), now()
-    ) RETURNING id INTO av;
-  END IF;
-  UPDATE agents SET active_version_id = av, updated_at = now() WHERE id = a;
-
-  INSERT INTO intent_catalog_versions(agent_id, revision, status)
-  VALUES (a, (p->>'intentRevision')::integer, 'draft') RETURNING id INTO iv;
+  INSERT INTO intent_catalog_versions(agent_id, revision, status,source_authority,source_reference)
+  VALUES (a, (p->>'intentRevision')::integer, 'draft','unapproved',p->>'seedKey') RETURNING id INTO iv;
   FOR r IN SELECT value FROM jsonb_array_elements(p->'intents') LOOP
     IF r->>'key' !~ '^[a-z][a-z0-9_]{0,127}$' OR jsonb_typeof(r->'requirements') <> 'array'
       OR jsonb_typeof(r->'examplePhrases') <> 'array' OR jsonb_typeof(r->'allowedActions') <> 'array'
@@ -153,8 +124,8 @@ BEGIN
     END LOOP;
   END LOOP;
 
-  INSERT INTO offering_catalog_versions(agent_id, revision, status)
-  VALUES (a, (p->>'offeringRevision')::integer, 'draft') RETURNING id INTO ov;
+  INSERT INTO offering_catalog_versions(agent_id, revision, status,source_authority,source_reference)
+  VALUES (a, (p->>'offeringRevision')::integer, 'draft','unapproved',p->>'seedKey') RETURNING id INTO ov;
   FOR x IN SELECT value FROM jsonb_array_elements(p->'offerings') LOOP
     IF x->>'key' !~ '^[a-z][a-z0-9_]{0,127}$'
       OR x->>'label' IS NULL OR x->>'description' IS NULL
