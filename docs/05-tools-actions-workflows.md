@@ -2,9 +2,9 @@
 
 ## Separation of responsibilities
 
-**Foundry** decides what to say and which *registered* functions to request. The function registry and handlers are implemented **inside Node**, and the Foundry agent receives only descriptions. **Node** determines whether a function is allowed, whether the requested data is visible and whether an operation can occur. **n8n** executes only authorized external workflow requests.
+**Gemini** decides what to say and which *registered* Node functions to request. The function registry and handlers are implemented **inside Node**, and the Gemini adapter receives only allowlisted function declarations. **Node** determines whether a function is allowed, whether the requested data is visible and whether an operation can occur. **n8n** executes only authorized external workflow requests.
 
-This POC uses **native Foundry IQ MCP** for business knowledge retrieval. It is configured on the agent, and is not duplicated as an application function. Application functions are separately defined by the platform.
+This POC uses **Gemini File Search** for agent-approved business knowledge; the selected store is Node-pinned and source claims are independently verified before publication. Application functions are separately defined by the platform.
 
 ## Read tools (first phase)
 
@@ -34,7 +34,7 @@ Agent-specific tools are **allowlisted** by published agent configuration. Tool 
 
 An intent is a goal (e.g. `company_formation`), not a keyword-only classifier or a fixed scripted dialogue. Its versioned definition can contain description, language variants, examples, required fields, eligible actions and linked offerings. The model semantically matches the goal and uses read tools to collect missing requirements conversationally.
 
-Products/services/packages and price revisions are separate versioned data. One offering may support multiple intents. Business knowledge from IQ is explanatory; formal quotations use approved structured data and documented conditions.
+Products/services/packages and price revisions are separate versioned data. One offering may support multiple intents. Business knowledge from approved File Search is explanatory; formal quotations use approved structured data and documented conditions.
 
 ## Operation lifecycle
 
