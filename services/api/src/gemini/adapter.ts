@@ -268,8 +268,21 @@ function annotations(candidate: ObjectValue, expectedStore: string | null): Prov
     const documentName = documentCandidates.find(value =>
       expectedStore !== null && /^fileSearchStores\/[A-Za-z0-9_-]+\/documents\/[A-Za-z0-9_-]+$/.test(value)
       && value.startsWith(expectedStore+"/documents/")) ?? null;
+    const metadata: Record<string,string> = {};
+    if(Array.isArray(context.customMetadata)) {
+      if(context.customMetadata.length > 20) throw new AdapterFailure("MODEL_OUTPUT_INVALID",false);
+      for(const value of context.customMetadata) {
+        const entry=obj(value);
+        const key=str(entry?.key),val=str(entry?.stringValue);
+        if(key && val && key.length<=80 && val.length<=1024) {
+          if(Object.hasOwn(metadata,key))throw new AdapterFailure("MODEL_OUTPUT_INVALID",false);
+          metadata[key]=val;
+        }
+      }
+    }
     const source: ProviderSourceAnnotation = {
       providerResourceName: documentName,
+      ...(Object.keys(metadata).length ? {sourceMetadata:metadata} : {}),
       sourceTitle: str(context.title),
       sourceUri: str(context.uri),
       excerpt: str(context.text),
