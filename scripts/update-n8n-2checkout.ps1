@@ -1,7 +1,7 @@
 #requires -Version 5.1
 <#
 .SYNOPSIS
-  Safely review, back up or update exactly the two existing ANCFZ payment
+  Safely review, back up or update exactly the three existing ANCFZ billing
   workflows in the current local n8n owner workspace.
 .EXAMPLE
   .\scripts\update-n8n-2checkout.ps1
@@ -52,11 +52,11 @@ try {
     $bstr = [Runtime.InteropServices.Marshal]::SecureStringToBSTR($secureKey)
     $env:N8N_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
 
-    Write-Host 'Inspecting two existing inactive payment workflows...'
+    Write-Host 'Inspecting three existing inactive invoice/payment workflows...'
     Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--inspect')
 
     if ($Apply) {
-        $confirmation = Read-Host 'Type UPDATE 2CHECKOUT to back up and replace only the two inactive payment workflows'
+        $confirmation = Read-Host 'Type UPDATE 2CHECKOUT to back up and replace only the three inactive invoice/payment workflows'
         if ($confirmation -cne 'UPDATE 2CHECKOUT') {
             throw 'Update cancelled. No workflows changed.'
         }
@@ -65,7 +65,7 @@ try {
         Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--apply')
         Write-Host 'Verifying updated workflows (still inactive)...'
         Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--inspect')
-        Write-Host 'Workflow definitions updated. Configure the rotated X-Avangate-Authentication credential in n8n before activation.'
+        Write-Host 'Invoice and payment definitions updated. Configure the rotated X-Avangate-Authentication credential in n8n before activation.'
     }
     elseif ($BackupOnly) {
         Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--backup')
