@@ -139,9 +139,24 @@ session. It does not create a new n8n owner account, rewrite real provider
 credentials or activate workflows. A partial existing import is reported as
 blocked, not blindly repaired.
 
-If `--stage=setup` reports permission or API readiness errors, review the
-owner API key and `docker compose --profile workflows logs n8n`; repeat the
-command once corrected. Setup never retries the actual import step.
+If `--stage=setup` fails, it now reports the actual preflight category:
+`API_UNAUTHORIZED` (401), `API_FORBIDDEN` (403), `API_ENDPOINT_UNAVAILABLE`
+(404/405 or incompatible API path), `API_INVALID_RESPONSE`, or
+`API_UNAVAILABLE` (unreachable/starting server). Only `API_UNAVAILABLE`
+causes repeated read-only readiness checks. An incorrect API key, missing
+permissions, or unsupported endpoint fails immediately.
+
+```powershell
+docker compose --profile workflows ps -a
+docker compose --profile workflows logs --tail=80 n8n
+# With N8N_API_KEY supplied privately as below:
+node scripts/seed-n8n-anzfc.mjs --stage=inspect --workspace=personal
+```
+
+The helper tries the local `/api/v1` API first and, if it returns 404, the
+configured `N8N_PATH`-prefixed API path (for example, `/n8n/api/v1`).
+Neither inspection nor API-path detection writes records. Do not share API
+keys or full private log output. Setup never retries the actual import step.
 
 ## 5. Import to the default personal workspace
 
