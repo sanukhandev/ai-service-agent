@@ -5,9 +5,10 @@
  * Uses official n8n owner provisioning (>=2.17) and n8n CLI imports.
  * Deliberately DOES NOT write n8n internal SQLite/Postgres tables directly.
  *
- * Two stages on a new instance:
+ * Fresh instances require two explicit stages; existing instances use import only:
  *   N8N_OWNER_PASSWORD=<private runtime value> node scripts/seed-n8n-anzfc.mjs --stage=owner
  *   N8N_API_KEY=<owner-created key> node scripts/seed-n8n-anzfc.mjs --stage=import
+ *   No arguments: read-only inspect. No implicit owner changes or workflow activation.
  * Imports into the owner's personal workspace by default, without Projects API.
  * Use --workspace=project only on n8n instances with project permissions.
  *
@@ -33,24 +34,22 @@ const repoRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const MIN_ENCRYPTION_LENGTH = 32;
 
 export function parseArgs(args) {
-  const phases = ["owner", "import", "all"];
+  const phases = ["inspect", "owner", "import"];
   const workspaces = ["personal", "project"];
   let workspace = "personal";
-  let stage = "all";
+  let stage = "inspect";
   let dryRun = false;
-  let allowOwnerUpdate = false;
   for (const arg of args) {
     if (arg.startsWith("--stage=")) {
       stage = arg.slice(8);
-      if (!phases.includes(stage)) throw new Error("Invalid --stage; choose owner, import or all");
+      if (!phases.includes(stage)) throw new Error("Invalid --stage; choose inspect, owner or import (owner and import are separate)");
     } else if (arg.startsWith("--workspace=")) {
       workspace = arg.slice("--workspace=".length);
       if (!workspaces.includes(workspace)) throw new Error("Invalid --workspace; choose personal or project");
     } else if (arg === "--dry-run") dryRun = true;
-    else if (arg === "--allow-owner-update") allowOwnerUpdate = true;
     else throw new Error("Unknown argument: " + arg);
   }
-  return { stage, workspace, dryRun, allowOwnerUpdate };
+  return { stage, workspace, dryRun };
 }
 
 export function extractHtpasswdHash(text) {
@@ -103,7 +102,7 @@ export function validateExistingConfig(raw) {
   return parsed;
 }
 
-export function seedOwner({ allowOwnerUpdate = false } = {}) {
+export function seedOwner() {
   const password = process.env.N8N_OWNER_PASSWORD;
   if (!password || password.length < 12 || password.includes("\n") || password.includes("\r")) {
     throw new Error("Set N8N_OWNER_PASSWORD in a private environment (minimum 12 characters) before --stage=owner");
@@ -116,8 +115,8 @@ export function seedOwner({ allowOwnerUpdate = false } = {}) {
     (String(config.name || "ai-service-agent") + "_n8n-data");
   if (!/^[A-Za-z0-9_.-]{3,200}$/.test(volumeName)) throw new Error("Unexpected n8n volume identifier");
   const volumes = docker(["volume", "ls", "--format", "{{.Name}}"]).split(/\r?\n/).filter(Boolean);
-  if ((isN8nRunning() || volumes.includes(volumeName)) && !allowOwnerUpdate) {
-    throw new Error("Existing n8n container or persistent data volume detected. Owner bootstrap could change its owner. Back up and inspect the existing instance, then use --allow-owner-update only when explicitly approved.");
+  if (isN8nRunning() || volumes.includes(volumeName)) {
+    throw new Error("Existing n8n instance or data volume detected. Owner bootstrap is for fresh instances only; use --stage=inspect or --stage=import without changing the owner.");
   }
   // Use htpasswd as a one-shot bcrypt implementation; receive plaintext ONLY
   // over stdin (never as an argv/Compose value or checked-in file).
@@ -163,7 +162,7 @@ export function workspaceImportArgs(workspace, projectId) {
   throw new Error("Explicit project imports require a valid n8n project ID");
 }
 
-export function seedWorkspace({ workspace = "personal" } = {}) {
+export function seedWorkspace({ workspace = "personal", inspectOnly = false } = {}) {
   if (!["personal", "project"].includes(workspace)) throw new Error("Unknown n8n workspace mode");
   const apiKey = process.env.N8N_API_KEY;
   if (typeof apiKey !== "string" || apiKey.trim().length < 16) {
@@ -175,9 +174,21 @@ export function seedWorkspace({ workspace = "personal" } = {}) {
   // Preflight every expected name and credential ID before writing anything.
   // Personal mode MUST NOT call /projects: Community instances can return 403.
   const outcome = privateApiRequest({
-    action: "prepare", workspace, apiKey: apiKey.trim(), projectName: PROJECT_NAME,
+    action: inspectOnly ? "inspect" : "prepare", workspace, apiKey: apiKey.trim(), projectName: PROJECT_NAME,
     credentialIds: credentialIds(), workflowNames: workflowNames(),
   });
+  if (inspectOnly) {
+    console.log("n8n workspace inspection: " + JSON.stringify({
+      workspace, status: outcome.status, matchingCredentials: outcome.matchingCredentials,
+      matchingInactiveWorkflows: outcome.matchingInactiveWorkflows,
+      totalCredentials: 4, totalWorkflows: WORKFLOWS.length,
+    }));
+    return;
+  }
+  if (outcome.alreadySeeded) {
+    console.log("n8n ANCFZ assets are already seeded: 4 matching credentials and 5 inactive workflows. No changes made.");
+    return;
+  }
   const projectId = workspace === "project" ? outcome.projectId : undefined;
   const destination = workspaceImportArgs(workspace, projectId);
   console.log(workspace === "personal"
@@ -227,8 +238,8 @@ export function main(args = process.argv.slice(2)) {
       ", stage=" + opts.stage + ". No Docker, database, provider or network calls made.");
     return;
   }
-  if (opts.stage === "owner" || opts.stage === "all") seedOwner(opts);
-  if (opts.stage === "import" || opts.stage === "all") seedWorkspace(opts);
+  if (opts.stage === "owner") seedOwner();
+  else seedWorkspace({ workspace: opts.workspace, inspectOnly: opts.stage === "inspect" });
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); }
