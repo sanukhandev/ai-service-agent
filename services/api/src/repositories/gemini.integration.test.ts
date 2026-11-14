@@ -48,7 +48,7 @@ test("Gemini P2 authoritative sessions, boundaries and restart recovery", async 
     assert.equal(cfg.intentCatalogVersionId,s1.intentCatalogVersionId);
     assert.deepEqual(cfg.authorizedToolNames,[
       "find_intents","select_ticket_intent","get_intent_requirements",
-      "record_ticket_facts","get_offerings",
+      "record_ticket_facts","get_offerings","preflight_operation","propose_operation",
     ]);
 
     const requestId=randomUUID();
