@@ -22,6 +22,8 @@ jobs:
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Build existing API with integrated feature sources
         run: npm run build --workspace @ai-service-agent/api
+      - name: Verify complete intent catalog discovery and paging
+        run: node --test services/api/dist/agent/intent-tools.test.js
       - name: Verify strict synthetic OCR parsing
         run: node --test services/api/dist/runtime/identity-extractor.test.js
       - name: Run P3 knowledge tests against compiled API
