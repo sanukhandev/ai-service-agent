@@ -103,7 +103,9 @@ class OfflineAdapter {
     if (!s || s.customerId !== customerId) return { status: 'unauthorized' };
     if (this.now >= s.expiresAt || s.status !== 'active') {
       s.status = 'expired'; s.continuation = null; this.redis.delete(s.sessionId);
-      const fresh = await this.createSession({ agentId: s.agentId, customerId });
+      if (!s.successorPromise) s.successorPromise = this.createSession({ agentId: s.agentId, customerId });
+      const fresh = await s.successorPromise;
+      s.successorSessionId = fresh.sessionId;
       s = this.session(fresh.sessionId);
     }
     if (requestId && s.accepted.has(requestId)) return { status: 'duplicate', sessionId: s.sessionId, ticketId: s.ticketId };
