@@ -1,0 +1,57 @@
+name: Gemini P7 immutable-feature preflight
+on:
+  push:
+    branches: [experiment/gemini-file-search-poc]
+    paths:
+      - ".github/workflows/gemini-p7-preflight.yml"
+      - "docs/gemini-p7-preflight.md"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  source-preflight:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - stream: P1
+            sha: 5a0f2e73cf43e22407b6ca52779f6e33d0028681
+            command: node --experimental-transform-types --test services/api/src/gemini/adapter.test.ts
+          - stream: P2
+            sha: 464914bd11c720c61cb5c27b920f7ab4b2f49ba8
+            command: bash -n infra/postgres/gemini-p2-validate.sh && bash -n infra/bootstrap/apply-migrations.sh && bash -n scripts/publish-ancfz-test-catalog.sh
+          - stream: P3
+            sha: 969b5c62af4c21c4ad41dad25bf97e6705e3e0b8
+            command: node --experimental-strip-types --test services/api/src/knowledge/knowledge.test.mjs
+          - stream: P4
+            sha: 898413bbddbfdda000fefe34f8e8c77bc3af4334
+            command: node --experimental-strip-types --test services/api/src/grounding/__tests__/grounding.test.mjs
+          - stream: P5
+            sha: 423ad02cfde243793c4f22f9b04cd0f11d3b9765
+            command: node --experimental-transform-types --test services/api/src/integrations/gemini-n8n/adapter.test.mjs
+          - stream: P6
+            sha: 79c23d2b4b3a6c7b4faba936ffb8c9af1d19a0df
+            command: node scripts/check-gemini-certification.mjs --mode=offline
+    name: "${{ matrix.stream }}: immutable-head offline preflight"
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout immutable reviewed SHA, never main
+        uses: actions/checkout@v4
+        with:
+          ref: "${{ matrix.sha }}"
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify exact tested commit
+        shell: bash
+        run: |
+          actual="$(git rev-parse HEAD)"
+          test "$actual" = "${{ matrix.sha }}"
+          echo "Checked out immutable ${{ matrix.stream }}: $actual"
+      - name: Run offline preflight (no provider credentials)
+        shell: bash
+        run: ${{ matrix.command }}
