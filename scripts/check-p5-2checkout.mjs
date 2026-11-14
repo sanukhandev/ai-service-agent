@@ -7,7 +7,7 @@ import {
   verifyCreatedOrder, verifyPaymentStatus,
 } from "../services/api/dist/runtime/payment-evidence.js";
 import {
-  parseStartOtp,parseAuthorize,
+  parseStartOtp,parseAuthorize,reconcileGatewayCheck,
 } from "../services/api/dist/runtime/payment-operations.js";
 import {
   verifyQuotationPdf,verifyInvoicePdf,
@@ -79,6 +79,25 @@ for(const bad of [
   {externalReference:"ANCFZ-other"},{providerStatus:"PENDING"},
   {status:"checkout_available"},{verified:false},{provider:"mockgateway_demo_orders"},
 ])assert.equal(verifyPaymentStatus({...paid,...bad},check),null);
+
+// Financial state machine: transient GET errors cannot revoke a prior
+// COMPLETE; an independently reported REFUNDED is never resurrected.
+const completed=verifyPaymentStatus(paid,check);
+const refunded=verifyPaymentStatus({
+  ...paid,providerStatus:"REFUNDED",status:"payment_refunded",verified:false,
+},check);
+assert.deepEqual(reconcileGatewayCheck("payment_pending","PENDING",completed),
+  {state:"verified_test_payment",providerStatus:"COMPLETE"});
+assert.deepEqual(reconcileGatewayCheck("verified_test_payment","COMPLETE",null),
+  {state:"verified_test_payment",providerStatus:"COMPLETE"});
+assert.deepEqual(reconcileGatewayCheck("verifying","COMPLETE",null),
+  {state:"verified_test_payment",providerStatus:"COMPLETE"});
+assert.deepEqual(reconcileGatewayCheck("verified_test_payment","COMPLETE",refunded),
+  {state:"payment_refunded",providerStatus:"REFUNDED"});
+assert.deepEqual(reconcileGatewayCheck("payment_refunded","REFUNDED",completed),
+  {state:"payment_refunded",providerStatus:"REFUNDED"});
+assert.deepEqual(reconcileGatewayCheck("payment_pending","PENDING",null),
+  {state:"unknown_outcome",providerStatus:"verification_failed"});
 
 const bytes=Buffer.from("%PDF-1.4\n"+("x".repeat(200))+"\n%%EOF");
 const data={status:"generated",ticketId,documentNumber:"ANCFZ-TEST-INV-123",
