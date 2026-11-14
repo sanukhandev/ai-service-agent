@@ -85,7 +85,7 @@ async function main(){
       await assert.rejects(()=>actions.catalog(another,ticket.id),
         err=>err instanceof PersistenceError && err.code==="NOT_FOUND");
       const notice=await messages.listTicketMessages(scope,ticket.id);
-      assert(notice.some(m=>m.role==="assistant"&&m.text.includes("no external")));
+      assert(notice.some(m=>m.role==="assistant"&&m.text.includes("not submitted")));
       console.log(entry.intent+" "+entry.action+" PASS: customer consent, facts, durable request, idempotency and RLS");
     }
     console.log("P5 generic intent action smoke PASS");
