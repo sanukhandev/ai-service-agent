@@ -15,14 +15,14 @@ The platform must support a second unrelated business by creating a new **Agent 
 
 ## Functional scope
 
-1. **Agent selection:** resolve a public agent alias to a server-owned `agent_id`, an active Foundry project/name/version and catalog revision.
-2. **Conversation:** accept customer messages, create/resume a ticket, retrieve authorized context, invoke Foundry and deliver grounded replies. Greetings do not need RAG.
-3. **Knowledge:** the Foundry agent uses its connected Foundry IQ knowledge base. Explain factual business answers from actual retrieved source evidence; never invent formal prices or policies.
+1. **Agent selection:** resolve a public agent alias to a server-owned `agent_id`, a published Gemini agent/model/persona, approved File Search binding and catalog revision.
+2. **Conversation:** accept customer messages, create/resume a ticket, retrieve authorized context, invoke the Node-owned Gemini turn worker and deliver independently qualified replies. Greetings do not need RAG.
+3. **Knowledge:** the Gemini model uses the published per-agent File Search knowledge store. Explain factual business answers from actual retrieved source evidence; never invent formal prices or policies.
 4. **Goal identification:** interpret customer goals from the entire conversation. Once application tools exist, use a versioned intent/requirements catalog. Do not impose a fixed stage sequence or demand routine goal confirmation.
 5. **Offerings:** list relevant services, packages, eligibility and approved prices from a structured offerings catalog when available. RAG-only descriptions are informational, not formal quotes.
 6. **Ticket persistence:** store transcript, authenticated/guest ownership, subject, status, facts, action history, source references and events. Ticket numbers come from Node, never the model.
 7. **Customer identity:** optional email OTP flow in secure HTTP UI. The same email may map to distinct agent-scoped accounts. No OTP or credentials in chat.
-8. **Private documents:** securely upload to agent/ticket-scoped storage; OCR/extract via Azure Document Intelligence when implemented; do not publish customer uploads to shared IQ.
+8. **Private documents:** securely upload to agent/ticket-scoped storage; OCR/extract via Azure Document Intelligence when implemented; do not publish customer uploads to agent-wide File Search.
 9. **Operations:** propose and explicitly authorize business actions (e.g. `create_lead`, `generate_quote`). Node verifies prerequisites/consent and dispatches n8n with idempotency.
 10. **Configuration:** controlled local scripts/seed data for agent, catalog and action bindings. Visual Admin UI is deferred until after the POC.
 
@@ -42,9 +42,9 @@ Payment execution, public external web browsing, agent-specific hardcoded journe
 ## Nonfunctional requirements
 
 - Scope every agent-owned operation by trusted `agent_id`; cross-agent access must fail.
-- PostgreSQL remains authoritative even when Redis/Foundry/n8n are degraded.
+- PostgreSQL remains authoritative even when Redis/Gemini/n8n are degraded.
 - Bounded timeouts, retries, concurrency and typed failures; no phantom success.
-- Only Nginx publishes port 80; HTTP must not be publicly exposed for PII.
+- Only Nginx publishes localhost host port 2000 (container port 80); public HTTP must not be used for PII.
 - Accessibility: semantic HTML, keyboard controls, visible focus, explicit labels/errors.
-- Observability: correlated request/ticket/Foundry IDs without secrets or raw OTP.
+- Observability: correlated request/ticket/Gemini-provider IDs without secrets or raw OTP.
 - Document completion criteria in [testing](09-testing-and-acceptance.md), rather than declaring production readiness from mocks.
