@@ -410,10 +410,18 @@ export class PaymentOperations {
             paymentId,quotationId:expected.quotationId,testOnly:true,
           });
         }
-        await new TicketMessageRepository(this.db).createAssistantMessageTx(
-          client,scope,ticketId,lifecycleNoticeId("payment.verified",paymentId),
-          "Your sandbox payment has been independently verified as COMPLETE. I am preparing your TEST invoice now.",
+        // A customer may close the ticket while the provider GET is in flight.
+        // That must not roll back a verified payment or leave it stuck verifying.
+        const activeTicket=await client.query<{status:string}>(
+          "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
+          [scope.agentId,ticketId],
         );
+        if(activeTicket.rows[0]?.status!=="closed") {
+          await new TicketMessageRepository(this.db).createAssistantMessageTx(
+            client,scope,ticketId,lifecycleNoticeId("payment.verified",paymentId),
+            "Your sandbox payment has been independently verified as COMPLETE. I am preparing your TEST invoice now.",
+          );
+        }
       }else{
         await appendEventTx(client,scope.agentId,ticketId,"payment.checked",{
           paymentId,providerStatus:result?.providerStatus??"unavailable",verified:false,
