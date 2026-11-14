@@ -80,7 +80,7 @@ try {
   assert.equal(simulate("apply","legacy").code,"BACKUP_REQUIRED");
   const expected=backup.snapshot.map(({id,hash})=>({id,hash}));
   assert.equal(simulate("apply","legacy",{expected}).applied,true);
-  assert.equal(simulate("apply","legacy",{expected:[{id:"wf-0",hash:"a".repeat(64)},expected[1]]}).code,"SNAPSHOT_CHANGED");
+  assert.equal(simulate("apply","legacy",{expected:[{id:"wf-0",hash:"a".repeat(64)},expected[1],expected[2]]}).code,"SNAPSHOT_CHANGED");
   assert(simulate("inspect","updated").workflows.every(w=>w.state==="already_upgraded"));
   assert.equal(simulate("inspect","drift").code,"SOURCE_DRIFT");
   assert.equal(simulate("inspect","active").code,"WORKFLOW_ACTIVE");
