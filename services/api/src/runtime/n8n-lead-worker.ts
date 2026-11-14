@@ -166,7 +166,7 @@ export class N8nLeadWorker {
           "SELECT status FROM agents WHERE id=$1",[op.agentId],
         );
         if(ticket.rows[0]?.status!=="closed" && agent.rows[0]?.status==="active") {
-          await new TicketMessageRepository(this.db).createAssistantMessageTx(
+          await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
             client,workerTicketScope(op.agentId,op.ticketId),op.ticketId,
             lifecycleNoticeId("lead.verified",op.operationId),
             "Your ANCFZ Salesforce lead has been created and verified. Its reference is available in your ticket.",
