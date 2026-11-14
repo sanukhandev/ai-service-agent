@@ -43,6 +43,12 @@ export function parseIdentityResult(raw:unknown,kind:IdentityKind):ExtractedIden
   if(result["status"]!=="succeeded" || !Array.isArray(docs)||docs.length!==1)
     throw new PersistenceError("CONFLICT","Identity document could not be extracted");
   const doc=obj(docs[0]),fields=obj(doc["fields"]);
+  const modelType=String(doc["docType"]??"").toLowerCase();
+  const description=(field(fields,["DocumentType"])??"").toLowerCase();
+  if(kind==="passport" && !modelType.includes("passport") && !description.includes("passport"))
+    throw new PersistenceError("CONFLICT","Uploaded document was not identified as a passport");
+  if(kind==="emirates_id" && (modelType.includes("passport") || description.includes("passport")))
+    throw new PersistenceError("CONFLICT","The Emirates ID upload appears to be a passport");
   const combined=field(fields,["FullName","FullNameEnglish","Name","NameEnglish","PersonName"]);
   const first=field(fields,["FirstName","GivenNames","GivenName","GivenNameEnglish"]);
   const last=field(fields,["LastName","Surname","FamilyName","SurnameEnglish"]);
@@ -52,9 +58,18 @@ export function parseIdentityResult(raw:unknown,kind:IdentityKind):ExtractedIden
      /[^\p{L}\p{M}\p{N} .'’-]/u.test(fullName))
     throw new PersistenceError("CONFLICT",kind+" document did not yield a reliable full name");
   const number=field(fields,kind==="passport"
-    ? ["DocumentNumber","PassportNumber","MachineReadableZone"]
+    ? ["DocumentNumber","PassportNumber"]
     : ["DocumentNumber","IdNumber","IdentificationNumber","PersonalNumber"]);
-  const normalizedNumber=number?.replace(/[^A-Za-z0-9]/g,"")??"";
+  let normalizedNumber=number?.replace(/[^A-Za-z0-9]/g,"")??"";
+  if(kind==="emirates_id"){
+    const text=typeof analysis["content"]==="string"?analysis["content"]:"";
+    const match=text.match(/(?:^|[^0-9])(784[- ]?\d{4}[- ]?\d{7}[- ]?\d)(?:$|[^0-9])/);
+    if(!/^784\d{12}$/.test(normalizedNumber)){
+      normalizedNumber=match?.[1]?.replace(/[^0-9]/g,"")??"";
+    }
+    if(!/^784\d{12}$/.test(normalizedNumber))
+      throw new PersistenceError("CONFLICT","Emirates ID number could not be recognized from the submitted document");
+  }
   return {fullName,documentNumberLast4:normalizedNumber.length>=4
     ? normalizedNumber.slice(-4).toUpperCase():null,
     model:"prebuilt-idDocument"};
