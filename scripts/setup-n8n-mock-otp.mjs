@@ -60,7 +60,7 @@ export function main(args = process.argv.slice(2)) {
     throw Error("Set N8N_API_KEY privately to the existing n8n owner API key (do not paste it into commands or files)");
   }
   const config = validateExistingConfig(run(["config", "--format", "json"]));
-  if (config.services?.n8n?.environment?.APP_ENV === "production") {
+  if (config.services?.n8n?.environment?.APP_ENV !== "development") {
     throw Error("Mock OTP add-on cannot be installed with APP_ENV=production");
   }
   const running = run(["ps", "--status", "running", "-q", "n8n"]);
