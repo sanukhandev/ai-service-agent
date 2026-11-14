@@ -55,8 +55,12 @@ than invent a price. Adding an approved offering revision and an authorized
 Every intent accepts the same two POC documents after selection:
 `passport` and `emirates_id`. A strict private Azure Document Intelligence
 OCR check extracts full names and the ID last four characters.
-Uploaded bytes remain ticket-scoped in PostgreSQL. Customer data is never
-copied into Foundry tool output or n8n. A matching OCR name is not
+Uploaded identity-document bytes and full document numbers remain ticket-scoped
+in PostgreSQL; they are not sent to Foundry or n8n. The extracted **billing
+name** is sent to the private n8n invoice PDF renderer. Sara still receives
+ordinary customer chat messages and selected customer-stated facts (which may
+include contact information), so this is not a blanket claim that no personal
+data reaches Foundry. A matching OCR name is not
 authenticity, KYC or legal identity verification.
 
 ## Publication and backward compatibility
