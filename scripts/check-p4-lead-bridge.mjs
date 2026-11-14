@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Offline P4 safety gate: never contacts Foundry, n8n or Salesforce. */
+/** Offline P4 safety gate: never contacts the model provider, n8n or Salesforce. */
 import assert from "node:assert/strict";
 import { parseAuthorizedLead, leadDispatchEnabled, verifiedLeadResult, LEAD_CONSENT_TEXT } from "../services/api/dist/runtime/lead-operations.js";
 
