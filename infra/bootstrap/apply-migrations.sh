@@ -5,7 +5,7 @@ set -eu
 : "${PGDATABASE:?}"
 : "${PGUSER:?}"
 : "${PGPASSWORD:?}"
-: "${GEMINI_MODEL_ID:=gemini-2.5-flash}"
+: "${GEMINI_MODEL_ID:=gemini-3.8-flash}"
 case "$GEMINI_MODEL_ID" in
   *[!a-zA-Z0-9._-]*|'') echo "Invalid Gemini model identifier" >&2; exit 2 ;;
 esac
@@ -63,7 +63,7 @@ SQL
   esac
 }
 
-for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_gemini_bindings.sql /migrations/010_gemini_knowledge.sql /migrations/011_gemini_sessions_and_evidence.sql /migrations/012_gemini_evidence_authority.sql /migrations/013_gemini_provenance_immutability.sql; do
+for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_gemini_bindings.sql /migrations/010_gemini_knowledge.sql /migrations/011_gemini_sessions_and_evidence.sql /migrations/012_gemini_evidence_authority.sql /migrations/013_gemini_provenance_immutability.sql /migrations/014_gemini_pending_states.sql /migrations/015_gemini_ingestion_metadata.sql; do
   name=$(basename "$file")
   checksum=$(sha256sum "$file" | cut -d ' ' -f 1)
   current=$(psql -At -v ON_ERROR_STOP=1 -v file_name="$name" <<'SQL'
