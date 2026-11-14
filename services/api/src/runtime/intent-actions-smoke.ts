@@ -107,9 +107,12 @@ async function main(){
       const repeated=await registry.execute({callId:randomUUID(),name:"propose_operation",
         argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},toolContext);
       assert.deepEqual(repeated,proposal,"Proposal replay must be idempotent");
-      const noDispatch:number|undefined=await db.withAgent(agent.id,async client=>(await client.query(
-        "SELECT count(*)::int AS total FROM event_outbox WHERE agent_id=$1 AND ticket_id=$2",
-        [agent.id,ticket.id])).rows[0]?.total);
+      const noDispatch=await db.withAgent(agent.id,async (client):Promise<number|undefined>=>{
+        const rows=await client.query<{total:number}>(
+          "SELECT count(*)::int AS total FROM event_outbox WHERE agent_id=$1 AND ticket_id=$2",
+          [agent.id,ticket.id]);
+        return rows.rows[0]?.total;
+      });
       assert.equal(noDispatch,0,"A Gemini proposal must never dispatch an operation");
       await assert.rejects(()=>actions.submit(scope,ticket.id,entry.action,{
         ...request,consent:false,
