@@ -14,10 +14,10 @@ interface Claim {
 }
 export interface PdfEvidence {bytes:Buffer;sha256:string}
 
-export function verifyQuotationPdf(raw:unknown,claim:Pick<Claim,"ticketId"|"documentNumber">):PdfEvidence|null {
+function verifyDocumentPdf(raw:unknown,claim:Pick<Claim,"ticketId"|"documentNumber">,kind:"quotation"|"invoice"):PdfEvidence|null {
   if(!raw||typeof raw!=="object"||Array.isArray(raw))return null;
   const response=raw as Record<string,unknown>;
-  if(response.status!=="generated"||response.documentType!=="quotation"||
+  if(response.status!=="generated"||response.documentType!==kind||
      response.ticketId!==claim.ticketId||
      response.documentNumber!==claim.documentNumber||
      response.mimeType!=="application/pdf"||
@@ -32,7 +32,13 @@ export function verifyQuotationPdf(raw:unknown,claim:Pick<Claim,"ticketId"|"docu
   return {bytes,sha256:createHash("sha256").update(bytes).digest("hex")};
 }
 
-async function boundedJson(response:Response):Promise<unknown> {
+export function verifyQuotationPdf(raw:unknown,claim:Pick<Claim,"ticketId"|"documentNumber">):PdfEvidence|null {
+  return verifyDocumentPdf(raw,claim,"quotation");
+}
+export function verifyInvoicePdf(raw:unknown,claim:Pick<Claim,"ticketId"|"documentNumber">):PdfEvidence|null {
+  return verifyDocumentPdf(raw,claim,"invoice");
+}
+export async function boundedJson(response:Response):Promise<unknown> {
   if(!response.body)return null;
   const length=Number(response.headers.get("content-length"));
   if(Number.isFinite(length)&&length>7_200_000)return null;
