@@ -1,0 +1,31 @@
+name: n8n seed cross-platform smoke
+
+on:
+  pull_request:
+    paths:
+      - "scripts/check-n8n-anzfc-seed.mjs"
+      - "scripts/seed-n8n-anzfc.mjs"
+      - "infra/n8n/ancfz/**"
+      - ".github/workflows/n8n-seed-cross-platform.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  seed-test:
+    name: Offline seed tests / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate n8n seed structure and mocked API
+        run: node scripts/check-n8n-anzfc-seed.mjs
+      - name: Validate safe setup dry run
+        run: node scripts/seed-n8n-anzfc.mjs --stage=setup --dry-run
