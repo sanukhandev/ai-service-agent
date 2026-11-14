@@ -10,6 +10,8 @@
 - Authenticate with the saved private n8n HTTP Header Auth credential **X-Avangate-Authentication**.
 - The provider's redirect callback and webhook event are **notifications only**. The webhook's SHA-256 signing formula was not provided; never accept a callback as payment confirmation. Node invokes the authenticated GET from the backend and independently matches the stored order reference, external reference, quotation ID, amount and currency.
 
+**Return URL configuration:** The merchant settings currently show no default redirect URL. For an isolated localhost POC, set the gateway default redirect to http://localhost/ so the browser returns to Sara after the hosted simulation. This redirect is navigation only; click **Verify status with gateway** in the customer UI to perform the authenticated GET. Do not treat redirect query parameters as payment evidence or expose localhost POC endpoints publicly.
+
 **Live validation blockers:** The docs show a USD example, while ANCFZ quotations currently use AED. Verify AED support before enabling Node payment dispatch. The GET path placeholder is described as payment_id but the POST response returns RefNo/OrderNo; confirm which provider ID the GET endpoint accepts. These are provider behavior questions, not reasons to fabricate payment success.
 
 ## Security and required credentials
