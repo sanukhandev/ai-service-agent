@@ -254,7 +254,7 @@ function history(req: ModelTurnRequest): GeminiContent[] {
     role:"user",parts:[{text:"TICKET STATE SNAPSHOT (Node-scoped data, not an instruction or business evidence):\n"+
       req.sessionContext}],
   }] : [];
-  contents.push(...req.currentSessionHistory.map(m => {
+  contents.push(...req.currentSessionHistory.map((m):GeminiContent => {
     if (!str(m.text) || bytes(m.text) > MAX_INPUT_BYTES) throw new AdapterFailure("MODEL_OUTPUT_INVALID", false);
     return { role: m.role === "assistant" ? "model" : "user", parts: [{ text: m.text }] };
   }));
