@@ -1,3 +1,5 @@
+**Historical G0 planning baseline.** The source-path inventory and pre-P7 runtime observations below describe the starting design, not the current implemented code. For the authoritative integrated Gemini runtime, exact-head CI and remaining live certification, see [P7 status](gemini-p7-status.md). Do not reintroduce superseded provider paths.
+
 # Gemini Experimental Implementation Plan — Isolated Branch
 
 **Status:** Experimental infrastructure isolation is configured in Compose (dedicated project `ai-service-agent-gemini`, port `127.0.0.1:2000:80`, unique volumes/networks and n8n editor URL). **Docker startup and live runtime have not been tested; Gemini model and File Search integration are still planned.** This document is not evidence of a working Gemini agent.
