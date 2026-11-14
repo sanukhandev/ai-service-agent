@@ -30,7 +30,8 @@ class EphemeralToolState {
   async take(id){const value=this.privateStates.get(id)??null;this.privateStates.delete(id);return value;}
 }
 const report={model,greeting:false,positiveRetrieval:false,approvedCitation:false,
-  customMetadata:false,authorizedFunction:false,webToolsAdvertised:false,cleanup:false};
+  customMetadata:false,authorizedFunction:false,functionContinuation:false,
+  webToolsAdvertised:false,cleanup:false};
 try {
   store=await provider.createStore("gemini-g1-synthetic-"+uid);
   const operation=await provider.upload(store,document,sourceMetadata);
@@ -102,6 +103,20 @@ try {
   report.authorizedFunction=intent.kind==="candidate" &&
     intent.candidate.functionCalls.some(x=>x.name==="find_intents");
   if(!report.authorizedFunction)fail("FUNCTION_CALL_NOT_PROVEN");
+  const call=intent.candidate.functionCalls.find(x=>x.name==="find_intents");
+  const state=intent.candidate.continuation?.pendingToolStateRef;
+  if(!call||!state)fail("FUNCTION_PENDING_STATE_MISSING");
+  const continued=await adapter.continueWithFunctionOutputs({
+    ...baseRequest,requestId:intent.candidate.continuation?.opaqueRef??baseRequest.requestId,
+    customerMessage:"Use the find_intents function to search query 'company setup' now.",
+    allowedBuiltinTools:[],allowedBusinessToolNames:["find_intents"],
+  },state,[{callId:call.callId,outputJson:JSON.stringify({
+    ok:true,data:{candidates:[{intentKey:"company_formation",
+      name:"Start Company",description:"Synthetic function response"}]},
+  })}],{phase:"functions"});
+  report.functionContinuation=continued.kind==="candidate" &&
+    continued.candidate.text.trim().length>0;
+  if(!report.functionContinuation)fail("FUNCTION_CONTINUATION_UNVERIFIED");
   // Emit PASS only after the finally cleanup attempt completes.
 } finally {
   if(store){
