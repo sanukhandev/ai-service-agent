@@ -4,6 +4,8 @@
  */
 import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { TicketMessageRepository } from "../repositories/messages.js";
+import { workerTicketScope } from "../repositories/types.js";
 import { paymentEnabled } from "./payment-evidence.js";
 import { boundedJson, verifyInvoicePdf } from "./n8n-quote-worker.js";
 interface Claim {
@@ -157,6 +159,19 @@ export class N8nInvoiceWorker {
       const claim=await this.claim(agent);if(!claim)return;
       const pdf=await this.dispatch(claim);
       await this.finalize(claim,pdf);
+      if(pdf){
+        // Download is authorized by the existing ticket-owned invoice PDF route.
+        // Stable request ID prevents duplicate assistant messages on retries.
+        const link="/api/v1/tickets/"+claim.ticketId+"/invoices/"+claim.invoiceId+"/pdf";
+        try {
+          await new TicketMessageRepository(this.db).createAssistantMessage(
+            workerTicketScope(claim.agentId,claim.ticketId),claim.ticketId,claim.invoiceId,
+            "Your sandbox payment has been independently verified and your TEST invoice is ready. "+
+            "[Download your TEST invoice]("+link+").",[]);
+        }catch {
+          this.log({invoiceId:claim.invoiceId},"Invoice PDF saved but chat notification was unavailable");
+        }
+      }
       this.log({invoiceId:claim.invoiceId,status:pdf?"verified_completed":"unknown_outcome"},
         "ANCFZ TEST invoice recorded");
     }catch(e){
