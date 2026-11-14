@@ -40,7 +40,7 @@ async function asBase64(file:File):Promise<string>{
 export function PurchaseChecklist({
   ticketId,quote,onReady,
 }:{
-  ticketId:string;quote:Quote;onReady:(ready:boolean)=>void;
+  ticketId:string;quote:Quote|null;onReady:(ready:boolean)=>void;
 }){
   const [data,setData]=useState<Purchase|null>(null);
   const [busy,setBusy]=useState<string|null>(null);
@@ -52,8 +52,8 @@ export function PurchaseChecklist({
   const load=useCallback(async()=>{
     const result=await json(url) as Purchase;
     setData(result);
-    onReady(result.readyForOtp===true && result.quotationId===quote.id);
-  },[url,quote.id,onReady]);
+    onReady(result.readyForOtp===true && result.quotationId===quote?.id);
+  },[url,quote?.id,onReady]);
   useEffect(()=>{
     let active=true;
     async function refresh(){
@@ -68,7 +68,7 @@ export function PurchaseChecklist({
     void refresh();
     const timer=setInterval(()=>{void refresh();},5000);
     return ()=>{active=false;clearInterval(timer);onReady(false);};
-  },[url,quote.id,onReady]);
+  },[url,quote?.id,onReady]);
 
   async function upload(key:string,file:File|undefined){
     if(!file || busy)return;
@@ -87,7 +87,7 @@ export function PurchaseChecklist({
   }
   async function confirm(e:FormEvent<HTMLFormElement>){
     e.preventDefault();
-    if(!data || data.confirmed || data.missing.length || busy || !consent)return;
+    if(!data || !quote || data.confirmed || data.missing.length || busy || !consent)return;
     setBusy("confirm");setError(null);setNotice(null);
     const requestId=reqId.current??crypto.randomUUID();
     reqId.current=requestId;
@@ -111,10 +111,10 @@ export function PurchaseChecklist({
     Purchase confirmed and documents recorded for this quotation. Proceed with test OTP verification.
   </p>;
   return <section aria-label="Purchase documents and confirmation" className="mt-3 space-y-3 rounded-lg border border-slate-200 p-3">
-    <h3 className="font-semibold text-slate-900">Proceed with purchase</h3>
+    <h3 className="font-semibold text-slate-900">Passport and Emirates ID</h3>
     <p className="text-xs text-slate-700">Upload the documents configured for
       <strong> {data.intentKey?.replaceAll("_"," ")}</strong>, then confirm the exact approved
-      quote of <strong>{quote.currency} {quote.amount}</strong>.</p>
+      {quote?<span> quote of <strong>{quote.currency} {quote.amount}</strong>.</span>:<span> before receiving an approved quotation.</span>}</p>
     <p className="text-xs text-amber-800">Development-only sandbox checklist.
       Use synthetic documents only; these are not verified regulatory requirements.
       Local HTTP is not suitable for real passport or identity files.</p>
@@ -135,7 +135,7 @@ export function PurchaseChecklist({
     </div>)}
     {error&&<p role="alert" className="text-xs text-rose-700">{error}</p>}
     {notice&&<p role="status" className="text-xs text-indigo-800">{notice}</p>}
-    <form className="space-y-2" onSubmit={confirm}>
+    {quote&&data.quotationId===quote.id&&<form className="space-y-2" onSubmit={confirm}>
       <label className="flex gap-2 text-xs"><input type="checkbox" required
         checked={consent} onChange={e=>setConsent(e.target.checked)}/>
         <span>{PURCHASE_CONSENT}</span></label>
@@ -144,6 +144,6 @@ export function PurchaseChecklist({
         className="rounded bg-indigo-700 px-3 py-2 font-semibold text-white disabled:opacity-50">
         {busy==="confirm"?"Confirming…":"Confirm purchase and proceed to OTP"}
       </button>
-    </form>
+    </form>}
   </section>;
 }
