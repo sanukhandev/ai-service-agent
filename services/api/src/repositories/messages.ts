@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireBounded, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "./events.js";
@@ -40,6 +41,17 @@ function assertReferences(refs: readonly SourceReference[]): void {
       }
     }
   }
+}
+
+/** Stable, domain-separated UUID for one lifecycle milestone per provider operation. */
+export function lifecycleNoticeId(stage: string, entityId: string): string {
+  requireUuid(entityId, "entityId");
+  if (!/^[a-z][a-z0-9_.-]{1,80}$/.test(stage)) {
+    throw new PersistenceError("INVALID_INPUT", "Invalid lifecycle notification stage");
+  }
+  const hash = createHash("sha256").update("assistant-notice:v1:" + stage + ":" + entityId).digest("hex");
+  return hash.slice(0, 8) + "-" + hash.slice(8, 12) + "-4" + hash.slice(13, 16) +
+    "-8" + hash.slice(17, 20) + "-" + hash.slice(20, 32);
 }
 
 export class TicketMessageRepository {
