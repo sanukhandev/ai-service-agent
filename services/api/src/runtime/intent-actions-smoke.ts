@@ -7,6 +7,8 @@ import { GuestSessionRepository, TicketRepository } from "../repositories/ticket
 import { ConversationContextRepository } from "../repositories/context.js";
 import { TicketMessageRepository } from "../repositories/messages.js";
 import { IntentActionOperations, SERVICE_REQUEST_CONSENT, isServiceAction } from "./intent-action-operations.js";
+import { ActionProposalOperations, registerOperationTools } from "./action-proposals.js";
+import { AgentToolRegistry } from "../agent/tool-registry.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 
 const exampleValues:Record<string,string|number>={
@@ -85,6 +87,30 @@ async function main(){
       assert.equal(identity.readyForOtp,false);
       const updated=await actions.catalog(scope,ticket.id);
       assert.equal(updated.actions.find(a=>a.actionKey===entry.action)?.ready,true);
+      const proposalMessage=await messages.createCustomerMessage(scope,ticket.id,randomUUID(),
+        "I would like to request the selected service; please show the approval option");
+      const proposalService=new ActionProposalOperations(db);
+      const preflight=await proposalService.preflight(scope,ticket.id,entry.intent,entry.action);
+      assert.equal(preflight.status,"ok");
+      assert.equal(preflight.actions[0]?.ready,true);
+      const registry=new AgentToolRegistry();
+      registerOperationTools(registry,proposalService,scope);
+      const context={agentId:agent.id,ticketId:ticket.id,
+        principalId:"ticket:"+ticket.id,sourceCustomerMessageId:proposalMessage.message.id,
+        intentCatalogRevision:"pinned",offeringCatalogRevision:"pinned",
+        authorizedToolNames:new Set(["preflight_operation","propose_operation"] as const)};
+      const proposal=await registry.execute({callId:randomUUID(),name:"propose_operation",
+        argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},context);
+      assert.equal(proposal.ok,true);
+      assert.equal(proposal.ok&&typeof proposal.data==="object"&&proposal.data!==null&&
+        "status" in proposal.data&&proposal.data.status,"awaiting_customer_authorization");
+      const repeated=await registry.execute({callId:randomUUID(),name:"propose_operation",
+        argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},context);
+      assert.deepEqual(repeated,proposal,"Proposal replay must be idempotent");
+      const noDispatch=await db.withAgent(agent.id,async client=>(await client.query(
+        "SELECT count(*)::int AS total FROM event_outbox WHERE agent_id=$1 AND ticket_id=$2",
+        [agent.id,ticket.id])).rows[0]?.total);
+      assert.equal(noDispatch,0,"A Gemini proposal must never dispatch an operation");
       await assert.rejects(()=>actions.submit(scope,ticket.id,entry.action,{
         ...request,consent:false,
       }),err=>err instanceof PersistenceError && err.code==="INVALID_INPUT");
