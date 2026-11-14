@@ -1,3 +1,5 @@
+> **Experiment status:** This is a proposed/ported ANCFZ test journey, not proof that Gemini File Search, OCR or 2Checkout sandbox provider outcomes have passed live certification. Only synthetic documents and explicit opt-in test credentials are permitted.
+
 # ANCFZ purchase journey — catalog, document intake, consent, OTP, order, invoice
 
 ## Scope and evidence status
