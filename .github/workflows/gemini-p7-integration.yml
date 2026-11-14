@@ -66,3 +66,28 @@ jobs:
         run: npm exec --yes --package=typescript@5.9.3 -- tsc -p packages/contracts/tsconfig.gemini.json
       - name: Verify isolation and policy
         run: node scripts/check-gemini-g0.mjs
+
+  docker-build:
+    name: Gemini API Docker image (workspace isolation)
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate experiment Compose, separate port and volume bindings
+        env:
+          POSTGRES_PASSWORD: test-only-nonproduction
+          POSTGRES_APP_PASSWORD: test-only-nonproduction-runtime
+          GEMINI_API_KEY: ""
+        run: |
+          docker compose config --quiet
+          docker compose config | grep -F 'ai-service-agent-gemini-postgres-data'
+          docker compose config | grep -F '2000'
+      - name: Build Gemini API image from repository workspace
+        env:
+          DOCKER_BUILDKIT: "1"
+        run: docker build --progress=plain -f services/api/Dockerfile -t ai-service-agent-gemini-api:ci .
