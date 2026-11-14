@@ -91,3 +91,17 @@ jobs:
         env:
           DOCKER_BUILDKIT: "1"
         run: docker build --progress=plain -f services/api/Dockerfile -t ai-service-agent-gemini-api:ci .
+
+  p2-database:
+    name: Gemini disposable PostgreSQL migration & catalog gate
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Validate isolated disposable database and repeatable Gemini schema
+        run: bash infra/postgres/gemini-p2-validate.sh
