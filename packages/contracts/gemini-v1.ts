@@ -120,6 +120,12 @@ export interface ProviderSourceAnnotation {
   readonly sourceUri: string | null;
   readonly excerpt: string | null;
   readonly locator: string | null;
+  /**
+   * File Search citation custom metadata, as emitted by Google.
+   * Untrusted until matched against the session-pinned PostgreSQL approval
+   * registry. Never use these fields directly as authorization.
+   */
+  readonly sourceMetadata?: Readonly<Record<string, string>>;
 }
 
 export interface ModelTurnCandidate {
