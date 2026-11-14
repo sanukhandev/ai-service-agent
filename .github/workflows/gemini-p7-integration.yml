@@ -26,6 +26,8 @@ jobs:
         run: node --test services/api/dist/agent/intent-tools.test.js
       - name: Validate live-test configuration guardrails (no provider calls)
         run: node --test scripts/check-gemini-live-readiness.test.mjs
+      - name: Verify deterministic continuity snapshot and extractive history
+        run: node --test services/api/dist/runtime/conversation-continuity.test.js
       - name: Verify strict synthetic OCR parsing
         run: node --test services/api/dist/runtime/identity-extractor.test.js
       - name: Run P3 knowledge tests against compiled API
