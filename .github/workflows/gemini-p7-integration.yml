@@ -1,7 +1,7 @@
 name: Gemini P7 integrated-source checks
 on:
   push:
-    branches: [experiment/gemini-file-search-poc, feat/gemini-p0-p1-completion]
+    branches: [experiment/gemini-file-search-poc, feat/gemini-p0-p1-completion, fix/gemini-live-test-readiness]
   workflow_dispatch:
 
 permissions:
