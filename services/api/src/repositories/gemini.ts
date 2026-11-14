@@ -366,6 +366,58 @@ export class GeminiBindingRepository {
     });
   }
 
+  /**
+   * Resolve File Search citation custom metadata to one exact, approved
+   * provider document resource. Provider metadata is a lookup hint, not trust:
+   * session/agent/store, document IDs, SHA and active approval all match SQL.
+   */
+  async approvedDocumentFromMetadata(scope:TicketScope,sessionId:string,store:string,
+    metadata:Readonly<Record<string,string>>) {
+    const agentId=requireUuid(metadata.agentId??"","metadata.agentId");
+    const knowledgeId=requireUuid(metadata.knowledgeVersionId??"","metadata.knowledgeVersionId");
+    const documentId=requireUuid(metadata.documentId??"","metadata.documentId");
+    const versionId=requireUuid(metadata.documentVersionId??"","metadata.documentVersionId");
+    if(agentId!==scope.agentId || !/^[a-f0-9]{64}$/.test(metadata.sha256??""))
+      throw new PersistenceError("NOT_FOUND","Citation metadata outside approved agent scope");
+    if(!/^fileSearchStores\/[A-Za-z0-9_-]+$/.test(store))
+      throw new PersistenceError("INVALID_INPUT","Invalid File Search resource");
+    return this.db.withAgent(scope.agentId,async client=>{
+      const s=await lockedSession(client,scope,sessionId);
+      if(await expireIfNeeded(client,s,await clock(client)) ||
+         s.knowledge_version_id!==knowledgeId)
+        throw new PersistenceError("NOT_FOUND","Citation not pinned to active session");
+      const result=await client.query<{
+        knowledge_version_id:string;document_id:string;document_version_id:string;
+        store_resource_name:string;provider_document_resource_name:string;
+        source_sha256:string;title:string;source_locator:string|null;approval_reference:string;
+      }>([
+        "SELECT k.id AS knowledge_version_id,d.id AS document_id,r.id AS document_version_id,",
+        "k.store_resource_name,kd.provider_document_resource_name,r.source_sha256,",
+        "d.title,d.source_locator,r.approval_reference",
+        "FROM gemini_knowledge_versions k JOIN gemini_knowledge_documents kd",
+        "ON kd.agent_id=k.agent_id AND kd.knowledge_version_id=k.id",
+        "JOIN gemini_source_revisions r ON r.agent_id=kd.agent_id AND r.id=kd.document_version_id",
+        "JOIN gemini_source_documents d ON d.agent_id=r.agent_id AND d.id=r.document_id",
+        "WHERE k.agent_id=$1 AND k.id=$2 AND k.state IN ('published','retired')",
+        "AND k.store_resource_name=$3 AND d.id=$4 AND r.id=$5",
+        "AND r.source_sha256=$6 AND r.approval_status='approved'",
+        "AND kd.index_status='active' AND kd.provider_document_resource_name IS NOT NULL",
+      ].join(" "),[scope.agentId,knowledgeId,store,documentId,versionId,metadata.sha256]);
+      const row=result.rows[0];
+      if(!row)throw new PersistenceError("NOT_FOUND","Citation metadata has no authorized source");
+      return {
+        agentId:scope.agentId,knowledgeVersionId:row.knowledge_version_id,
+        documentId:row.document_id,documentVersionId:row.document_version_id,
+        providerStoreResourceName:row.store_resource_name,
+        providerDocumentResourceName:row.provider_document_resource_name,
+        sourceSha256:row.source_sha256,sourceTitle:row.title,
+        sourceLocator:row.source_locator,evidenceExcerpt:null,
+        approvalReference:row.approval_reference,approvalStatus:"approved" as const,
+        indexStatus:"active" as const,
+      };
+    });
+  }
+
   /** Called with provider annotation IDs only AFTER resolving authorized session. */
   async approvedDocument(scope:TicketScope,sessionId:string,
     storeResourceName:string,documentResourceName:string) {
