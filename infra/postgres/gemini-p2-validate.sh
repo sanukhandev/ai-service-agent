@@ -59,6 +59,26 @@ echo 'TEST 1: Fresh migrations and seed without Foundry environment'
 compose run --rm migrate
 echo 'TEST 2: Repeat migration/seed idempotency'
 compose run --rm migrate
+echo 'TEST 2A: Main ANCFZ purchase/payment migrations are forward-only and scoped'
+new_count="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT count(*) FROM schema_migrations WHERE name IN (
+ '016_2checkout_test_payments.sql',
+ '017_intent_purchase_documents.sql',
+ '018_payment_auto_verification.sql',
+ '019_identity_extraction.sql',
+ '020_intent_service_requests.sql')")"
+test "$new_count" = '5'
+table_count="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
+SELECT count(*) FROM pg_class WHERE relkind='r' AND oid IN (
+ to_regclass('public.ticket_payment_otps'),
+ to_regclass('public.ticket_payment_attempts'),
+ to_regclass('public.ticket_payment_invoices'),
+ to_regclass('public.intent_document_requirements'),
+ to_regclass('public.ticket_purchase_documents'),
+ to_regclass('public.ticket_purchase_confirmations'),
+ to_regclass('public.ticket_service_requests'))")"
+test "$table_count" = '7'
+echo 'Gemini and ANCFZ migrations 001-020 coexist without number collisions'
 echo 'TEST 3: Fail closed on migration checksum change'
 tampered="$(mktemp)"
 cp infra/postgres/009_gemini_bindings.sql "$tampered"
