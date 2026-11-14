@@ -4,8 +4,8 @@
 
 The Sara/ANCFZ POC uses a ticket-pinned, versioned intent catalog. Revision 1
 only permitted `create_lead` and `generate_quote` for `company_formation`.
-Revision 2 additionally permits `purchase_quotation` and defines two
-**provisional demo-only** required document types. This is *not* a verified
+Revision 2 enables `purchase_quotation` on every seeded intent and requires
+exactly **passport** and **Emirates ID** for the POC. Other identity or application documents are rejected. This is *not* a verified
 list of all documents required by ANCFZ authorities. Obtain and publish an
 approved checklist before using real identity information or customer funds.
 
@@ -20,11 +20,15 @@ enqueue an order and independently verify provider evidence.
 2. Existing Node lead and quotation paths produce a verified, pinned-priced
    quotation PDF. A mere chat statement is not an approved quote.
 3. Customer sees the configured private document checklist. The POC requires
-   a synthetic combined shareholder identity pack and an application sample.
-   Only catalog-linked PDF/PNG/JPEG files up to 1 MiB are accepted. The bytes
-   are persisted in `ticket_purchase_documents` with SHA256 and tenant-free
+   a synthetic passport bio-page and a synthetic Emirates ID.
+   Only passport/Emirates ID PDF/PNG/JPEG files up to 1 MiB are accepted.
+   A fixed Azure Document Intelligence `prebuilt-idDocument` model extracts
+   the holder name from each upload. The names must match (ignoring token order),
+   and only the normalized names and document-number last four characters
+   are saved from the OCR output. The original bytes are persisted in `ticket_purchase_documents` with SHA256 and tenant-free
    agent/ticket-scoped RLS; raw bytes are never sent to Foundry or n8n.
-   A 'received' state does not certify document authenticity.
+   Extraction is not identity or document-authenticity verification. If OCR
+   cannot extract both full names, the upload is rejected and purchase remains blocked.
 4. Customer confirms the exact quote and the specific
    `PURCHASE_CONSENT` wording. Node creates a durable
    `ticket_purchase_confirmations` row; documents cannot be changed after
@@ -39,7 +43,9 @@ enqueue an order and independently verify provider evidence.
    GET endpoint (max 60 checks, minimum 30 seconds apart, one-day order window).
    Matching `COMPLETE` + amount + currency + reference + ticket + quotation
    grants `verified_test_payment`; `DECLINED` and `REFUNDED` never do.
-8. Verified payment queues a Gotenberg PDF TEST invoice. Before committing
+8. Verified payment queues a Gotenberg PDF TEST invoice using the passport holder's
+   **extracted full name**, corroborated against the Emirates ID. The quotation
+   free-text customer name is never used as the invoice bill-to name. Before committing
    the result, the invoice worker rechecks that payment remains verified.
    A durable assistant ticket message then carries a same-origin,
    ticket-owner-authorized **Download your TEST invoice** attachment link.
@@ -73,6 +79,9 @@ enqueue an order and independently verify provider evidence.
 - Required document rows are provisional. Do not enable real PII uploads over
   localhost HTTP. Production needs TLS, encryption at rest, retention policy,
   malware scan, document authenticity review and a legally approved matrix.
+- Identity intake requires `AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT` and
+  `AZURE_DOCUMENT_INTELLIGENCE_KEY` on the Node API container. Without these,
+  uploads fail closed. No other OCR provider/heuristic inference is used.
 - The gateway docs have not established AED support, the accepted GET identifier
   or actual sandbox response behavior. Leave
   `ANCFZ_PAYMENT_DISPATCH_ENABLED=false` until manually confirmed. The
@@ -88,6 +97,10 @@ to catalog revision 2. Verify missing documents and missing consent both block
 OTP. Exercise duplicate uploads, cross-ticket document reads, incorrect OTP,
 repeated order authorization, PENDING and DECLINED/REFUNDED, no invoice before
 matching COMPLETE, and exactly one owner-only PDF attachment after completion.
+
+The parser and mocked extractor are tested offline, but live Azure OCR for
+actual Emirates ID format remains unverified and must be tested with approved
+synthetic samples before enabling broader access.
 
 The 2Checkout sandbox must be validated with synthetic data only. No
 successful CI smoke is evidence of a live merchant transaction.
