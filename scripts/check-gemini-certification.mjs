@@ -56,7 +56,7 @@ for (const t of cases()) {
   const begun = performance.now();
   let state = 'passed', reason = null, details = null;
   try {
-    const a = t.area === 'infrastructure' ? null : (adapter ? await adapter.create() : null);
+    const a = adapter ? await adapter.create() : null;
     // Infrastructure tests without external probes remain explicitly blocked, not silently passed.
     if (t.area === 'infrastructure' && mode!=='offline' && adapterBlocked) {
       // Still execute repo-static checks; runtime probes remain blocked inside the case.
@@ -73,8 +73,12 @@ const count = k => observed.filter(r=>r.state===k).length;
 const knowledge = observed.filter(r=>r.area==='knowledge' && r.details?.observed);
 const grounded = knowledge.filter(r=>r.details.goldenExpected==='supported');
 const negative = knowledge.filter(r=>r.details.goldenExpected!=='supported');
-const checkedSources = knowledge.reduce((s,r)=>s+(r.details.observed.checkedEvidenceCount||0),0);
-const acceptedSources = knowledge.reduce((s,r)=>s+(r.details.observed.authorizedEvidenceCount||0),0);
+const sourceCases=knowledge.filter(r=>r.details.allowedEvidenceIds.length>0 || r.details.goldenExpected==='unauthorized_source');
+const sourceCorrect=sourceCases.filter(r=>{
+  const x=r.details.observed,allow=r.details.allowedEvidenceIds;
+  return x.usedEvidenceIds.every(id=>allow.includes(id)) && (r.details.goldenExpected!=='unauthorized_source' || x.status==='unauthorized_source');
+});
+const workflowSamples=observed.filter(r=>r.area==='tool_workflow' && Number.isInteger(r.details?.workflowDuplicateCount));
 const latency = knowledge.map(r=>r.details.observed.latencyMs).filter(v=>typeof v==='number'&&Number.isFinite(v)).sort((a,b)=>a-b);
 const percentile=p=>latency.length?latency[Math.max(0,Math.ceil(latency.length*p)-1)]:null;
 const totalTokens = kind => {const samples=knowledge.map(r=>r.details.observed[kind]).filter(v=>Number.isInteger(v)&&v>=0);return samples.length?{samples:samples.length,total:samples.reduce((a,b)=>a+b,0)}:null;};
@@ -90,10 +94,10 @@ const report={
     groundedResponseAccuracy:ratio(knowledge.filter(r=>r.state==='passed').length,knowledge.length),
     unsupportedClaimEscapeRate:ratio(negative.filter(r=>r.details.observed.published||r.details.observed.streamed).length,negative.length),
     falseRejectionRate:ratio(grounded.filter(r=>!r.details.observed.published).length,grounded.length),
-    sourceAuthorizationAccuracy:ratio(acceptedSources,checkedSources),
+    sourceAuthorizationAccuracy:ratio(sourceCorrect.length,sourceCases.length),
     toolAuthorizationFailures:observed.filter(r=>r.area==='tool_workflow'&&r.state==='failed').length,
     sessionIsolation:{passed:observed.filter(r=>r.area==='session'&&r.state==='passed').length,failed:observed.filter(r=>r.area==='session'&&r.state==='failed').length,blocked:observed.filter(r=>r.area==='session'&&r.state==='blocked').length},
-    duplicateWorkflowActionCount:null, // Only measured from audited real outbox/provider dispatch traces.
+    duplicateWorkflowActionCount:workflowSamples.length ? workflowSamples.reduce((s,r)=>s+r.details.workflowDuplicateCount,0) : null, // Simulator only unless local/live adapter audits outbox.
     responseLatencyMs:{p50:percentile(.5),p95:percentile(.95),samples:latency.length},
     usage:{inputTokens:totalTokens('inputTokens'),outputTokens:totalTokens('outputTokens'),costUsd:costs.length?{samples:costs.length,total:costs.reduce((a,b)=>a+b,0)}:null},
   },
