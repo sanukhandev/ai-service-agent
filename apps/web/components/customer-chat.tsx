@@ -166,12 +166,6 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const prevMessageCount = useRef(0);
-  const knownMessages = useRef<ChatMessage[]>([]);
-
-  useEffect(() => {
-    knownMessages.current = messages;
-  }, [messages]);
-
   useEffect(() => {
     let subscribed = true;
     if (!initPromise.current) initPromise.current = initializeTicket(agentKey);
