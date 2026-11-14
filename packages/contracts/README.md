@@ -1,32 +1,28 @@
-# POC API and event contracts — P0
+# Gemini experiment — API, agent and event contracts
 
-**Gemini experiment contract freeze:** [gemini-v1.ts](gemini-v1.ts) is the authoritative, type-checkable shared contract for P1–P6. See [G0 record](../../docs/gemini-g0-contracts.md). The older Foundry API text below is historical on this branch.
+**Canonical contract:** [gemini-v1.ts](gemini-v1.ts) and its independent [G0 freeze record](../../docs/gemini-g0-contracts.md).
 
-**Status:** contract-first; business and Foundry endpoints are not yet implemented. See [HTTP specification](openapi.yaml) and [frozen guest/session/SSE event contract](ticket-events.md).
+The active application uses Node/Fastify for ticket admission, agent authority, function execution, durable events, grounding verification and external workflow authorization. Gemini is an external model candidate generator; File Search is the only permitted built-in retrieval tool. Node enforces the exact agent, session, model, store, document provenance and allowable functions.
 
-The customer browser calls only Node via Nginx. **Node calls Microsoft Foundry directly** through its JavaScript SDK, and executes client-side function calls against its internal allowlisted tool registry. No Python Gateway or `/internal/turns` service.
+## HTTP and event boundaries
 
-- Server resolves `agentId`, ticket ownership and active Foundry agent version; never delegate authorization to model arguments.
-- JSON API uses `camelCase`. IDs are issued by Node. `requestId` provides idempotent customer message acceptance.
-- Node persists accepted customer messages before inference; `202 Accepted` never means the model completed.
-- SSE exposes event IDs and per-ticket replay from PostgreSQL, not just Redis.
-- Typed tool failures and missing business evidence cannot become false success.
-- Future catalogs and action contracts are versioned.
+- `GET /api/health` — Fastify health
+- `POST /api/v1/agents/{agentKey}/tickets` — authorized ticket creation
+- `GET /api/v1/tickets/{ticketId}` — ticket ownership and status
+- `POST /api/v1/tickets/{ticketId}/messages` — durable, idempotent customer message acceptance
+- `GET /api/events/tickets/{ticketId}` — scoped SSE and database event replay
 
-## Initial public API
+See [OpenAPI](openapi.yaml), [ticket event contract](ticket-events.md), and implementation in `services/api/src/runtime/app.ts`. Node issues IDs, manages guest/customer ownership and accepts a customer request before inference. An HTTP `202 Accepted` means the message was accepted, **not** that Gemini completed or a provider operation succeeded.
 
-```text
-GET  /api/health
-POST /api/v1/agents/{agentKey}/tickets
-GET  /api/v1/tickets/{ticketId}
-POST /api/v1/tickets/{ticketId}/messages
-GET  /api/events/tickets/{ticketId}
-```
+## Model and business contracts
 
-Access to ticket endpoints is bound to a server-issued guest/customer session. Real routes beyond `/api/health` will be added in P2.
+- Gemini model invocation, authorized function declaration/call/continuation, source annotations and usage: `gemini-v1.ts`.
+- Node registry: `find_intents`, `select_ticket_intent`, `get_intent_requirements`, `record_ticket_facts`, `get_offerings`. Other operation/status interfaces may be defined but must not be advertised until their Node handlers and permissions exist.
+- Material business claims need independent approved evidence qualification before assistant message persistence or streaming.
+- Business side effects require Node preflight, customer consent, durable idempotent outbox and provider-confirmed outcome. The model cannot call n8n or CRM directly.
 
-## Foundry function names for P3/P4
+## Session and source policy
 
-`find_intents`, `select_ticket_intent`, `get_intent_requirements`, `get_offerings`, `get_ticket_context`, `get_document_data`, `preflight_operation`, `propose_operation`, `get_operation_status`.
+The AI session expires 60 minutes after the last accepted customer message. Reconnect does not reset its deadline. Expiry starts a new model conversation without prior AI context; historical tickets remain persisted. Source documents require agent-approved revisions, exact provenance and validated original text; store IDs or citation titles alone are insufficient.
 
-These run inside Node and do not themselves authorize workflow execution. The future n8n approval API uses a separate customer confirmation, Node preflight and durable outbox entry. Native Foundry IQ remains attached separately as the agent's knowledge tool.
+The G0/G1/P7 workflows and `tests/gemini/` distinguish static/offline checks from live provider certification. Full live G1, real Sara corpus and n8n/P6 validation remain acceptance blockers.
