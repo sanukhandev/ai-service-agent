@@ -11,6 +11,14 @@
 - Review and verify both heads before and after importing upstream changes. GitHub currently reports `main` is not protected; do not mistake a written policy or optional CI check for server-side protection.
 - See [permanent directional merge policy](.github/GEMINI_BRANCH_POLICY.md) and [PR rejection check](.github/workflows/reject-gemini-to-main.yml). Enable a repository-admin-owned required gate for enforceable protection.
 
+## Gemini parallel execution contract — mandatory
+
+- The **single authoritative task plan** is [§5 of the Gemini experimental implementation plan](docs/gemini-experiment-implementation-plan.md), including P1–P6 branch names, ownership boundaries, shared contracts, quality gates and exact-head reporting. Do not execute the older Foundry worktracks below on this branch.
+- **Before P1–P6 begin**, the integration owner commits/finalizes shared contracts and records the same exact `GEMINI_FREEZE_SHA` for all worktrees. Never create a Gemini child branch from `main`, nor start from another workstream's head.
+- Individual streams modify **only their allocated paths**; the integration owner alone controls `packages/contracts/**`, `services/api/src/runtime/turn-worker.ts`, `services/api/src/runtime/turn-queue.ts`, `services/api/src/index.ts`, root dependencies/lockfiles, Compose and Nginx. Any change to a frozen contract requires a coordinated plan amendment first.
+- Strict approved-source knowledge: no `google_search`, `url_context` or arbitrary web/URL retrieval; Gemini File Search only with a server-authorized agent store, plus explicitly approved and source-traceable Node catalogs. Factual responses must pass Node evidence verification **before** persistence or streaming. No citation alone is proof.
+- Report honest status: `planned`, `implemented`, `offline-verified`, `live-verified` or `blocked`, with exact SHA and evidence. No workstream may declare the whole experiment complete on its own.
+
 ## 1. Current scope (POC)
 
 Build one generic, **agent-centric** business assistant platform. Sara / ANCFZ is an example configuration. The repository is a clean rebuild, not a migration of old `agentic-rag-ai` code.
