@@ -14,7 +14,7 @@ export const PURCHASE_CONSENT =
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_FILE=1048576;
 type PurchaseQuote={id:string|null;intent_id:string;intent_key:string;amount:string|null;currency:string|null;state:string|null;purchase_enabled:boolean};
-type DocRow={id:string;requirement_key:string;label:string;guidance:string|null;
+type DocRow={id:string|null;requirement_key:string;label:string;guidance:string|null;
   required:boolean;sort_order:number;file_name:string|null;content_type:string|null;
   state:string|null;created_at:Date|null;extracted_full_name:string|null;
   extraction_status:string|null};
@@ -57,7 +57,7 @@ async function findQuote(client:PoolClient,agentId:string,ticketId:string):Promi
 }
 async function getRequirements(client:PoolClient,agentId:string,ticketId:string,intentId:string):Promise<DocRow[]>{
   const r=await client.query<DocRow>(
-    `SELECT r.id,r.requirement_key,r.label,r.guidance,r.required,r.sort_order,
+    `SELECT d.id AS id,r.requirement_key,r.label,r.guidance,r.required,r.sort_order,
        d.file_name,d.content_type,d.state,d.created_at,
        d.extracted_full_name,d.extraction_status
      FROM intent_document_requirements r
