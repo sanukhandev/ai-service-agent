@@ -1,67 +1,62 @@
-# AI Service Agent — POC
+# AI Service Agent — Gemini File Search experiment
 
-**Gemini experiment environment:** This branch runs in a separate Docker Compose project, `ai-service-agent-gemini`, on **http://localhost:2000** (customer UI and API) and **http://localhost:2000/n8n/** (optional local n8n editor). The Foundry `main` stack keeps port 80. Volumes, networks, n8n owner and secrets must not be shared. The Gemini model/File Search runtime is not implemented yet; Foundry references below describe inherited baseline code pending replacement. See [Gemini implementation plan](docs/gemini-experiment-implementation-plan.md) and [Docker setup](docs/07-docker-and-deployment.md).
+**Active branch:** `experiment/gemini-file-search-poc`  
+**Scope:** isolated Gemini POC, not a release or a replacement for `main`.
 
-A clean, generic **agent-centric business assistant** platform. Sara/ANCFZ is the first example, not business logic hardcoded into the runtime.
+An agent-centric customer-service platform. Sara / ANCFZ is the example agent; the runtime and authorization are generic.
 
-> **Current status:** P3 Node runtime integration was merged to `main` (exact-head P0/P2/P3 offline CI passed); **live Sara / Foundry IQ validation remains pending**. ANCFZ-only P4 n8n workflow templates are included as **inactive integration starters**; they are **not wired to the Node authorization/OTP runtime or tested against providers**. Do not treat the POC as complete. Angular admin and Python Gateway are excluded.
-
-## Active architecture
-
-Browser -> **Nginx (experiment localhost port 2000 only)** -> **Next.js customer app / Fastify Node API**.
-
-The Node API connects directly to:
-- **Microsoft Foundry Agent Service**, using the existing, versioned GPT-5.4 Sara agent and attached **Foundry IQ** knowledge base.
-- **PostgreSQL 16**, for authoritative agent/ticket/message/catalog state.
-- **Redis**, for ephemeral context and event coordination.
-- **n8n** (optional Compose `workflows` profile until P4), for server-authorized operations only.
-
-No Python runtime, Angular admin, LangGraph, pgvector, custom embedding service or tenant entity is needed for this POC.
-
-## Source layout
+## Runtime
 
 ```text
-apps/web/                Next.js + Tailwind v4 + self-hosted Inter
-services/api/            Node Fastify; Foundry SDK added in P1
-packages/contracts/      Public API and event contracts
-infra/postgres/          Agent-scoped SQL, migration ledger, durable turn queue
-infra/nginx/             Port-2000 host ingress (container port 80)
-docs/                    Engineering contract, plan and reference
-docker-compose.yml       Local/isolated deployment
-AGENTS.md                Repository development contract
+Browser
+  -> Nginx (localhost:2000)
+    -> Next.js customer chat
+    -> Node Fastify API (ticket/session acceptance, SSE, authorization)
+      -> Gemini Developer API (model and agent-authorized functions)
+      -> Gemini File Search (published per-agent knowledge only)
+      -> independent Node grounding verifier
+      -> PostgreSQL (ticket, 60-minute AI session, sources, events)
+      -> Redis (ephemeral delivery/context)
+      -> n8n (optional; Node-authorized lead/quote operations)
 ```
 
-**Admin Portal is explicitly deferred to a later milestone.** The future admin implementation is not part of P0–P7 POC acceptance. Agent/catalog configuration can initially use authenticated internal scripts or controlled seeds. No browser-accessible admin endpoint is planned yet.
+**Only one model turn worker:** `services/api/src/runtime/gemini-worker.ts`. The model does not own tickets, facts, permissions, workflow execution or provider status. Business claims need approved File Search evidence or a trustworthy, approved catalog revision; the independent Node verifier qualifies responses before assistant persistence and SSE.
 
-## POC authentication
+AI conversation context expires after **60 minutes of inactivity** from the last accepted customer message. The next conversation starts a new AI session without old AI memory. Historical customer tickets/messages stay durably stored under authorization. Web browsing and URL/Google Search grounding are disabled.
 
-For P1, Node will use `@azure/ai-projects` and `@azure/identity` with `AzureCliCredential`. The private Docker `azure-cli-auth` volume is mounted **only in the Node API container**. P0's API image does **not** yet install Azure CLI, so do not expect an `az login` command to work until P1 implements that. Credentials persist across rebuilds when the volume and login remain valid.
+## Status
 
-## ANCFZ P4 workflows (draft)
+P1–P7 implementation has been integrated, and the experiment's G0/P7 offline CI gates have passed at previously reported SHAs. **Real Gemini File Search citations/functions, approved Sara source ingestion, external n8n outcomes and full P6 live security/quality certification remain unverified.** Do not infer a live pass from the build or a skipped G1 workflow. Consult [P7 status](docs/gemini-p7-status.md) for exact evidence and blockers.
 
-Ticket creation remains a **direct Node/PostgreSQL operation**. ANCFZ has a separate n8n integration pack for Salesforce Lead upsert, PDF quotation/invoice generation, MockGateway **test** payment links, independent payment verification, and email delivery of Node-generated OTP. Customer approval and one-time OTP are required before generating a test payment link; a customer saying they paid never substitutes for independent verification.
-
-See [ANCFZ P4 business workflow contract](docs/ancfz-p4-workflow-contract.md), [n8n import templates](infra/n8n/ancfz/README.md) and [n8n owner/project seed](infra/n8n/ancfz/SEEDING.md). The workflow JSON is **inactive** and not yet connected to Node, so do not enable it prematurely. The ANCFZ MockGateway demo Orders POST is configured, but checkout URL and payment verification remain unavailable until the matching provider response/status API is validated.
-
-## Local P0 configuration
+## Local setup
 
 ```bash
+git switch experiment/gemini-file-search-poc
 cp .env.example .env
-# Set DIFFERENT strong POSTGRES_PASSWORD and POSTGRES_APP_PASSWORD values.
+# Set GEMINI_API_KEY, a random 32-byte hex GEMINI_STATE_ENCRYPTION_KEY,
+# and different POSTGRES_PASSWORD / POSTGRES_APP_PASSWORD values privately.
 docker compose config
 docker compose up -d --build
 docker compose ps
-# Once P0 services are up, verify public routes and runtime DB role:
-# export POSTGRES_PASSWORD and POSTGRES_APP_PASSWORD from your local .env
-# bash scripts/p0-smoke.sh
 ```
 
-The official PostgreSQL image initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then `infra/bootstrap/003-app-runtime-role.sh` on a **fresh** data volume. The dedicated `migrate` service applies `003–006`, checks checksums, and idempotently seeds Sara and published catalogs before API startup. It creates a restricted `agent_runtime` role for the Node service; the `postgres` migration owner must not be used for application queries. Do not delete an existing volume to re-run init scripts. Track B owns any follow-up migrations and grants for new tables.
+Host ingress is restricted to `127.0.0.1:2000`; the optional n8n editor uses `http://localhost:2000/n8n/` with the Compose `workflows` profile. Never reuse `main`'s volumes, state, n8n credentials or network. Local HTTP is **not** safe for public handling of customer PII or documents.
 
-Set the real `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_AGENT_NAME` and `FOUNDRY_AGENT_VERSION` before starting the migration service. Changes to an existing published binding require explicit version publication, not silent seed mutation. See [P3 publication](docs/p3-foundry-runtime-and-publication.md).
+The migration entrypoint installs numbered SQL migrations `003`–`015` with checksum verification and seeds the pinned Sara Gemini agent. Migrations `001`/`002` and restricted runtime-role bootstrap initialize fresh PostgreSQL volumes. Never reset a real database simply to re-run init scripts.
 
-Only experiment Nginx publishes host port 2000. `http://localhost:2000/` is the Next.js shell, and `http://localhost:2000/api/health` is the Node health endpoint. These commands have not been executed/verified in this repository session.
+## Repo layout
 
-**Port 2000 uses unencrypted HTTP:** Local/isolated POC only. Before public access with real customer PII, OTP or documents, add HTTPS at the ingress.
+- `apps/web/` — Next.js chat and 60-minute session UX
+- `services/api/src/gemini/` — model adapter and function continuation
+- `services/api/src/knowledge/` — File Search ingestion, approved source originals
+- `services/api/src/grounding/` — claim/evidence verifier
+- `services/api/src/repositories/` — PostgreSQL agent, catalog, session and audit repositories
+- `services/api/src/runtime/` — Fastify, single turn worker, tickets, SSE and approved action workers
+- `services/api/src/integrations/gemini-n8n/` — authorized workflow adapter
+- `infra/postgres/` — RLS migrations and isolated integration tests
+- `tests/gemini/` — deterministic offline tests and external certification harness
+- `docs/` — architecture, requirements, operating rules and status
 
-Read [AGENTS.md](AGENTS.md), [documentation index](docs/README.md) and the [POC-first implementation plan](docs/10-implementation-plan.md).
+An administrative GUI is deferred. Only scoped operator scripts and publication flows may manage knowledge or agent configuration.
+
+Start with [AGENTS.md](AGENTS.md), [documentation index](docs/README.md), [Gemini implementation plan](docs/gemini-experiment-implementation-plan.md) and [P7 status](docs/gemini-p7-status.md). No experiment code may be merged into or committed on `main`.
