@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# P0 verification only: start minimal containers, verify schema/runtime role
+# Gemini experiment P0 verification only: start its isolated containers, verify schema/runtime role
 # and both public ingress routes. No customer data, Foundry or n8n actions.
 set -euo pipefail
 
@@ -13,17 +13,17 @@ fi
 docker compose config --quiet
 docker compose up -d --build postgres redis api web nginx
 
-printf '%s\n' "Checking http://localhost/api/health..."
+printf '%s\n' "Checking http://127.0.0.1:2000/api/health (Gemini experiment)..."
 curl --fail --silent --show-error --retry-all-errors \
   --retry 30 --retry-connrefused --retry-delay 2 \
-  --output /tmp/p0-api-health.json http://localhost/api/health
-grep -q '"status":"ok"' /tmp/p0-api-health.json
+  --output /tmp/p0-gemini-api-health.json http://127.0.0.1:2000/api/health
+grep -q '"status":"ok"' /tmp/p0-gemini-api-health.json
 
 printf '%s\n' "Checking Next.js through Nginx..."
 curl --fail --silent --show-error --retry-all-errors \
   --retry 30 --retry-connrefused --retry-delay 2 \
-  --output /tmp/p0-web-home.html http://localhost/
-grep -q 'Sara' /tmp/p0-web-home.html
+  --output /tmp/p0-gemini-web-home.html http://127.0.0.1:2000/
+grep -q 'Sara' /tmp/p0-gemini-web-home.html
 
 printf '%s\n' "Checking fresh schema and restricted runtime DB role..."
 docker compose exec -T postgres sh -ec '
@@ -37,4 +37,4 @@ docker compose exec -T postgres sh -ec '
        THEN '\''PASS'\'' ELSE '\''FAIL'\'' END"
 ' | grep -q 'PASS'
 
-echo "P0 smoke PASS (Node health, Next.js, Postgres schema and non-bypass runtime role)"
+echo "Gemini P0 smoke PASS (port 2000, Node health, Next.js, Postgres schema and non-bypass runtime role)"
