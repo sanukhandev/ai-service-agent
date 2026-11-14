@@ -13,19 +13,17 @@ This folder is an **agent-specific example**, not a platform-wide hardcoded prod
 - All 55 documented 2026 package rates: 0–10 visas × 1–5 year terms.
 - Other sourced offers: Pay As You Go, zero-visa and all-inclusive package summaries, executive office, retail package, flexi/shared/private office, four company structures, visas, bank/payment referrals, entrepreneurship, compliance and ANCFZ contact channels.
 
-This is **not** a complete list of the 3,500+ licensable activities: the supplied activity-category documents list selected examples and categories, not all official activity codes. Use Foundry IQ or the complete official activity file for exact individual licence codes.
+This is **not** a complete list of the 3,500+ licensable activities: the supplied activity-category documents list selected examples and categories, not all official activity codes. Only an approved, traceable Gemini File Search document or an independently authorized activity catalog can support claims about individual licence codes.
 
 ## Publication (test POC only)
 
-1. Build/start the normal PostgreSQL service and apply baseline migrations **001–005**. The database already needs the restricted P0 `agent_runtime` login.
+1. Build/start the normal PostgreSQL service and apply the current Gemini migration chain **001–015**. The database already needs the restricted P0 `agent_runtime` login.
 2. Configure `.env` with:
    ```
    POSTGRES_PASSWORD=<strong-migration-owner-password>
    POSTGRES_APP_PASSWORD=<different-strong-runtime-password>
-   POSTGRES_DB=ai_service_agent
-   FOUNDRY_PROJECT_ENDPOINT=https://<project>.services.ai.azure.com/api/projects/<name>
-   FOUNDRY_AGENT_NAME=<published-sara-name>
-   FOUNDRY_AGENT_VERSION=<published-sara-version>
+   POSTGRES_DB=ai_service_agent_gemini
+   GEMINI_MODEL_ID=gemini-3.8-flash
    ANCFZ_CATALOG_ENV=test
    ```
 3. Run **only when you intend to publish test data**:
@@ -57,4 +55,4 @@ Do not expose this seed in production with real customers before commercial/lega
 
 Bank partner approval is never guaranteed. Health insurance is excluded from visa package prices. One-year rates include the source-described advance-payment discount, while multi-year amounts are **total amounts for the selected term**, not annual rates. No separate desk fee is provided in the documents.
 
-The seed does not modify Foundry IQ or publish model function definitions. A published Foundry agent version must have matching Node function declarations for tool calls to work.
+The seed does not publish Gemini File Search sources or change model tool declarations. The active published Gemini agent and Node tool registry must authorize the relevant functions independently. The test catalog remains commercially **unapproved** until a responsible operator explicitly verifies its source and pricing.
