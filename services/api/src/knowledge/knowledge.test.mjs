@@ -210,3 +210,32 @@ test('provider timeout is classified as retryable',async()=>{
  const p=new GoogleFileSearchProvider('private-key',fetcher,1);
  await assert.rejects(p.getStore('fileSearchStores/test-123'),e=>e.code==='timeout'&&e.retryable===true);
 });
+
+
+test('real provider transport resolves exact ACTIVE File Search document using matching citation metadata',async()=>{
+ const store='fileSearchStores/test-123';
+ const metadata={
+   agentId:AGENT,knowledgeVersionId:VERSION,documentId:DOC,
+   documentVersionId:REV,sha256:'b'.repeat(64),
+ };
+ const listed={name:store+'/documents/doc-123',state:'STATE_ACTIVE',
+   customMetadata:Object.entries(metadata).map(([key,stringValue])=>({key,stringValue}))};
+ const fetcher=async(url,init)=>{
+   if(String(url).includes(':generateContent'))return new Response(JSON.stringify({
+     candidates:[{content:{parts:[{text:'The synthetic approved policy has seven seals.'}]},
+       groundingMetadata:{groundingChunks:[{retrievedContext:{
+         fileSearchStore:store,title:'Synthetic test policy',
+         text:'The synthetic approved policy has seven seals.',
+         customMetadata:Object.entries(metadata).map(([key,stringValue])=>({key,stringValue})),
+       }}]}}],
+   }),{status:200,headers:{'content-type':'application/json'}});
+   if(String(url).includes('/documents'))return new Response(JSON.stringify({documents:[listed]}),
+     {status:200,headers:{'content-type':'application/json'}});
+   throw Error('Unexpected provider endpoint '+url);
+ };
+ const provider=new GoogleFileSearchProvider('test-only-key',fetcher,1);
+ const result=await provider.retrieve('gemini-3.8-flash',store,'What does the approved document say?');
+ assert.deepEqual(result.documentResources,[listed.name]);
+ assert.equal(result.rawAnnotations.length,1);
+});
+
