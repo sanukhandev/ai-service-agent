@@ -41,9 +41,9 @@ try {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { throw 'Docker Compose is required.' }
 
     # Validate tracked workflow files without using real secrets or the network.
-    Invoke-CheckedNode @('scripts/check-ancfz-workflows.mjs')
-    Invoke-CheckedNode @('scripts/check-2checkout-upgrade.mjs')
-    Invoke-CheckedNode @('scripts/upgrade-n8n-2checkout.mjs', '--dry-run')
+    Invoke-CheckedNode -Arguments @('scripts/check-ancfz-workflows.mjs')
+    Invoke-CheckedNode -Arguments @('scripts/check-2checkout-upgrade.mjs')
+    Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--dry-run')
 
     & docker compose --profile workflows config --quiet
     if ($LASTEXITCODE -ne 0) { throw 'Docker Compose configuration is invalid.' }
@@ -53,7 +53,7 @@ try {
     $env:N8N_API_KEY = [Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
 
     Write-Host 'Inspecting two existing inactive payment workflows...'
-    Invoke-CheckedNode @('scripts/upgrade-n8n-2checkout.mjs', '--inspect')
+    Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--inspect')
 
     if ($Apply) {
         $confirmation = Read-Host 'Type UPDATE 2CHECKOUT to back up and replace only the two inactive payment workflows'
@@ -62,13 +62,13 @@ try {
         }
         # The Node upgrader always writes private local JSON backups before its
         # snapshot-guarded API mutations. It refuses drift and credential changes.
-        Invoke-CheckedNode @('scripts/upgrade-n8n-2checkout.mjs', '--apply')
+        Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--apply')
         Write-Host 'Verifying updated workflows (still inactive)...'
-        Invoke-CheckedNode @('scripts/upgrade-n8n-2checkout.mjs', '--inspect')
+        Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--inspect')
         Write-Host 'Workflow definitions updated. Configure the rotated X-Avangate-Authentication credential in n8n before activation.'
     }
     elseif ($BackupOnly) {
-        Invoke-CheckedNode @('scripts/upgrade-n8n-2checkout.mjs', '--backup')
+        Invoke-CheckedNode -Arguments @('scripts/upgrade-n8n-2checkout.mjs', '--backup')
         Write-Host 'Backups saved; no n8n definitions were changed.'
     }
     else {
