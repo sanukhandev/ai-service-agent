@@ -9,7 +9,7 @@
   .\scripts\update-n8n-2checkout.ps1 -Apply
 .NOTES
   This NEVER changes the n8n encryption key, owner, credentials or data volume.
-  Both upgraded workflows remain INACTIVE. The new rotated merchant token is
+  All upgraded workflows remain INACTIVE. The new rotated merchant token is
   entered separately in n8n's credential editor.
 #>
 [CmdletBinding()]
