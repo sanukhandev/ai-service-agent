@@ -7,6 +7,7 @@ import { FoundryClient } from "../foundry/client.js";
 import { AgentToolRegistry } from "../agent/tool-registry.js";
 import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations } from "./quotation-operations.js";
+import { PaymentOperations } from "./payment-operations.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -128,6 +129,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const events=new TicketEventRepository(db);
   const leads=new LeadOperations(db);
   const quotes=new QuotationOperations(db);
+  const payments=new PaymentOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -330,6 +332,48 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       .header("Content-Length",String(doc.bytes.length))
       .send(doc.bytes);
   });
+
+  // Test-only payment endpoints. Each requires the same authenticated ticket
+  // ownership as lead/quotation requests. No model-executed payment functions.
+  app.post("/api/v1/tickets/:ticketId/payments/otp",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const response=await payments.issueOtp(scope,idParam(request),request.body);
+    return reply.code(202).send(response);
+  });
+
+  app.post("/api/v1/tickets/:ticketId/payments/authorize",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const response=await payments.authorize(scope,idParam(request),request.body);
+    return reply.code(202).send(response);
+  });
+
+  app.get("/api/v1/tickets/:ticketId/payments",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return payments.get(scope,idParam(request));
+  });
+
+  app.post<{Params:{ticketId:string;paymentId:string}}>(
+    "/api/v1/tickets/:ticketId/payments/:paymentId/verify",async(request)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      return payments.verify(scope,idParam(request),request.params.paymentId);
+    });
+
+  app.get<{Params:{ticketId:string;invoiceId:string}}>(
+    "/api/v1/tickets/:ticketId/invoices/:invoiceId/pdf",async(request,reply)=>{
+      const scope=await scopeFromCookie(db,request);
+      const doc=await payments.invoicePdf(scope,idParam(request),request.params.invoiceId);
+      return reply.code(200)
+        .header("Content-Type","application/pdf")
+        .header("Content-Disposition",'attachment; filename="'+doc.documentNumber+'.pdf"')
+        .header("Cache-Control","private, no-store")
+        .header("X-Content-Type-Options","nosniff")
+        .header("Content-Security-Policy","sandbox")
+        .header("Content-Length",String(doc.bytes.length))
+        .send(doc.bytes);
+    });
 
   app.get("/api/events/tickets/:ticketId",async(request,reply)=>{
     const scope=await scopeFromCookie(db,request);
