@@ -83,8 +83,19 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
       <PurchaseChecklist ticketId={ticketId} quote={null} onReady={noopReady}/>}
 
     {actions.map(action=>{
-      if(action.kind==="salesforce_lead")return <LeadSubmission key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
-      if(action.kind==="quotation")return <QuotationRequest key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
+      if(action.kind==="salesforce_lead"||action.kind==="quotation"){
+        return <div key={catalog.intentKey+":"+action.actionKey} className="space-y-2">
+          {action.missing.length>0&&<p role="status"
+            className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
+            To proceed with {action.label}, tell Sara the missing details:
+            {" "+action.requirements.filter(r=>!r.present).map(r=>r.label).join(", ")}.
+            These must be saved to your ticket before the action can be authorized.
+          </p>}
+          {action.ready&&(action.kind==="salesforce_lead"
+            ?<LeadSubmission ticketId={ticketId}/>
+            :<QuotationRequest ticketId={ticketId}/>)}
+        </div>;
+      }
       if(action.kind==="purchase")return <PaymentCheckout key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
       return <div key={action.actionKey} className="rounded-lg border border-slate-200 p-3 text-xs">
         <p className="font-semibold">{action.label}</p>
