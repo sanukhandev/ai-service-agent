@@ -25,11 +25,11 @@ The previous X-API-Key and X-Guest-ID integration is obsolete. Never reimport cr
 
 Keep the existing shared private webhook Header Auth (X-ANCFZ-Workflow-Key) aligned with ANCFZ_N8N_WEBHOOK_SECRET, and keep N8N_ENCRYPTION_KEY unchanged. Do not paste secret values in Git, chat or logs.
 
-## Upgrade the two already-seeded workflows
+## Upgrade the three already-seeded workflows
 
-The new 03 and 04 JSON files are not automatically installed by a Git pull. Update ONLY those two existing workflows through the guarded script; do not rerun the original owner seed.
+The new 03 and 04 JSON files are not automatically installed by a Git pull. Update ONLY those three existing workflows through the guarded script; do not rerun the original owner seed.
 
-1. Back up/export the existing workflow definitions in your private n8n editor (not into Git). Verify the two payment workflows are inactive.
+1. Back up/export the existing workflow definitions in your private n8n editor (not into Git). Verify the three billing workflows are inactive.
 2. Pull the reviewed branch/main and restart n8n to refresh the read-only mounted workflow files.
 3. Supply N8N_API_KEY privately in the PowerShell session, then run:
 
