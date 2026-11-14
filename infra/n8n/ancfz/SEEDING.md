@@ -119,7 +119,31 @@ Expected dry run reports `workspace=personal`, `project=none`,
 four placeholder credentials and five inactive workflows. No Docker,
 database, provider or network calls occur in dry-run mode.
 
-## 4. Import to the default personal workspace
+## 4. Automated setup for an existing owner (recommended)
+
+After creating an owner API key (privately, as shown below) and setting
+`N8N_ENCRYPTION_KEY` in the local `.env`, you can run:
+
+```powershell
+node scripts/seed-n8n-anzfc.mjs --stage=setup --workspace=personal
+```
+
+This command validates Compose, starts n8n and Gotenberg (without resetting
+volumes), waits for the read-only n8n API inventory to become available, then
+imports the four placeholder credentials and five **inactive** workflows only
+if no conflicting assets exist. A fully seeded instance is a no-op.
+
+**Required:** `N8N_API_KEY` must be supplied privately for the existing owner;
+the script cannot legitimately create an API key without an authenticated owner
+session. It does not create a new n8n owner account, rewrite real provider
+credentials or activate workflows. A partial existing import is reported as
+blocked, not blindly repaired.
+
+If `--stage=setup` reports permission or API readiness errors, review the
+owner API key and `docker compose --profile workflows logs n8n`; repeat the
+command once corrected. Setup never retries the actual import step.
+
+## 5. Import to the default personal workspace
 
 Generate an **owner** API key in **Settings → n8n API**, then:
 
