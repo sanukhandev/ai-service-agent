@@ -114,6 +114,12 @@ function jsonObject(value: unknown): ObjectValue | null {
 function matchesSchema(value: unknown, schemaValue: unknown, depth = 0): boolean {
   const schema = obj(schemaValue);
   if (!schema || depth > 12) return false;
+  // The Node catalog uses JSON Schema oneOf for customer-stated values
+  // (string, number or boolean). Reject unknown/unmatched variants.
+  if (Array.isArray(schema.oneOf)) {
+    if (schema.oneOf.length<1 || schema.oneOf.length>12) return false;
+    return schema.oneOf.filter(x=>matchesSchema(value,x,depth+1)).length===1;
+  }
   if (Array.isArray(schema.enum) && !schema.enum.some(item => encode(item) === encode(value))) return false;
   switch (schema.type) {
     case "object": {
