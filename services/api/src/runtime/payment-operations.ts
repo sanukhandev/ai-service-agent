@@ -346,10 +346,19 @@ export class PaymentOperations {
       await appendEventTx(client,scope.agentId,ticketId,"payment.verification.started",{
         paymentId,testOnly:true,
       });
-      await new TicketMessageRepository(this.db).createAssistantMessageTx(
-        client,scope,ticketId,lifecycleNoticeId("payment.verification.started",paymentId),
-        "Your sandbox payment verification has started. You can continue chatting while the provider status is checked.",
+      const ticket=await client.query<{status:string}>(
+        "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
+        [scope.agentId,ticketId],
       );
+      const agent=await client.query<{status:string}>(
+        "SELECT status FROM agents WHERE id=$1",[scope.agentId],
+      );
+      if(ticket.rows[0]?.status!=="closed" && agent.rows[0]?.status==="active") {
+        await new TicketMessageRepository(this.db).createAssistantMessageTx(
+          client,scope,ticketId,lifecycleNoticeId("payment.verification.started",paymentId),
+          "Your sandbox payment verification has started. You can continue chatting while the provider status is checked.",
+        );
+      }
       return {
         expected:{
           ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
