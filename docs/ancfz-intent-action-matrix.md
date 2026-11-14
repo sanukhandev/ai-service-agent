@@ -2,17 +2,21 @@
 
 ## Key decision: intent recognition is not consent
 
-The existing Sara Foundry functions **find**, **select**, **read requirements**,
-**record customer-provided facts** and **read priced offerings**. They never
-create leads, orders, documents, referrals or invoices on their own. After
+Sara's Gemini runtime functions **find**, **select**, **read requirements**,
+**record customer-provided facts**, **read priced offerings**, **preflight** and
+**propose** customer-authorized operations. They never
+create leads, orders, documents, referrals or invoices on their own; proposals
+are inert PostgreSQL ticket records and require subsequent customer consent. After
 an intent is selected, the Node-owned **intent action panel** reads the
 ticket-pinned catalog and presents **only actions allowed by that intent**.
 
-For the POC, all seven ticket-request actions also require the customer's
-passport and Emirates ID to have been uploaded, OCR-extracted and cross-matched.
-The secure document checklist is visible for all selected intents, including
-those without a priced quotation. No invoice is generated solely from document
-uploads.
+Document checks are now selected by a published, agent-scoped action binding:
+`requires_identity_documents`. The configured POC purchase path and some
+sensitive service actions require a synthetic passport and Emirates ID with
+corroborated OCR names; ordinary enquiries, referrals and support requests do
+not require identity documents by default. The underlying test catalog can
+retain provisional document rows without making all actions depend on them.
+No invoice is generated solely from document uploads.
 
 Each action requires the appropriate customer-controlled authorization.
 Unknown/unimplemented future catalog actions are explicitly shown as
@@ -52,9 +56,12 @@ grounded monetary quote** to charge. Node must refuse payment/invoice rather
 than invent a price. Adding an approved offering revision and an authorized
 `generate_quote` action is a separate, deliberate catalog publication.
 
-Every intent accepts the same two POC documents after selection:
-`passport` and `emirates_id`. A strict private Azure Document Intelligence
-OCR check extracts full names and the ID last four characters.
+The POC's provisional catalog can include two identity document slots,
+`passport` and `emirates_id`, but their upload is enforced only for
+actions whose operator-owned binding explicitly requires identity evidence.
+Azure Document Intelligence remains the default OCR processor. An opt-in,
+synthetic-only Gemini vision extractor is also available in development
+and is not identity verification.
 Uploaded identity-document bytes and full document numbers remain ticket-scoped
 in PostgreSQL; they are not sent to Foundry or n8n. The extracted **billing
 name** is sent to the private n8n invoice PDF renderer. Sara still receives
