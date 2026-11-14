@@ -124,7 +124,10 @@ async function pricedOptions(
        AND ti.status='active'
      JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id
        AND i.catalog_version_id=t.intent_catalog_version_id
-       AND o.intent_key=i.intent_key
+       AND (o.intent_key=i.intent_key OR (
+          i.intent_key IN ('quotation_request','package_comparison')
+          AND o.intent_key IN ('company_formation','package_comparison')
+        ))
      JOIN LATERAL (
        SELECT pr.id,pr.currency,pr.amount,pr.revision,pr.conditions
        FROM offering_price_revisions pr
