@@ -78,9 +78,33 @@ const code=verify.nodes.find(n=>n.name==="Validate Gateway Status")?.parameters?
 for(const term of ["Status","COMPLETE","GrossPrice","Currency","ExternalReference","orderReference"]) {
   if(!code.includes(term))errors.push("2Checkout verification missing "+term);
 }
+// Normalize Windows CRLF (and legacy CR-only) checkout files before
+// matching service boundaries. Without this, the validator reports missing
+// n8n/Gotenberg services even when the Compose file is valid.
+function findServiceBlock(source, serviceName) {
+  const normalized = source.replace(/\r\n?/g, "\n");
+  const safeName = serviceName.replace(/[^a-z0-9_-]/gi, "");
+  if (safeName !== serviceName) throw new Error("Invalid service name");
+  const marker = new RegExp(
+    "(?:^|\\n)  " + safeName + ":\\n([\\s\\S]*?)(?=\\n  [\\w-]+:\\n|\\nnetworks:|\\nvolumes:|$)",
+  );
+  return normalized.match(marker)?.[1] ?? "";
+}
+// Exercise the same extraction against LF, CRLF and CR without Docker.
+// This is a regression guard for Windows Git autocrlf checkouts.
+const sample = "services:\n  n8n:\n    environment:\n      N8N_ENCRYPTION_KEY: test\n" +
+  "    volumes:\n      - ./infra/n8n/ancfz:/workflows/ancfz:ro\n" +
+  "  gotenberg:\n    image: gotenberg/gotenberg:8\nnetworks:\n";
+for (const lineBreak of ["\n", "\r\n", "\r"]) {
+  const fixture = sample.replace(/\n/g, lineBreak);
+  if (!findServiceBlock(fixture, "n8n").includes("N8N_ENCRYPTION_KEY:") ||
+      !findServiceBlock(fixture, "gotenberg").includes("gotenberg/gotenberg")) {
+    errors.push("Compose service extraction failed the cross-platform line-ending regression");
+  }
+}
 const compose=readFileSync(new URL("../docker-compose.yml",import.meta.url),"utf8");
-const n8nBlock=compose.match(/\n  n8n:\n([\s\S]*?)(?=\n  [\w-]+:\n|\nnetworks:)/)?.[1] ?? "";
-const pdfBlock=compose.match(/\n  gotenberg:\n([\s\S]*?)(?=\n  [\w-]+:\n|\nnetworks:)/)?.[1] ?? "";
+const n8nBlock=findServiceBlock(compose,"n8n");
+const pdfBlock=findServiceBlock(compose,"gotenberg");
 if (!n8nBlock || !pdfBlock) errors.push("Compose missing private n8n or Gotenberg");
 if(!n8nBlock.includes("N8N_ENCRYPTION_KEY:"))errors.push("n8n encryption configuration missing");
 if(!n8nBlock.includes(":/workflows/ancfz:ro"))errors.push("n8n workflow imports must be read-only");
