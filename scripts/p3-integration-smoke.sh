@@ -114,6 +114,20 @@ test "$private_pdf" = 404
 quoted=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/quotations")
 printf '%s' "$quoted" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["quotation"]["state"]=="queued";assert d["quotation"]["pdfAvailable"] is False'
 printf '%s\n' 'P4 quotation offline DB smoke PASS'
+# Confirm v2 intent purchase requirements, owner isolation and document/consent gates.
+purchase_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname IN ('intent_document_requirements','ticket_purchase_documents','ticket_purchase_confirmations') AND relrowsecurity AND relforcerowsecurity")
+test "$purchase_rls" = 3
+published=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM agents a JOIN intent_catalog_versions v ON v.agent_id=a.id JOIN intents i ON i.agent_id=a.id AND i.catalog_version_id=v.id WHERE a.agent_key='ancfz' AND v.revision=2 AND v.status='published' AND i.intent_key='company_formation' AND 'purchase_quotation'=ANY(i.allowed_actions)")
+test "$published" = 1
+unauthorized_purchase=$(curl --silent -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$ticket_id/purchase")
+test "$unauthorized_purchase" = 404
+docker compose exec -T -e P5_PURCHASE_OFFLINE_SMOKE=1 -e P3_TEST_TICKET="$ticket_id" \
+  api node dist/runtime/purchase-smoke.js
+purchase_status=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/purchase")
+printf '%s' "$purchase_status" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["supported"];assert d["readyForOtp"];assert d["confirmed"];assert len(d["requirements"])==2'
+
 # P5 customer payment routes are still disabled without explicit test-mode flags.
 unauthorized_payment=$(curl --silent -o /dev/null -w '%{http_code}' \
   "http://localhost/api/v1/tickets/$ticket_id/payments")
