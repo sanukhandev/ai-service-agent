@@ -133,94 +133,6 @@ export class TurnQueue {
     });
   }
 
-  async responseCursor(turn: PendingTurn): Promise<string | null> {
-    return this.db.withAgent(turn.agentId, async client => {
-      const result = await client.query<{ last_response_id: string | null }>(
-        "SELECT last_response_id FROM ticket_model_sessions WHERE agent_id=$1 AND ticket_id=$2 AND provider='foundry'",
-        [turn.agentId,turn.ticketId],
-      );
-      return result.rows[0]?.last_response_id ?? null;
-    });
-  }
-
-  /** Persist message, provider cursor, queue state and SSE event atomically. */
-  async complete(
-    turn: PendingTurn, text: string, refs: readonly SourceReference[],
-    expectedCursor: string | null, responseId: string, versionId: string,
-  ): Promise<void> {
-    if (!text.trim() || text.length>30000 || !/^resp_[A-Za-z0-9_-]+$/.test(responseId)) {
-      throw new PersistenceError("INVALID_INPUT","Invalid model completion");
-    }
-    if (refs.length > 50 || Buffer.byteLength(JSON.stringify(refs),"utf8") > 16000) {
-      throw new PersistenceError("INVALID_INPUT","Invalid source reference payload");
-    }
-    await this.db.withAgent(turn.agentId, async client => {
-      const scope=workerTicketScope(turn.agentId,turn.ticketId);
-      await authorizedTicket(client,scope,turn.ticketId,true);
-      const active=await client.query<{ id: string }>(
-        "SELECT id FROM ticket_turns WHERE agent_id=$1 AND id=$2 AND state='processing' AND lease_token=$3 FOR UPDATE",
-        [turn.agentId,turn.id,turn.leaseToken],
-      );
-      if (!active.rows[0]) throw new PersistenceError("CONFLICT","Turn lease lost");
-      const existing=await client.query<{ id: string }>(
-        "SELECT id FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND request_id=$3",
-        [turn.agentId,turn.ticketId,turn.requestId],
-      );
-      if (existing.rows[0]) throw new PersistenceError("CONFLICT","Assistant message already committed");
-      const cursor=await client.query<{ last_response_id: string }>(
-        [
-          "INSERT INTO ticket_model_sessions(agent_id,ticket_id,agent_version_id,provider,last_response_id)",
-          "VALUES($1,$2,$3,'foundry',$5)",
-          "ON CONFLICT(agent_id,ticket_id,provider) DO UPDATE SET",
-          "last_response_id=EXCLUDED.last_response_id,updated_at=now()",
-          "WHERE ticket_model_sessions.last_response_id IS NOT DISTINCT FROM $4",
-          "RETURNING last_response_id",
-        ].join(" "),[turn.agentId,turn.ticketId,versionId,expectedCursor,responseId],
-      );
-      if (!cursor.rows[0]) throw new PersistenceError("CONFLICT","Foundry continuation cursor changed");
-      const sequence=await client.query<{ last_message_sequence: string }>(
-        "UPDATE tickets SET last_message_sequence=last_message_sequence+1,status='awaiting_customer',updated_at=now() WHERE agent_id=$1 AND id=$2 RETURNING last_message_sequence",
-        [turn.agentId,turn.ticketId],
-      );
-      const saved=await client.query<{ id: string; created_at: Date }>(
-        [
-          "INSERT INTO ticket_messages(agent_id,ticket_id,role,content,request_id,source_references,message_sequence)",
-          "VALUES($1,$2,'assistant',$3,$4,$5::jsonb,$6) RETURNING id,created_at",
-        ].join(" "),[turn.agentId,turn.ticketId,text,turn.requestId,JSON.stringify(refs),sequence.rows[0]?.last_message_sequence],
-      );
-      const message=saved.rows[0];
-      if (!message) throw new PersistenceError("DATABASE_ERROR","Assistant insert failed");
-      await client.query(
-        "UPDATE ticket_turns SET state='completed',provider_response_id=$3,lease_token=NULL,lease_until=NULL,updated_at=now() WHERE agent_id=$1 AND id=$2",
-        [turn.agentId,turn.id,responseId],
-      );
-      const enrichedRefs = refs.map((ref) => {
-        const combined = `${ref.title ?? ""} ${ref.sourceId ?? ""}`.toLowerCase();
-        let title = ref.title;
-        if (combined.includes("license") || combined.includes("cost") || combined.includes("fee")) title = "ANCFZ License Costs & Fees (2026)";
-        else if (combined.includes("package") || combined.includes("offer") || combined.includes("price")) title = "ANCFZ Setup Packages & Inclusions";
-        else if (combined.includes("rule") || combined.includes("regulation") || combined.includes("law")) title = "ANCFZ Rules & Regulations";
-        else if (combined.includes("type") || combined.includes("fze") || combined.includes("fzc")) title = "ANCFZ Types of Companies";
-        else if (combined.includes("activit") || combined.includes("categor")) title = "ANCFZ Business Activity Categories";
-        else if (combined.includes("partner")) title = "ANCFZ Strategic Partners";
-        else if (combined.includes("faq")) title = "ANCFZ Official FAQs";
-        else if (combined.includes("contact")) title = "ANCFZ Contact & Directory";
-        else if (!title || title.startsWith("http")) title = "ANCFZ Official Knowledge Reference";
-
-        return {
-          ...ref,
-          title,
-          uri: `/api/v1/tickets/${turn.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`,
-        };
-      });
-      const envelope={message:{id:message.id,role:"assistant",text,createdAt:message.created_at.toISOString(),sourceReferences:enrichedRefs}};
-      const payload=Buffer.byteLength(JSON.stringify(envelope),"utf8") <= 30000
-        ? envelope : {messageId:message.id,requestId:turn.requestId};
-      await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.message",payload);
-      await appendEventTx(client,turn.agentId,turn.ticketId,"ticket.updated",{status:"awaiting_customer"});
-    });
-  }
-
   /**
    * Gemini: one transaction creates the independently verified evidence audit,
    * assistant message, and SSE event. No Foundry resp_ cursor is fabricated.
@@ -323,11 +235,9 @@ export class TurnQueue {
         "UPDATE tickets SET status='open',updated_at=now() WHERE agent_id=$1 AND id=$2",
         [turn.agentId,turn.ticketId],
       );
-      const userErrorMessage = code === "FOUNDRY_SUBSCRIPTION_DISABLED"
-        ? "Sara is temporarily unavailable because the Azure AI subscription spending limit has been reached or the subscription is disabled in Azure. Please contact your Azure administrator."
-        : uncertain
-          ? "The model operation has an uncertain outcome. Please contact support before retrying."
-          : "Sara could not complete that response. You can send another message.";
+      const userErrorMessage = uncertain
+        ? "The model operation has an uncertain outcome. Please contact support before retrying."
+        : "Sara could not complete that response. You can send another message.";
 
       await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.failed",{
         requestId:turn.requestId,code,
