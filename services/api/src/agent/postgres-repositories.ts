@@ -1,6 +1,6 @@
 /**
  * P2/P3 PostgreSQL adapters for Node-owned intent catalog and customer facts.
- * These are not wired into the Fastify request lifecycle until P2/P3.
+ * Catalog read implementation is used by the Gemini intent-tool adapter.
  *
  * IMPORTANT: Use a dedicated, non-superuser Postgres runtime role without
  * BYPASSRLS. 001_core.sql initializes the schema as migration owner only.
