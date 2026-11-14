@@ -4,6 +4,8 @@
 
 ## Experiment branch safety — mandatory
 
+- Compose must use project `ai-service-agent-gemini` and publish **only** `127.0.0.1:2000:80` on the host. Nginx still listens on internal port 80. Dedicated `ai-service-agent-gemini-*` Docker volumes/networks must never share or overwrite main's state.
+- Use a private experiment-only `.env`, n8n key and credentials. Run seed/import scripts only against the explicitly pinned Gemini Compose project. Do not claim Docker startup or live Gemini functionality before validation.
 - Directional integration is **one-way only**: `main` → `experiment/gemini-file-search-poc`. Never merge, cherry-pick, copy experimental Gemini implementation into `main`, or create a pull request targeting `main` from the experiment/any descendant branch.
 - All Gemini-related code, documentation, environment changes, model bindings and tests must be committed to `experiment/gemini-file-search-poc` or short-lived child branches targeting that experiment, **never to `main`**.
 - Review and verify both heads before and after importing upstream changes. GitHub currently reports `main` is not protected; do not mistake a written policy or optional CI check for server-side protection.
