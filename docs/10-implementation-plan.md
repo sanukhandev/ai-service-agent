@@ -1,5 +1,7 @@
 # Implementation plan — POC first, testing and admin later
 
+> **Gemini experiment override — this branch only:** The active Gemini implementation plan is [Gemini experimental implementation plan](gemini-experiment-implementation-plan.md). It specifies a **60-minute sliding inactivity timeout**, a **fresh AI conversation after expiry**, durable PostgreSQL ticket records and Redis-only active context. All Foundry phases below are historical baseline reference for the independent `main` branch and are **not** the Gemini branch delivery plan. Never merge this experimental branch into `main`.
+
 ## Current state
 
 P0 scaffolding and architecture docs exist in `main`. A separate foundation-completion branch adds restricted PostgreSQL role bootstrap, explicit DB credential separation and executable build/Compose smoke checks. The Python Model Gateway and Angular Admin Portal have been **deleted from the active repository**. Node is the only business/model integration backend. The existing Foundry Sara agent with native IQ retrieval is the selected AI runtime.
