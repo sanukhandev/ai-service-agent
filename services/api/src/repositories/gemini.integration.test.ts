@@ -22,7 +22,21 @@ test("Gemini P2 authoritative sessions, boundaries and restart recovery", async 
   const bindings=new GeminiBindingRepository(db);
   const audits=new GeminiQualificationRepository(db);
   try {
-    const s1=await sessions.startNew(scope,"P2 integration test");
+    let s1: Awaited<ReturnType<GeminiSessionRepository["startNew"]>>;
+    try {
+      s1=await sessions.startNew(scope,"P2 integration test");
+    } catch (error) {
+      // This executes against disposable synthetic test data only. Expose SQLSTATE,
+      // relation and constraint instead of hiding the real integration defect.
+      const cause=(error as {cause?: {code?:string;table?:string;constraint?:string;message?:string}}).cause;
+      console.error("P2_START_NEW_DB_DIAGNOSTIC", {
+        sqlstate:cause?.code??null,
+        table:cause?.table??null,
+        constraint:cause?.constraint??null,
+        message:cause?.message?.slice(0,240)??null,
+      });
+      throw error;
+    }
     assert.notEqual(s1.sessionId,s1.ticketId);
     assert.notEqual(s1.sessionId,guest.token);
     assert.equal(s1.status,"active");
