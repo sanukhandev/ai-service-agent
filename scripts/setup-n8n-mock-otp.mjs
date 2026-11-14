@@ -16,7 +16,7 @@ const FILES = new Map([
   ["ANCFZ | MOCK OTP Expiry Cleanup (LOCAL ONLY)", "06-mock-otp-prune.json"],
 ]);
 function run(args, input) {
-  const result = spawnSync("docker", ["compose", "--profile", "workflows", ...args], {
+  const result = spawnSync("docker", ["compose", "--project-name", "ai-service-agent-gemini", "--profile", "workflows", ...args], {
     cwd, input, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"],
     timeout: 90000, maxBuffer: 2 * 1024 * 1024,
   });
