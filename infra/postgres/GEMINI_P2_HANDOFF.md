@@ -17,10 +17,10 @@ Migration 011: ai_conversation_sessions, gemini_response_qualifications,
 gemini_response_claims, gemini_response_evidence. Ticket/session identity,
 pinned versions, opaque continuation, 60-minute database TTL and response audit.
 
-Migration 012: same-ticket message/source checks and approved File Search,
+Migration 013: immutable approved/revoked document provenance and one-to-one\nqualification linkage to a supported assistant response.\n\nMigration 012: same-ticket message/source checks and approved File Search,
 catalog and verified-operation evidence authorization.
 
-Migrations 001–008 remain unchanged. The migration runner checksums all 003–012
+Migrations 001–008 remain unchanged. The migration runner checksums all 003–013
 and never resets existing records. All new private tables have FORCE RLS and
 composite agent-scoped foreign keys. Runtime cannot administer knowledge.
 
@@ -45,7 +45,7 @@ commercial authority. Catalog publication never changes an active agent version.
 4. Remove provider='foundry' and resp_-prefix assumptions from the integration-
    owned turn queue and worker. Persist opaque state using advanceContinuation.
 5. Call P4 independent verifier before factual response persistence/SSE.
-   GeminiQualificationRepository.record persists evidence decisions but does
+   GeminiQualificationRepository.record persists evidence decisions and\nattachAssistant links a supported audit to the persisted assistant reply; neither
    not itself authorize streaming. Catalog evidence IDs are intent/<versionId>
    or offering/<versionId>. Verified operations use the operation UUID.
 6. P3 must privately preserve originals and normalized text, record approval and

@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PersistenceDatabase } from "../database/pool.js";
 import { GuestSessionRepository } from "./tickets.js";
+import { TicketMessageRepository } from "./messages.js";
 import { GeminiSessionRepository, GeminiBindingRepository } from "./gemini.js";
 import { GeminiQualificationRepository } from "./gemini-qualification.js";
 
@@ -52,6 +53,15 @@ test("Gemini P2 authoritative sessions, boundaries and restart recovery", async 
       reasonCode:null,claims:[],
     });
     assert.equal(q.claimCount,0);
+    const assistant=await new TicketMessageRepository(db).createAssistantMessage(
+      scope,s1.ticketId,randomUUID(),"Hello! How can I help?",[],
+    );
+    const attached=await audits.attachAssistant(scope,s1.sessionId,q.qualificationId,assistant.message.id);
+    assert.equal(attached.assistantMessageId,assistant.message.id);
+    await assert.rejects(
+      audits.attachAssistant(scope,s1.sessionId,q.qualificationId,assistant.message.id),
+      /Persistence|constraint/i,
+    );
     await assert.rejects(
       audits.record(scope,s1.sessionId,accepted.message!.id,{
         category:"catalog_factual",status:"supported",verifierVersion:"p2-test-1",

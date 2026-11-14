@@ -116,4 +116,36 @@ export class GeminiQualificationRepository {
       return {qualificationId,groundingStatus:decision.status,claimCount:decision.claims.length};
     });
   }
+  /** Link the accepted assistant reply to its independently supported audit.
+   * Integration owner must call only after P4 verification and assistant persistence.
+   * An expired session can never attach a new assistant response.
+   */
+  async attachAssistant(scope:TicketScope,sessionId:string,qualificationId:string,assistantMessageId:string) {
+    requireUuid(sessionId,"sessionId");
+    requireUuid(qualificationId,"qualificationId");
+    requireUuid(assistantMessageId,"assistantMessageId");
+    return this.db.withAgent(scope.agentId,async client=>{
+      const audit=await client.query<{ticket_id:string}>(
+        "SELECT ticket_id FROM gemini_response_qualifications WHERE agent_id=
+} AND id=$2 AND session_id=$3",
+        [scope.agentId,qualificationId,sessionId],
+      );
+      const ticketId=audit.rows[0]?.ticket_id;
+      if(!ticketId) throw new PersistenceError("NOT_FOUND","Qualification not found");
+      await authorizedTicket(client,scope,ticketId,true);
+      const current=await client.query<{id:string}>(
+        "SELECT q.id FROM gemini_response_qualifications q JOIN ai_conversation_sessions s ON s.agent_id=q.agent_id AND s.id=q.session_id WHERE q.agent_id=
+} AND q.id=$2 AND q.session_id=$3 AND s.status='active' AND s.expires_at>clock_timestamp() FOR UPDATE OF q",
+        [scope.agentId,qualificationId,sessionId],
+      );
+      if(!current.rows[0]) throw new PersistenceError("CONFLICT","Session expired before assistant publication");
+      const attached=await client.query<{id:string}>(
+        "UPDATE gemini_response_qualifications SET assistant_message_id=$4 WHERE agent_id=
+} AND id=$2 AND session_id=$3 AND assistant_message_id IS NULL RETURNING id",
+        [scope.agentId,qualificationId,sessionId,assistantMessageId],
+      );
+      if(!attached.rows[0]) throw new PersistenceError("CONFLICT","Assistant qualification already linked");
+      return {qualificationId,assistantMessageId};
+    });
+  }
 }
