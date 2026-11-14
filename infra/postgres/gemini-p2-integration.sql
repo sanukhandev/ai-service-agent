@@ -19,7 +19,8 @@ BEGIN
    AND v.foundry_agent_name IS NULL
    AND v.allowed_node_tools=ARRAY[
      'find_intents','select_ticket_intent','get_intent_requirements',
-     'record_ticket_facts','get_offerings']::text[])
+     'record_ticket_facts','get_offerings',
+     'preflight_operation','propose_operation']::text[])
  THEN RAISE EXCEPTION 'Sara is not independently published without a fabricated store'; END IF;
  IF EXISTS(SELECT 1 FROM intent_catalog_versions v JOIN agents a ON a.id=v.agent_id
    WHERE a.agent_key='ancfz' AND v.status='published' AND v.source_authority<>'unapproved')

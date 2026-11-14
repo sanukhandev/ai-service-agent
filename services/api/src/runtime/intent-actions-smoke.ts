@@ -95,17 +95,17 @@ async function main(){
       assert.equal(preflight.actions[0]?.ready,true);
       const registry=new AgentToolRegistry();
       registerOperationTools(registry,proposalService,scope);
-      const context={agentId:agent.id,ticketId:ticket.id,
+      const toolContext={agentId:agent.id,ticketId:ticket.id,
         principalId:"ticket:"+ticket.id,sourceCustomerMessageId:proposalMessage.message.id,
         intentCatalogRevision:"pinned",offeringCatalogRevision:"pinned",
         authorizedToolNames:new Set(["preflight_operation","propose_operation"] as const)};
       const proposal=await registry.execute({callId:randomUUID(),name:"propose_operation",
-        argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},context);
+        argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},toolContext);
       assert.equal(proposal.ok,true);
       assert.equal(proposal.ok&&typeof proposal.data==="object"&&proposal.data!==null&&
         "status" in proposal.data&&proposal.data.status,"awaiting_customer_authorization");
       const repeated=await registry.execute({callId:randomUUID(),name:"propose_operation",
-        argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},context);
+        argumentsJson:JSON.stringify({intentKey:entry.intent,actionKey:entry.action})},toolContext);
       assert.deepEqual(repeated,proposal,"Proposal replay must be idempotent");
       const noDispatch=await db.withAgent(agent.id,async client=>(await client.query(
         "SELECT count(*)::int AS total FROM event_outbox WHERE agent_id=$1 AND ticket_id=$2",
