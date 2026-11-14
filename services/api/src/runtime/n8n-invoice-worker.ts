@@ -155,6 +155,8 @@ export class N8nInvoiceWorker {
       // Retain the invoice as queued instead of permanently dropping the PDF
       // while that check is in progress. The next claim re-renders the same
       // TEST invoice reference only if payment is independently confirmed.
+      // The claim requires payment.state='verified_test_payment', so no timer
+      // backoff or event_outbox.available_at privilege change is needed.
       const decision=invoiceFinalizationDecision(pay.rows[0]?.state??null,Boolean(pdf));
       if(decision==="deferred"){
         await client.query(
@@ -163,7 +165,7 @@ export class N8nInvoiceWorker {
         );
         await client.query(
           `UPDATE event_outbox
-             SET status='pending',lease_until=NULL,available_at=now()+interval '30 seconds'
+             SET status='pending',lease_until=NULL
            WHERE agent_id=$1 AND id=$2`,
           [c.agentId,c.outboxId],
         );
