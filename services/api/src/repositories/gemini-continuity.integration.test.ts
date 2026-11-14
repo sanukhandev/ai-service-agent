@@ -9,7 +9,7 @@ import {extractiveSummary,buildSessionContext} from "../runtime/conversation-con
 
 test("Gemini 56-message timeline uses latest messages, excludes future turns and preserves corrected facts (real disposable PostgreSQL)",async()=>{
   assert.equal(process.env.P2_TEST_DB_ONLY,"1","Refusing non-disposable database");
-  const db=new PersistenceDatabase();
+  const db=new PersistenceDatabase(undefined);
   try{
     await db.assertSafeRuntimeRole();
     const owner=await db.pool.query<{id:string}>("SELECT id FROM agents WHERE agent_key='ancfz'");
