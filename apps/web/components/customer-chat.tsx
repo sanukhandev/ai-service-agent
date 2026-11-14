@@ -381,9 +381,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     turnState === "accepted" ||
     turnState === "processing" ||
     (ticket?.status === "processing" && turnState !== "sending");
-  // Subsequent messages are durable and queued; TurnQueue preserves per-ticket
-  // Foundry cursor ordering while a worker is processing earlier messages.
-  const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isSending;
+  // Preserve existing Foundry-turn serialization and input locking.
+  // Background n8n/Salesforce/payment/invoice work does NOT set isProcessing.
+  const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isProcessing;
 
   const currentStatus = ticket ? statusConfig[ticket.status] : null;
 
