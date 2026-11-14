@@ -127,6 +127,7 @@ export class IntentActionOperations {
        input.consent!==true||input.consentText!==SERVICE_REQUEST_CONSENT)
       throw new PersistenceError("INVALID_INPUT","Exact service-request consent is required");
 
+    const normalizedRequestId=String(input.requestId).toLowerCase();
     const outcome=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const intent=await activeIntent(client,scope.agentId,ticketId);
@@ -143,7 +144,7 @@ export class IntentActionOperations {
         [scope.agentId,ticketId,intent.id,action],
       );
       if(saved.rows[0]){
-        if(saved.rows[0].request_id!==input.requestId.toLowerCase())
+        if(saved.rows[0].request_id!==normalizedRequestId)
           throw new PersistenceError("CONFLICT","A service request already exists for this intent/action");
         return {request:toView(saved.rows[0]),duplicated:true};
       }
@@ -161,7 +162,7 @@ export class IntentActionOperations {
          VALUES($1,$2,$3,$4,$5,$6,$7::jsonb,$8)
          RETURNING id,intent_id,action_key,status,request_id,created_at`,
         [requestId,scope.agentId,ticketId,intent.id,action,
-          input.requestId.toLowerCase(),JSON.stringify(facts),SERVICE_REQUEST_CONSENT],
+          normalizedRequestId,JSON.stringify(facts),SERVICE_REQUEST_CONSENT],
       );
       await appendEventTx(client,scope.agentId,ticketId,"ticket.service_request.recorded",{
         serviceRequestId:requestId,intentKey:intent.intent_key,actionKey:action,
