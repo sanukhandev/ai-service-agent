@@ -8,6 +8,10 @@ This pack is intentionally **ANCFZ-specific**. The core agent-centric Node/Postg
 
 For local development without an SMTP provider, use the separate [n8n Data Table OTP mock](MOCK_OTP.md). It stores **synthetic test OTPs only**, runs only with explicit local-mode opt-in, and is imported as two additional **inactive** workflows. The original SMTP workflow and its credentials remain untouched. Do not activate both workflows on the shared OTP webhook path.
 
+## Invoice and sandbox payment validation
+
+The [ANCFZ billing workflow guide](BILLING.md) describes the existing quotation renderer, demo Orders creation, fail-closed payment verification, invoice evidence requirements and synthetic local smoke tests. Invoice generation remains blocked without independent provider payment status and Node's P5 payment ledger/OTP authorization. Do not enable payment order creation on the strength of the n8n Data Table OTP mock alone.
+
 ## Bootstrap the n8n owner and default workspace
 
 For the single-operator POC, follow [n8n local seeding](SEEDING.md).
