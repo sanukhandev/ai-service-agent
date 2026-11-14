@@ -39,7 +39,10 @@ async function findQuote(client:PoolClient,agentId:string,ticketId:string):Promi
        AND EXISTS (
          SELECT 1 FROM offerings o
          WHERE o.agent_id=q.agent_id AND o.id=q.offering_id
-           AND o.intent_key=i.intent_key
+           AND (o.intent_key=i.intent_key OR (
+          i.intent_key IN ('quotation_request','package_comparison')
+          AND o.intent_key IN ('company_formation','package_comparison')
+        ))
        )
      LEFT JOIN ticket_operations op ON op.agent_id=t.agent_id AND op.ticket_id=t.id
        AND op.id=q.operation_id AND op.operation_key='ancfz_render_quote'
