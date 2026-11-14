@@ -83,7 +83,15 @@ async function run(){
     await assert.rejects(()=>purchases.confirm(scope,ticketId,consent),conflict);
     const second=await upload("emirates_id",doc2);
     assert.ok(second.documentId);
-    const downloaded=await purchases.download(scope,ticketId,first.documentId);
+    // UI checklist links must use the uploaded document row ID, never
+    // intent_document_requirements.id (which cannot be downloaded).
+    const checklist=await purchases.read(scope,ticketId);
+    assert.equal(checklist.requirements.find(d=>d.key==="passport")?.documentId,first.documentId);
+    assert.equal(checklist.requirements.find(d=>d.key==="emirates_id")?.documentId,second.documentId);
+    assert.equal(checklist.requirements.find(d=>d.key==="passport")?.uploaded,true);
+    assert.equal(checklist.requirements.find(d=>d.key==="emirates_id")?.uploaded,true);
+    const downloaded=await purchases.download(scope,ticketId,
+      checklist.requirements.find(d=>d.key==="passport")?.documentId??"");
     assert(downloaded.bytes.equals(doc1));
     await assert.rejects(()=>purchases.confirm(scope,ticketId,{...consent,amount:"1.00"}),conflict);
     const created=await purchases.confirm(scope,ticketId,consent);
