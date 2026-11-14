@@ -54,6 +54,6 @@ MSYS_NO_PATHCONV=1 docker compose -p ai-service-agent-gemini exec -T postgres ch
 MSYS_NO_PATHCONV=1 docker compose -p ai-service-agent-gemini exec -T postgres \
   psql -v ON_ERROR_STOP=1 \
        --username postgres \
-       --dbname "${POSTGRES_DB:-ai_service_agent}" \
+       --dbname "${POSTGRES_DB:-ai_service_agent_gemini}" \
        --set=seed_file="$seed_path" \
        < "$ROOT/infra/catalog/seed-ancfz-test.sql"
