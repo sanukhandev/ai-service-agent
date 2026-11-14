@@ -1,18 +1,18 @@
 # Data model and migration policy
 
-**Current SQL:** `infra/postgres/001_core.sql` is the agent/ticket baseline; `002_intents_and_ticket_facts.sql` adds versioned Node-owned intents, offerings, price revisions, ticket intents, customer facts and fact history. Apply in sequence to a fresh disposable DB; they have not yet been runtime-validated.
+**Current SQL:** `infra/postgres/001_core.sql` is the agent/ticket baseline; `002_intents_and_ticket_facts.sql` adds versioned Node-owned intents, offerings, price revisions, ticket intents, customer facts and fact history. The migration entrypoint applies immutable numbered migrations 003–015 with checksums; the disposable PostgreSQL integration gate validates migrations, RLS, catalog seed and sessions.
 
 ## Principles
 
 Use **plain PostgreSQL 16** as the durable database. Fresh POC baseline; no legacy tenant schema, `pgvector` extension, embeddings or ANN indexes. Normalize operational entities (aim for 3NF/BCNF where practical), avoiding mixed-purpose catalog/ticket tables and unbounded event JSON in place of relational keys. JSONB is appropriate for immutable version snapshots, provider payloads and bounded structured fields, not as a substitute for key constraints.
 
-An agent is the **top-level isolation partition**. The Foundry resource ID is an external binding, not the application primary key.
+An agent is the **top-level isolation partition**. Gemini model and File Search resource names are externally bound, not application primary keys.
 
-## Proposed bounded tables
+## Logical entities (check SQL migrations for exact columns)
 
 | Domain | Tables and principal fields |
 |---|---|
-| Agents | `agents(id, key, display_name, status, created_at)`, `agent_versions(id, agent_id, version, foundry_project_ref, foundry_name, foundry_version, persona_revision, knowledge_ref, activated_at)` |
+| Agents | `agents(id, agent_key, display_name, status, created_at)`, `agent_versions(id, agent_id, version_number, provider, model_id, persona_version, knowledge_version_id, publication_state, published_at)`; agent versions pin model/persona/knowledge/catalog policy |
 | Permissions | `agent_tool_grants(agent_id, agent_version_id, tool_name, enabled)`, `agent_admin_memberships(agent_id, principal_id, role)` |
 | Intent catalog | `intent_catalog_versions(id, agent_id, revision, status)`, `intents(id, agent_id, catalog_version_id, intent_key, name, description, examples, allowed_actions)`, `intent_requirements(id, agent_id, intent_id, requirement_key, value_type, required_for)` |
 | Offerings | `offering_catalog_versions`, `offerings(id, agent_id, catalog_version_id, offering_key, intent_key, description)`, `offering_price_revisions(id, agent_id, offering_id, currency, amount, effective_from, effective_to, conditions)` |
@@ -69,6 +69,6 @@ Benchmark query plans before adding speculative GIN/JSON or broad indexes.
 
 ## Retention and privacy
 
-Store the minimum necessary personal data. Encrypt sensitive fields where appropriate, restrict transcript access and redact tracing. Customer uploaded documents and extracted fields remain private ticket artifacts, not Foundry IQ knowledge content.
+Store the minimum necessary personal data. Encrypt sensitive fields where appropriate, restrict transcript access and redact tracing. Customer uploaded documents and extracted fields remain private ticket artifacts, not agent-wide File Search knowledge content.
 
-The final SQL DDL must be reviewed against this logical schema and tested for referential integrity, RLS isolation, bootstrap idempotency and realistic read/query plans before it is considered implemented.
+The existing schema is implementation-backed and tested through disposable migrations and integration CI. Live provider and full isolation/security certification remain separate acceptance gates; check numbered SQL migrations and the P7 report rather than treating this logical table as a complete DDL inventory.
