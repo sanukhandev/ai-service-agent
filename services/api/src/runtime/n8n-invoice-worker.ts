@@ -159,26 +159,65 @@ export class N8nInvoiceWorker {
       return publish;
     });
   }
+  private async notifyInvoice(
+    claim:Pick<Claim,"agentId"|"ticketId"|"invoiceId">,
+  ):Promise<void>{
+    const link="/api/v1/tickets/"+claim.ticketId+"/invoices/"+claim.invoiceId+"/pdf";
+    await new TicketMessageRepository(this.db).createAssistantMessage(
+      workerTicketScope(claim.agentId,claim.ticketId),claim.ticketId,claim.invoiceId,
+      "Your sandbox payment has been independently verified and your TEST invoice is ready. "+
+      "[Download your TEST invoice]("+link+").",[],
+    );
+  }
+
+  /**
+   * Persisted PDF and the chat message are deliberately separate operations.
+   * If the process dies between the two, reconcile the missing message
+   * without regenerating the PDF or submitting a second payment.
+   */
+  private async recoverInvoiceNotification(agentId:string):Promise<void>{
+    const pending=await this.db.withAgent(agentId,async client=>{
+      const r=await client.query<{id:string;ticket_id:string}>(
+        `SELECT i.id,i.ticket_id FROM ticket_payment_invoices i
+         JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id AND p.ticket_id=i.ticket_id
+           AND p.id=i.payment_id AND p.state='verified_test_payment'
+         JOIN tickets t ON t.agent_id=i.agent_id AND t.id=i.ticket_id
+           AND t.status<>'closed'
+         WHERE i.agent_id=$1 AND i.state='verified_completed' AND i.bytes IS NOT NULL
+           AND NOT EXISTS(
+             SELECT 1 FROM ticket_messages m
+             WHERE m.agent_id=i.agent_id AND m.ticket_id=i.ticket_id
+               AND m.role='assistant' AND m.request_id=i.id
+           )
+         ORDER BY i.created_at LIMIT 1`,[agentId],
+      );
+      return r.rows[0]??null;
+    });
+    if(pending){
+      await this.notifyInvoice({agentId,ticketId:pending.ticket_id,invoiceId:pending.id});
+      this.log({invoiceId:pending.id},"Recovered missing TEST invoice chat link");
+    }
+  }
+
   private async tick(){
     if(this.stopped||this.busy||!paymentEnabled())return;
     this.busy=true;
     try{
       const agent=await this.agentId();if(!agent)return;
-      if(Date.now()-this.lastSweep>30000){await this.quarantine(agent);this.lastSweep=Date.now();}
+      if(Date.now()-this.lastSweep>30000){
+        await this.quarantine(agent);
+        await this.recoverInvoiceNotification(agent);
+        this.lastSweep=Date.now();
+      }
       const claim=await this.claim(agent);if(!claim)return;
       const pdf=await this.dispatch(claim);
       const published=await this.finalize(claim,pdf);
       if(published){
-        // Download is authorized by the existing ticket-owned invoice PDF route.
-        // Stable request ID prevents duplicate assistant messages on retries.
-        const link="/api/v1/tickets/"+claim.ticketId+"/invoices/"+claim.invoiceId+"/pdf";
-        try {
-          await new TicketMessageRepository(this.db).createAssistantMessage(
-            workerTicketScope(claim.agentId,claim.ticketId),claim.ticketId,claim.invoiceId,
-            "Your sandbox payment has been independently verified and your TEST invoice is ready. "+
-            "[Download your TEST invoice]("+link+").",[]);
-        }catch {
-          this.log({invoiceId:claim.invoiceId},"Invoice PDF saved but chat notification was unavailable");
+        try{
+          await this.notifyInvoice(claim);
+        }catch{
+          this.log({invoiceId:claim.invoiceId},
+            "Invoice PDF saved; durable chat-link recovery will retry");
         }
       }
       this.log({invoiceId:claim.invoiceId,status:published?"verified_completed":"unknown_outcome"},
