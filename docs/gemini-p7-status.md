@@ -1,43 +1,73 @@
-# Gemini P7 — direct integration status
+# Gemini P7 — Integrated experiment status (2026-11-14)
 
-**Branch:** `experiment/gemini-file-search-poc` **only**.  
-**No PRs. No changes to `main`.**  
-**G0 frozen base:** `8078e46e0f55a543d19260acac430c0b4ee14716`.
+**Repository:** `sanukhandev/ai-service-agent`  
+**Only integration branch:** `experiment/gemini-file-search-poc`  
+**G0 shared baseline:** `8078e46e0f55a543d19260acac430c0b4ee14716`  
+**Git policy:** Direct commits; no PR created; do not merge into or modify `main`.
 
-## Integration carried out
+## Verdict
 
-- Reviewed P1–P6 source heads, common G0 ancestry, non-overlapping file ownership and offline feasibility.
-- Fixed P2 malformed disposable DB test runner on `feat/gemini-persistence` (`cfec98678eeea7e6231f5a53bef854973aed5605`).
-- Directly imported **40 P1–P6 feature files**, preserving all six source histories, in experiment-only 7-parent merge `17153bf864f813e8b27a10d9990cd80f5872585e`.
-- Repaired malformed SQL literals in `gemini-qualification.ts` and integrated TypeScript's frozen contracts as `@ai-service-agent/contracts` local workspace package.
-- Pinned `@google/genai` to `2.32.0` in experimental API; no credential committed.
-- Updated experimental Compose API build context to repository root, Dockerfile to build shared contracts and Node workspace, blank `GEMINI_API_KEY` in example and model ID forwarded to isolated migration owner.
-- Added P7 CI: immutable feature SHA preflight, combined API build/offline P1/P3/P4/P5/P6 suites, G0 invariants, real API Docker image build and isolated disposable PostgreSQL migration/catalog/session gate.
+**P7 source/runtime integration and deterministic local certification are implemented. Full live Gemini/File Search and external-provider certification are NOT complete.** Do not describe the experiment as production-ready or live-grounding-certified.
 
-## Measured gates
+The legacy Foundry runtime and Azure SDK are absent from the experimental API image. The sole Node turn worker is `GeminiTurnWorker`; it must have `GEMINI_API_KEY` and `GEMINI_STATE_ENCRYPTION_KEY` and does not silently fall back to Foundry.
 
-| Gate | Current outcome |
+## Implemented and wired
+
+| Boundary | Implemented behavior |
 | --- | --- |
-| P1–P6 isolated offline preflight | **6/6 jobs passed** at `a7b85c2725bbff16bfed52047d14212216ee4aec`, run 43620726466 |
-| Combined API build + offline adapters + G0 invariants | **3/3 passed** at `a5dc51254e1163c2b14a99064b8f9d72d6a2c4c6`, run 43621941308 |
-| Compose config + workspace-aware API Docker image build | **Passed** at `d48f798f4a325f9183377bac130bf201eaa02834`, run 43622409387 |
-| Disposable Gemini migrations: fresh/repeat/checksum/RLS/catalog seed | **Passed through initial SQL/seed checks** in run 43622561162; complete P2 test is **not yet green** |
-| P2 Node session integration | **Blocked**: `42P08` timestamp parameter ambiguity; `$8` on session insert fixed at `adfd1fd7dc7cfb092a6711419fa9a39f2ec24da7`, `$3` on acceptance fixed in subsequent integration commit. Exact-head database rerun must pass. |
-| Live Gemini API + File Search + combined function calls | **NOT EXECUTED**; requires isolated credentials and approved test store/document |
-| One Node-owned Gemini chat, verified before SSE/persistence | **NOT IMPLEMENTED**; current turn worker still invokes Foundry |
-| Real n8n provider / customer journey | **NOT CERTIFIED** |
+| Model | Node-pinned persona/model; Gemini API `generateContent`, authorized function declarations and bounded continuation |
+| Source policy | File Search only; no Google Search/URL Context/browsing/code execution tools |
+| Retrieval | Per-agent/version published File Search binding, human source approval, private retained originals |
+| Citation identity | Exact provider document when supplied, otherwise only if Google-provided custom metadata matches the exact agent/session/store/document/version/SHA tuple against PostgreSQL |
+| Response safety | Grounding verifier before assistant publication; factual claims fail closed when unverified; atomic response audit, message and SSE event |
+| Business tools | Existing Node intent/fact/offerings tool registry; no model-directed n8n URL or provider calls |
+| Operations | Existing authorized, idempotent n8n lead/quote workers remain single consumers; real provider outcomes are not certified |
+| AI sessions | PostgreSQL-enforced 60-minute inactivity from accepted customer input, new ticket on expiry, historical tickets retained, no cross-session AI context |
+| Continuation | AES-256-GCM encrypted, agent/session-scoped pending function state in PostgreSQL |
+| RAG ingestion | PostgreSQL publication/revision adapter, source SHA-256, private normalized TXT/MD/DOCX and text-PDF sidecars for independent verification |
+| Document downloads | Verified ticket/message reference, exact approved document, private vault path containment and digest; no Foundry/URL fallback |
+| Client | Next.js uses new session response, rejects expired session and starts fresh conversation without importing old model context |
+| Runtime | Experiment-only Compose at `127.0.0.1:2000`, independent PostgreSQL/Redis/n8n volumes, Node Docker image without Azure CLI/pgvector/Python |
 
-## Mandatory P7 work remaining
+Scanned PDFs with no extractable text require **separately approved OCR**; do not publish/qualify them without a verified normalized-text source. Existing ANCFZ test pricing and catalog are *unapproved*, so they cannot authorize financial claims by default.
 
-1. Make disposable P2 DB/session integration completely green. Do not interpret a passing SQL migration as passing the Node repository.
-2. Implement P3's real `KnowledgeRepository` on top of P2's scoped persistence and approved source storage; no production mocks.
-3. Resolve **exact document attribution** for Gemini File Search. P1 currently maps `retrievedContext.fileSearchStore` (store) to `providerResourceName`; P4 requires an exact approved document ID. The Google generateContent `GroundingChunkRetrievedContext.documentName` field is not available in Gemini Developer API. Verify a concrete custom-metadata or Interactions file-citation strategy with live provider evidence; never guess source identity from titles or similar snippets. Documentation: https://ai.google.dev/gemini-api/docs/file-search and https://googleapis.github.io/js-genai/release_docs/interfaces/types.GroundingChunkRetrievedContext.html.
-4. Create a persistent Node-owned pending-function state adapter to resume Gemini tool interactions safely; preserve opaque provider context and signatures required by the selected API.
-5. Replace Foundry-only `runtime/turn-worker.ts` / `turn-queue.ts` and HTTP ticket creation/admission/expiry with **one** Gemini pipeline; use P2 60-minute session repo, G0 contracts, P1 client and P4 verifier **before** saving or streaming factual assistant messages.
-6. Preserve trusted Node tool authorization and idempotent n8n operations; never let a model call a webhook directly or duplicate an operation after timeout.
-7. Replace Foundry source download behavior with exact authorized source mapping; remove Azure/Foundry-only dependencies after verified cutover.
-8. Run exact-head Docker/Postgres, local n8n, real Gemini File Search and P6 security/quality gates. No production/readiness claims from offline mocks.
+## Reproducible offline/local validation
 
-**Stop condition:** Do not activate Gemini factual responses or describe P7 as complete until verified exact source attribution, fail-closed grounding and safe session/tool continuation are demonstrated. No web-search fallback. No PR into main.
+- `.github/workflows/gemini-p7-integration.yml`: G0 contracts, combined API TypeScript, standalone Gemini adapters, grounding/knowledge tests, Next.js build, Compose config, actual Docker API image build, disposable PostgreSQL migrations and session integration.
+- Disposable P2 tests cover fresh/repeat/checksum, Sara catalog, RLS, 60-minute session expiry, Fastify HTTP ticket admission and a complete fake-model Gemini worker flow.
+- Worker integration proves a supported greeting is atomically published and an invented AED price is replaced with a safe clarification; provider calls are **faked** in that test.
+- P3 tests include transport-level exact metadata-to-provider-document mapping and synthetic TXT/DOCX/text-PDF normalization.
+- Last confirmed fully successful prior run: [43629167120](https://github.com/sanukhandev/ai-service-agent/actions/runs/43629167120), all six jobs successful on the tested commit. Recheck newer exact-head runs after subsequent commits.
 
-This is a status record, not a promise that unfinished work runs asynchronously.
+**Important:** Passing unit tests / synthetic offline integration is not a live claim about the Gemini API or a commercial RAG knowledge base.
+
+## Remaining live acceptance gates (blocking P7 certification)
+
+1. **G1 live Gemini/File Search:** Confirm real `@google/genai` SDK/model functionality, custom function calls, real indexed documents, source annotations and custom-metadata identity. Run only with actual Gemini Developer API credentials. Google may omit source metadata for a particular model/API surface; fail closed if so.
+2. **Actual approved knowledge:** Operator approves Sara source documents and indexed store version; test positive/negative retrieval and independent claim support; verify text extraction/OCR on the real corpus and safe source downloads.
+3. **External n8n business UAT:** Verify real sandbox lead/quotation/payment outcomes, idempotency and consent. Passing mock integrations are not provider successes.
+4. **Full P6 live quality/security:** Measure grounded supported/unsupported cases, false rejections, cross-agent isolation, source revocation, live provider latency/cost and fail-closed behavior at exact integrated SHA.
+5. **Environment configuration:** Keep API key and 32-byte AES-GCM key in local/CI secrets; configure a private approved originals root. Never commit credentials.
+
+### Opt-in G1 synthetic smoke
+
+A synthetic-only, explicitly billable test is provided at `scripts/gemini-g1-live.mjs`. It creates a temporary File Search store, indexes an **invented** document, verifies document IDs/citations/functions and attempts to delete the store. It does not upload business/customer data.
+
+```bash
+npm install --ignore-scripts --no-audit --no-fund
+npm run build --workspace @ai-service-agent/api
+# Set GEMINI_API_KEY privately; use a model enabled in your Google project.
+GEMINI_G1_ALLOW_BILLABLE_RUN=YES GEMINI_G1_MODEL_ID=gemini-3.8-flash node scripts/gemini-g1-live.mjs
+```
+
+A `workflow_dispatch` variant lives at `.github/workflows/gemini-g1-live.yml`, requiring the `GEMINI_API_KEY` Actions secret. Because GitHub ordinarily requires the workflow file to exist on the default branch for `workflow_dispatch`, the **local script is the reliable path without modifying main**. Do not relax the experiment-to-main prohibition merely to run the workflow.
+
+## Operational restrictions
+
+- Do not add `google_search`, `url_context`, external browsing, custom vectors or an independent Python gateway.
+- Do not accept source titles, snippets or File Search store identifiers as document identity without trusted metadata verification.
+- Do not automatically approve customer uploads or old unapproved catalog prices.
+- Do not turn on a factual response bypass if retrieval/verifier is unavailable.
+- Never claim a Google live test passed unless a real isolated credential and provider result were observed.
+
+**Status distinction:** P7 implementation integrated / CI-gated; **live-release certification blocked** until the numbered external validations above have real evidence.
