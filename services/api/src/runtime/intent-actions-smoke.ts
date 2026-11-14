@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository } from "../repositories/agent.js";
-import { GuestSessionRepository, TicketRepository } from "../repositories/tickets.js";
+import { GuestSessionRepository } from "../repositories/tickets.js";
+import { GeminiSessionRepository } from "../repositories/gemini.js";
 import { ConversationContextRepository } from "../repositories/context.js";
 import { TicketMessageRepository } from "../repositories/messages.js";
 import { IntentActionOperations, SERVICE_REQUEST_CONSENT, isServiceAction } from "./intent-action-operations.js";
@@ -51,7 +52,7 @@ async function main(){
     ];
     for(const entry of candidates){
       assert(isServiceAction(entry.action));
-      const ticket=await new TicketRepository(db).create(scope,"P5 synthetic "+entry.intent);
+      const ticket=await new GeminiSessionRepository(db).startNew(scope,"P5 synthetic "+entry.intent);
       await context.selectIntent(scope,ticket.id,entry.intent);
       const before=await actions.catalog(scope,ticket.id);
       assert.equal(before.intentKey,entry.intent);
