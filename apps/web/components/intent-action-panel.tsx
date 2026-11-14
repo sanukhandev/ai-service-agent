@@ -21,7 +21,7 @@ type Catalog={
   actions:Action[];unknownActions:string[];
 };
 const noopReady=(_ready:boolean)=>{};
-export function IntentActionPanel({ticketId}:{ticketId:string}){
+export function IntentActionPanel({ticketId,revision}:{ticketId:string;revision:number}){
   const [catalog,setCatalog]=useState<Catalog|null>(null);
   const [selected,setSelected]=useState<string|null>(null);
   const [accepted,setAccepted]=useState(false);
@@ -42,9 +42,10 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
       }catch{if(active)setCatalog(null);}
     }
     void refresh();
-    const poll=setInterval(()=>{void refresh();},4000);
-    return ()=>{active=false;clearInterval(poll);};
-  },[ticketId]);
+    // SSE triggers prompt updates; low-rate polling guards against missing events.
+    const fallback=setInterval(()=>{void refresh();},60000);
+    return ()=>{active=false;clearInterval(fallback);};
+  },[ticketId,revision]);
   useEffect(()=>{
     setSelected(null);setAccepted(false);setNotice(null);setError(null);
     requestIds.current={};
@@ -79,7 +80,7 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
     </p>
     {/* Only actions configured to require identity evidence show this checklist. */}
     {!actions.some(a=>a.kind==="purchase")&&actions.some(a=>a.requiresIdentityDocuments)&&
-      <PurchaseChecklist ticketId={ticketId} quote={null} onReady={noopReady}/>}
+      <PurchaseChecklist ticketId={ticketId} quote={null} onReady={noopReady} revision={revision}/>}
 
     {actions.map(action=>{
       if(action.kind==="salesforce_lead"||action.kind==="quotation"){
@@ -91,11 +92,11 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
             These must be saved to your ticket before the action can be authorized.
           </p>}
           {action.ready&&(action.kind==="salesforce_lead"
-            ?<LeadSubmission ticketId={ticketId}/>
-            :<QuotationRequest ticketId={ticketId}/>)}
+            ?<LeadSubmission ticketId={ticketId} revision={revision}/>
+            :<QuotationRequest ticketId={ticketId} revision={revision}/>)}
         </div>;
       }
-      if(action.kind==="purchase")return <PaymentCheckout key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
+      if(action.kind==="purchase")return <PaymentCheckout key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId} revision={revision}/>;
       return <div key={action.actionKey} className="rounded-lg border border-slate-200 p-3 text-xs">
         <p className="font-semibold">{action.label}</p>
         {action.request?<p className="mt-1 text-blue-800">

@@ -13,7 +13,7 @@ interface Operation {
 type Fields = {name:string;company:string;phone:string;email:string;description:string};
 const blank:Fields={name:"",company:"",phone:"",email:"",description:""};
 
-export function LeadSubmission({ticketId}:{ticketId:string}) {
+export function LeadSubmission({ticketId,revision}:{ticketId:string;revision:number}) {
   const [enabled,setEnabled]=useState(false);
   const [expanded,setExpanded]=useState(false);
   const [fields,setFields]=useState<Fields>(blank);
@@ -24,10 +24,13 @@ export function LeadSubmission({ticketId}:{ticketId:string}) {
   const requestId=useRef<string|null>(null);
 
   useEffect(()=>{
-    let active=true;
-    setEnabled(false);
-    setOperation(null);
+    // Never collapse an in-progress consent form on unrelated SSE events.
     setExpanded(false);
+    setConsent(false);
+    setFields(blank);
+  },[ticketId]);
+  useEffect(()=>{
+    let active=true;
     fetch(`/api/v1/tickets/${encodeURIComponent(ticketId)}/operations`,{
       credentials:"include",cache:"no-store",
     }).then(async response=>{
@@ -41,7 +44,7 @@ export function LeadSubmission({ticketId}:{ticketId:string}) {
       )??null:null);
     }).catch(()=>{if(active)setEnabled(false);});
     return ()=>{active=false;};
-  },[ticketId]);
+  },[ticketId,revision]);
 
   if(!enabled)return null;
 

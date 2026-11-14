@@ -38,7 +38,7 @@ async function jsonRequest(path:string,method:"GET"|"POST",body?:object){
     "The sandbox operation could not be completed");
   return data;
 }
-export function PaymentCheckout({ticketId}:{ticketId:string}) {
+export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:number}) {
   const [summary,setSummary]=useState<Summary|null>(null);
   const [purchaseReady,setPurchaseReady]=useState(false);
   const [purchaseSupported,setPurchaseSupported]=useState(false);
@@ -70,9 +70,9 @@ export function PaymentCheckout({ticketId}:{ticketId:string}) {
       }catch{/* Existing chat displays network/owner errors elsewhere. */}
     }
     void load();
-    const timer=setInterval(()=>{void load();},5000);
-    return ()=>{live=false;clearInterval(timer);};
-  },[ticketId]);
+    const fallback=setInterval(()=>{void load();},60000);
+    return ()=>{live=false;clearInterval(fallback);};
+  },[ticketId,revision]);
 
   const payment=summary?.payments?.[0]??null;
   const quoteReady=quote?.state==="verified_completed" && quote.pdfAvailable;
@@ -143,7 +143,7 @@ export function PaymentCheckout({ticketId}:{ticketId:string}) {
       Approved quote {quote.documentNumber}: {quote.currency} {quote.amount} · {quote.offeringLabel}
     </p>}
     {!payment && purchaseSupported &&
-      <PurchaseChecklist ticketId={ticketId} quote={quoteReady?quote:null} onReady={setPurchaseReady}/>}
+      <PurchaseChecklist ticketId={ticketId} quote={quoteReady?quote:null} onReady={setPurchaseReady} revision={revision}/>}
     {error&&<p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
     {notice&&<p role="status" className="mt-2 text-xs text-indigo-800">{notice}</p>}
     {!payment && ready && !challenge && <form onSubmit={issueOtp} className="mt-3 space-y-3">

@@ -145,6 +145,19 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
+  // Durable SSE event counter; batch replay bursts into one authorized refresh.
+  const [eventRevision, setEventRevision] = useState(0);
+  const panelRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePanelRefresh = useCallback(() => {
+    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
+    panelRefreshTimer.current = setTimeout(() => {
+      panelRefreshTimer.current = null;
+      setEventRevision((previous) => previous + 1);
+    }, 150);
+  }, []);
+  useEffect(() => () => {
+    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
+  }, [ticket?.id]);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
   const [showLatest, setShowLatest] = useState(false);
@@ -233,6 +246,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
   const handleEvent = useCallback(
     (event: TicketEvent) => {
+      if (!["assistant.processing","agent.processing","agent.response.started"].includes(event.name)) {
+        schedulePanelRefresh();
+      }
       const incomingMessage = messageFromEvent(event.data);
       const incomingTicket = ticketFromEvent(event.data);
       if (
@@ -294,10 +310,13 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           break;
       }
     },
-    [agentKey, ticket?.id, refresh],
+    [agentKey, ticket?.id, refresh, schedulePanelRefresh],
   );
 
-  const stream = useTicketEvents(ticket?.id ?? null, handleEvent, refresh);
+  const stream = useTicketEvents(ticket?.id ?? null, handleEvent, () => {
+    void refresh();
+    schedulePanelRefresh();
+  });
 
   const send = useCallback(
     async (text: string) => {
@@ -702,7 +721,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           )}
 
           {/* Customer authorized lead operations and quotations */}
-          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} />}
+          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} revision={eventRevision} />}
 
           <ChatComposer
             onSend={send}

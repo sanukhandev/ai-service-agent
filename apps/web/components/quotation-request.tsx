@@ -15,7 +15,7 @@ interface Quotation {
   conditions:string|null;pdfAvailable:boolean;
 }
 
-export function QuotationRequest({ticketId}:{ticketId:string}) {
+export function QuotationRequest({ticketId,revision}:{ticketId:string;revision:number}) {
   const [enabled,setEnabled]=useState(false);
   const [leadVerified,setLeadVerified]=useState(false);
   const [options,setOptions]=useState<PriceOption[]>([]);
@@ -52,9 +52,9 @@ export function QuotationRequest({ticketId}:{ticketId:string}) {
       }catch{/* Network state is shown by the parent chat. */}
     }
     void refresh();
-    const id=setInterval(()=>{void refresh();},6000);
-    return ()=>{cancelled=true;clearInterval(id);};
-  },[ticketId]);
+    const fallback=setInterval(()=>{void refresh();},60000);
+    return ()=>{cancelled=true;clearInterval(fallback);};
+  },[ticketId,revision]);
 
   const chosen=options.find(option=>option.offeringKey===offeringKey);
   if(!enabled&&!quotation)return null;
