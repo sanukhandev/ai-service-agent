@@ -29,7 +29,11 @@ jobs:
           node-version: "22"
       - name: Require configured Gemini API key
         shell: bash
-        run: test -n "$GEMINI_API_KEY" || { echo 'G1_BLOCKED: configure GEMINI_API_KEY secret'; exit 1; }
+        run: |
+          if [ -z "$GEMINI_API_KEY" ]; then
+            echo 'G1_BLOCKED: configure GEMINI_API_KEY secret'
+            exit 1
+          fi
       - name: Install isolated experimental dependencies
         run: npm install --ignore-scripts --no-audit --no-fund
       - name: Build Gemini adapter and provider modules
