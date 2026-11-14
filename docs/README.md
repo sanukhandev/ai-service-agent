@@ -1,5 +1,7 @@
 # AI Service Agent — POC documentation
 
+> **Experimental Gemini branch:** For `experiment/gemini-file-search-poc`, use the [Gemini experimental implementation plan](gemini-experiment-implementation-plan.md), which supersedes the Foundry-only baseline below. Conversation memory is limited to the active AI session with a **60-minute inactivity timeout**; expired sessions start fresh, while tickets and messages remain durable in PostgreSQL. Gemini changes must never merge into `main`.
+
 **Current design:** Next.js customer UI -> Nginx (public port 80 only) -> **Node Fastify API -> published Microsoft Foundry GPT-5.4 Sara Agent -> native Foundry IQ**. Node owns intent catalog, function registry/loop, ticket facts, approvals and n8n dispatch. PostgreSQL is durable; Redis is ephemeral.
 
 **Out of scope for this POC:** Angular admin portal, Python Model Gateway, Python Presidio runtime, pgvector, LangGraph, hand-built RAG, full automated testing/hardening. Admin UI can return after POC as a separate phase.
