@@ -4,6 +4,7 @@ import fs from "node:fs";
 import assert from "node:assert/strict";
 import { AgentToolRegistry } from "../services/api/dist/agent/tool-registry.js";
 import { registerIntentTools } from "../services/api/dist/agent/intent-tools.js";
+import { classifyAction, SUPPORTED_CATALOG_ACTIONS } from "../services/api/dist/runtime/intent-action-operations.js";
 
 const seed = JSON.parse(fs.readFileSync(new URL("../infra/catalog/ancfz-test-2026.json", import.meta.url), "utf8"));
 const registry = new AgentToolRegistry();
@@ -66,3 +67,23 @@ const invalid = await registry.execute({
 }, ctx);
 assert.equal(invalid.ok, false);
 console.log("get_offerings tool PASS: exact price, package overview, bounds");
+
+const allActions = new Set(seed.intents.flatMap(i=>i.allowedActions));
+const external=["create_lead","generate_quote","purchase_quotation"];
+for(const entry of seed.intents){
+  const actions=new Set(entry.allowedActions);
+  if(actions.has("generate_quote")){
+    actions.add("create_lead");
+    actions.add("purchase_quotation");
+  }
+  for(const action of actions){
+    assert.ok(SUPPORTED_CATALOG_ACTIONS.has(action),
+      "Catalog action has no Node handler: "+entry.key+" / "+action);
+    assert.notEqual(classifyAction(action),null);
+  }
+}
+assert.ok(allActions.has("create_amendment_request"));
+assert.ok(allActions.has("request_specialist_review"));
+assert.ok(allActions.has("create_support_request"));
+assert.equal(new Set([...allActions].filter(a=>!external.includes(a))).size,7);
+console.log("21-intent action matrix PASS: every declared operation mapped to a customer-owned Node executor");
