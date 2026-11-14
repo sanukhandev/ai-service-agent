@@ -1,65 +1,64 @@
-# Docker Compose and Nginx — Gemini experiment
+# Docker and deployment — isolated Gemini experiment
 
-## Only public host port: 2000 (separate from Foundry main)
+## Fixed isolation
 
-The **only** host-published service is experiment Nginx on `127.0.0.1:2000:80`. Its internal container port remains 80. The Foundry main stack can simultaneously publish `127.0.0.1:80:80`. The Compose project name is `ai-service-agent-gemini`, with dedicated PostgreSQL, Redis, n8n and Azure CLI volumes and dedicated networks. **Do not reuse main's `.env`, database volumes, n8n encryption key or credentials.** Next.js `web:3000`, Node `api:4000`, PostgreSQL `postgres:5432`, Redis `redis:6379` and optional n8n `n8n:5678` run inside the Compose network without host `ports:`.
+`docker-compose.yml` defines the project `ai-service-agent-gemini`. Only Nginx publishes `127.0.0.1:2000:80` on the host. Internal services use `web:3000`, `api:4000`, `postgres:5432`, `redis:6379`; optional `n8n:5678` runs under `--profile workflows`. Postgres, Redis, Node and n8n have **no host-published port**.
+
+The experimental volumes are explicitly named `ai-service-agent-gemini-postgres-data`, `ai-service-agent-gemini-redis-data` and `ai-service-agent-gemini-n8n-data`. Never share or delete another Compose project's state or credentials.
 
 ```text
-Browser -> http://localhost:2000 -> experiment Nginx
-  /            -> web:3000 (Next.js)
-  /api/        -> api:4000 (Fastify)
-  /api/events/ -> api:4000 (SSE, buffering off)
-Node API -> Gemini + Gemini File Search over outbound HTTPS (planned; current runtime is still Foundry-based until replacement is implemented)
-Node API -> PostgreSQL, Redis, private n8n within Docker DNS
+http://127.0.0.1:2000
+  /            -> Next.js (web)
+  /api/        -> Fastify (api)
+  /api/events/ -> durable SSE replay
+  /n8n/       -> optional private editor proxy
+Node -> Gemini Developer API / File Search (outbound HTTPS)
+Node -> PostgreSQL / Redis / optional n8n (Docker DNS)
 ```
 
-No Angular/static admin asset stage and no Python Model Gateway. The private n8n editor is available at `http://localhost:2000/n8n/` only while the optional `workflows` Compose profile is running. Public n8n webhook/form/MCP ingress remains blocked by Nginx.
+No Azure CLI, custom vector DB, Python AI/Model Gateway or Angular admin image is required.
 
-## Docker network segregation
-
-Compose uses `frontend` for Nginx, Next.js and Node, plus `backend` for Node, PostgreSQL, Redis and n8n. **Nginx and Node join both networks** to allow the optional private n8n editor proxy. The customer web service cannot reach n8n, PostgreSQL or Redis directly. No backend service publishes a host port.
-
-## P0 infrastructure files
-
-- `docker-compose.yml` is the single Compose definition.
-- `infra/nginx/default.conf` handles reverse proxy and SSE.
-- `infra/nginx/Dockerfile` builds Nginx only.
-- `services/api/Dockerfile` runs Node/Fastify; P1 must add Azure CLI to this image.
-- `apps/web/Dockerfile` runs the minimal Next.js shell.
-- `infra/postgres/001_core.sql` defines agent/ticket/message/event baseline.
-- `infra/postgres/002_intents_and_ticket_facts.sql` defines intent/offerings and fact persistence.
-- `infra/bootstrap/003-app-runtime-role.sh` creates the least-privileged `agent_runtime` DB login and grants SELECT on published catalogs plus read/write access to ticket tables.
-
-The SQL scripts and role-bootstrap shell script mount into `/docker-entrypoint-initdb.d`; **Postgres executes them only on fresh initialization**, not on an existing persistent data volume. For an existing DB, run the new forward migration through the approved migration mechanism. Do not delete the volume to force it.
-
-## Local Azure CLI login (P1)
-
-The private volume `azure-cli-auth` is mounted at `/home/app/.azure` in **Node API only**, with `AZURE_CONFIG_DIR` set. The runtime image must be updated to include Linux Azure CLI and a writable non-root cache in P1. Then `docker compose exec api az login --use-device-code` and `docker compose exec api az account show` can establish and check local credentials. AzureCliCredential will use those credentials to call the configured Foundry project and pinned Sara version.
-
-The volume persists after rebuilding/recreating containers, but Azure sign-in can expire or be revoked; no promise of permanent authentication. Do not mount Windows Azure cache in Linux or commit token files.
-
-## Runtime DB password and privilege boundary
-
-Local `.env` must contain **different strong values** for `POSTGRES_PASSWORD` (migration owner) and `POSTGRES_APP_PASSWORD` (Node runtime role). Compose supplies Node with `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER=agent_runtime` and `PGPASSWORD`; avoid mixing it with the superuser account. The role setup runs **only on a fresh PostgreSQL volume**. Existing databases need an explicit, reviewed forward initialization/privilege step; no automatic data reset. Future schema migrations also require appropriate grants for newly created runtime tables.
-
-## Local startup after configuration
+## Environment
 
 ```bash
+git switch experiment/gemini-file-search-poc
 cp .env.example .env
-# Set distinct POSTGRES_PASSWORD and POSTGRES_APP_PASSWORD in the private .env
+# Set private GEMINI_API_KEY
+# Generate a private 32-byte hex GEMINI_STATE_ENCRYPTION_KEY:
+node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
+# Set different POSTGRES_PASSWORD and POSTGRES_APP_PASSWORD.
 docker compose config
 docker compose up -d --build
 docker compose ps
-# With the two DB passwords exported to your shell, optionally run:
-bash scripts/p0-smoke.sh
 ```
 
-Expected experimental endpoints *after images start*: `http://localhost:2000/` (customer shell), `http://localhost:2000/api/health` (Fastify health), optionally `http://localhost:2000/n8n/` (private editor). The Gemini model integration has not yet been implemented.
+Use a private approved-originals root for operator-side ingestion and a read-only normalized-text mount for Node verification. Approved documents must be explicitly published. `GEMINI_MODEL_ID` pins **newly seeded** agent versions; changing an existing published agent requires controlled version publication, not an implicit rewrite.
 
-## POC safety and constraints
+The API requires its Gemini key and encryption key and does not fall back to another model. Before starting on an existing DB, verify versioned agent configuration and migrations.
 
-- Port 2000 is HTTP and suitable only for localhost/isolated testing. Use upstream HTTPS before handling real customer PII, OTP or uploads publicly.
-- No public n8n editor, private database, Redis, Node or Foundry credential endpoint.
-- Preserve the explicitly named `ai-service-agent-gemini-*` volumes; `docker compose down -v` deletes experimental data. Never delete or mount Foundry main volumes.
-- Node uses the restricted **non-superuser** PostgreSQL `agent_runtime` role and transaction-local agent RLS context; never use the migration owner for application queries.
-- Do not claim images built or live Azure access verified until actual Docker commands run in a Docker-enabled environment.
+## PostgreSQL bootstrapping
+
+A fresh Postgres volume initializes `001_core.sql`, `002_intents_and_ticket_facts.sql`, then the role bootstrap `infra/bootstrap/003-app-runtime-role.sh`. The one-off `migrate` service applies sequential forward migrations `003`–`015` with immutable checksums and idempotently seeds the Sara Gemini version. The Node API connects only as `agent_runtime`; it must not use the migration-owner password.
+
+Do not edit historical SQL migration content; the migration runner rejects changed checksums. Do not delete a persistent volume to re-run initialization. Test isolated changes using `bash infra/postgres/gemini-p2-validate.sh` in a disposable Compose project.
+
+## Operations and diagnostics
+
+```bash
+docker compose config --quiet
+docker compose ps
+docker compose logs --no-color --tail=100 api postgres migrate nginx
+curl --fail http://127.0.0.1:2000/api/health
+```
+
+A local smoke script `bash scripts/p0-smoke.sh` verifies the dedicated network/port, Node health, web and restricted PostgreSQL role when its required environment credentials are supplied. Optional n8n configuration is explained in `infra/n8n/ancfz/SEEDING.md`.
+
+The G1 live synthetic File Search probe is **explicit opt-in and potentially billable**. Review `docs/gemini-p7-status.md` before triggering it; no Google credentials or customer documents belong in a GitHub commit.
+
+## Security boundaries
+
+- Local port 2000 uses HTTP and is **not** approved for publicly exposed PII, OTP or customer documents. Use upstream TLS and access controls before external deployment.
+- n8n webhooks, private network endpoints and persistent state must not be exposed from the browser.
+- Keep migration owner, Node runtime, model key and n8n secrets separate.
+- Never run `docker compose down -v` against a non-disposable project or another application's named volumes.
+- Do not label a successful Docker build as proof of a live Gemini or provider integration.
