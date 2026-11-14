@@ -6,6 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { assertCatalogActionRequirementsTx } from "./intent-action-operations.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 
 export const QUOTATION_ACKNOWLEDGMENT =
@@ -124,7 +125,10 @@ async function pricedOptions(
        AND ti.status='active'
      JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id
        AND i.catalog_version_id=t.intent_catalog_version_id
-       AND o.intent_key=i.intent_key
+       AND (o.intent_key=i.intent_key OR (
+          i.intent_key IN ('quotation_request','package_comparison')
+          AND o.intent_key IN ('company_formation','package_comparison')
+        ))
      JOIN LATERAL (
        SELECT pr.id,pr.currency,pr.amount,pr.revision,pr.conditions
        FROM offering_price_revisions pr
@@ -202,6 +206,7 @@ export class QuotationOperations {
           throw new PersistenceError("CONFLICT","Quotation already exists; changing the package needs a new authorization");
         return {quotation:toView(stored),duplicated:true};
       }
+      await assertCatalogActionRequirementsTx(client,scope.agentId,ticketId,"generate_quote");
       const leadId=await requireEligibleTicket(client,scope.agentId,ticketId);
       const options=await pricedOptions(client,scope.agentId,ticketId,input.offeringKey);
       const chosen=options[0];
