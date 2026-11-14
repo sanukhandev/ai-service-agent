@@ -3,9 +3,10 @@ info:
   title: AI Service Agent POC API Contract
   version: 0.1.0
   description: >
-    Contract-first P0 definition. Public endpoints are browser-to-Node.
-    Node invokes the existing published Foundry agent directly.
-    These endpoints are planned and not implemented yet.
+    Public endpoints are browser-to-Node. The Node Gemini worker invokes the
+    published model and File Search and independently verifies material claims
+    before publishing assistant replies. This schema is a versioned HTTP
+    reference; check runtime/app.ts for exact implementation.
 servers:
   - url: /
 tags:
