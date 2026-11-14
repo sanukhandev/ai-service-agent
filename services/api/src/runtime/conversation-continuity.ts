@@ -18,7 +18,6 @@ function clean(text:string,max:number):string {
 }
 /** Extractive only: never ask a model to turn customer text into verified facts. */
 export function extractiveSummary(
-  context:ConversationContext,
   previous:readonly OlderCustomerMessage[],
 ):{text:string;coveredThrough:string}|null {
   if(!previous.length)return null;

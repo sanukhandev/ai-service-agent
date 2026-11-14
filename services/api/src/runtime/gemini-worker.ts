@@ -146,7 +146,7 @@ export class GeminiTurnWorker {
         .slice(-16).map(m=>({role:m.role as "customer"|"assistant",
           text:m.text,sourceMessageId:m.id}));
       const oldCustomerTurns=active.olderCustomerMessages;
-      const summary=extractiveSummary(context,oldCustomerTurns);
+      const summary=extractiveSummary(oldCustomerTurns);
       const sessionContext=buildSessionContext(context,actions,
         summary?.text??context.summary?.text??null,history);
       // Refresh an extractive, provenance-labelled summary periodically.

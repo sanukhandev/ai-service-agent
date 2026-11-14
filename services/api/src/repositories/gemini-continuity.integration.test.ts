@@ -50,7 +50,7 @@ test("Gemini 56-message timeline uses latest messages, excludes future turns and
     const facts=await context.read(scope,session.ticketId);
     assert.equal(facts.activeIntent,"company_formation");
     assert.equal(facts.knownFacts["visa_count"],3);
-    const digest=extractiveSummary(facts,latest.olderCustomerMessages);
+    const digest=extractiveSummary(latest.olderCustomerMessages);
     assert(digest);
     await context.appendSummary(scope,session.ticketId,digest.text);
     const reloaded=await context.read(scope,session.ticketId);

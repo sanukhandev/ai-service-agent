@@ -12,7 +12,7 @@ const actions={intentKey:"company_formation",actions:[
   {actionKey:"create_lead",kind:"salesforce_lead",ready:false,missing:["business_activity"],request:null},
 ]};
 test("extractive memory is customer-labelled not model-authored claims",()=>{
-  const memory=extractiveSummary(ctx,[{sequence:"1",text:"I need three visas"},
+  const memory=extractiveSummary([{sequence:"1",text:"I need three visas"},
     {sequence:"9",text:"Actually four visas, please"}]);
   assert(memory);
   const parsed=JSON.parse(memory.text);
@@ -23,7 +23,7 @@ test("extractive memory is customer-labelled not model-authored claims",()=>{
   assert.equal(shouldRefreshSummary(memory.text,"17"),true);
 });
 test("snapshot highlights current ticket facts over historical customer comments",()=>{
-  const memory=extractiveSummary(ctx,[{sequence:"1",text:"I want 2 visas"}]);
+  const memory=extractiveSummary([{sequence:"1",text:"I want 2 visas"}]);
   assert(memory);
   const text=buildSessionContext(ctx,actions,memory.text,[
     {role:"assistant",text:"What is your business activity?",sourceMessageId:null},
