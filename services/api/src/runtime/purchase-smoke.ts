@@ -4,7 +4,8 @@ import { createHash, randomUUID } from "node:crypto";
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository } from "../repositories/agent.js";
 import { workerTicketScope } from "../repositories/types.js";
-import { PurchaseOperations, PURCHASE_CONSENT, assertPurchaseReady } from "./purchase-operations.js";
+import { PurchaseOperations, PURCHASE_CONSENT, assertPurchaseReady, invoiceBillingName } from "./purchase-operations.js";
+import { parseIdentityResult, nameKey } from "./identity-extractor.js";
 import { QuotationOperations } from "./quotation-operations.js";
 
 async function run(){
@@ -17,13 +18,23 @@ async function run(){
     const agent=await new AgentRepository(db).resolvePublicKey("ancfz");
     assert.ok(agent);
     const scope=workerTicketScope(agent.id,ticketId);
-    const purchases=new PurchaseOperations(db);
+    const purchases=new PurchaseOperations(db,async(_bytes,kind)=>({
+      fullName:"TEST SANDBOX PERSON",
+      documentNumberLast4:kind==="passport"?"P123":"E456",
+      model:"prebuilt-idDocument" as const,
+    }));
+    const sample={status:"succeeded",analyzeResult:{documents:[{fields:{
+      FirstName:{valueString:"TEST"},LastName:{valueString:"SANDBOX PERSON"},
+      DocumentNumber:{valueString:"P123456"},
+    }}]}};
+    assert.equal(parseIdentityResult(sample,"passport").fullName,"TEST SANDBOX PERSON");
+    assert.equal(nameKey("PERSON TEST SANDBOX"),nameKey("TEST SANDBOX PERSON"));
     const quoted=await new QuotationOperations(db).get(scope,ticketId);
     assert.ok(quoted);
     const before=await purchases.read(scope,ticketId);
     assert.equal(before.supported,true);
     assert.equal(before.intentKey,"company_formation");
-    assert.equal(before.requirements.length,2);
+    assert.deepEqual(before.requirements.map(d=>d.key),["passport","emirates_id"]);
     assert.equal(before.confirmed,false);
     assert.equal(before.readyForOtp,false);
     const consent={
@@ -52,12 +63,12 @@ async function run(){
       requirementKey,fileName:requirementKey+".pdf",
       contentType:"application/pdf",dataBase64:bytes.toString("base64"),
     });
-    const first=await upload("shareholder_identity_pack",doc1);
+    const first=await upload("passport",doc1);
     assert.equal(first.duplicated,false);
-    assert.equal((await upload("shareholder_identity_pack",doc1)).duplicated,true);
-    await assert.rejects(()=>upload("shareholder_identity_pack",doc2),conflict);
+    assert.equal((await upload("passport",doc1)).duplicated,true);
+    await assert.rejects(()=>upload("passport",doc2),conflict);
     await assert.rejects(()=>purchases.confirm(scope,ticketId,consent),conflict);
-    const second=await upload("registration_application",doc2);
+    const second=await upload("emirates_id",doc2);
     assert.ok(second.documentId);
     const downloaded=await purchases.download(scope,ticketId,first.documentId);
     assert(downloaded.bytes.equals(doc1));
@@ -70,13 +81,15 @@ async function run(){
     await assert.rejects(()=>upload("shareholder_identity_pack",doc1),conflict);
     await db.withAgent(agent.id,async client=>{
       await assertPurchaseReady(client,agent.id,ticketId,quoted.id);
+      assert.equal(await invoiceBillingName(client,agent.id,ticketId,quoted.id),"TEST SANDBOX PERSON");
     });
     const status=await purchases.read(scope,ticketId);
     assert.equal(status.readyForOtp,true);
     assert.equal(status.missing.length,0);
     assert.equal(status.confirmed,true);
+    assert.equal(status.billingName,"TEST SANDBOX PERSON");
     assert(!JSON.stringify(status).includes(doc1.toString("base64")));
-    console.log("P5 purchase DB smoke PASS: published intent, required documents, private hashes, consent and OTP gate");
+    console.log("P5 purchase DB smoke PASS: passport/Emirates ID OCR fields, matched invoice billing name, consent and OTP gate");
   }finally{await db.close();}
 }
 run().catch(err=>{console.error(err);process.exitCode=1;});
