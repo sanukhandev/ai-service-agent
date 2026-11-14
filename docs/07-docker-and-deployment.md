@@ -1,23 +1,23 @@
-# Docker Compose and Nginx — current POC
+# Docker Compose and Nginx — Gemini experiment
 
-## Only public host port: 80
+## Only public host port: 2000 (separate from Foundry main)
 
-The **only** host-published service is Nginx on `80:80`. Next.js `web:3000`, Node `api:4000`, PostgreSQL `postgres:5432`, Redis `redis:6379` and optional n8n `n8n:5678` run inside the Compose network without host `ports:`.
+The **only** host-published service is experiment Nginx on `127.0.0.1:2000:80`. Its internal container port remains 80. The Foundry main stack can simultaneously publish `127.0.0.1:80:80`. The Compose project name is `ai-service-agent-gemini`, with dedicated PostgreSQL, Redis, n8n and Azure CLI volumes and dedicated networks. **Do not reuse main's `.env`, database volumes, n8n encryption key or credentials.** Next.js `web:3000`, Node `api:4000`, PostgreSQL `postgres:5432`, Redis `redis:6379` and optional n8n `n8n:5678` run inside the Compose network without host `ports:`.
 
 ```text
-Browser -> http://localhost:80 -> Nginx
+Browser -> http://localhost:2000 -> experiment Nginx
   /            -> web:3000 (Next.js)
   /api/        -> api:4000 (Fastify)
   /api/events/ -> api:4000 (SSE, buffering off)
-Node API -> Foundry Agent GPT-5.4 / Foundry IQ over outbound HTTPS
+Node API -> Gemini + Gemini File Search over outbound HTTPS (planned; current runtime is still Foundry-based until replacement is implemented)
 Node API -> PostgreSQL, Redis, private n8n within Docker DNS
 ```
 
-No Angular/static admin asset stage and no Python Model Gateway. Do not add `/admin/`, `/ai-gateway/` or `/n8n/` proxy routes in this POC. n8n remains behind an optional `workflows` Compose profile until P4.
+No Angular/static admin asset stage and no Python Model Gateway. The private n8n editor is available at `http://localhost:2000/n8n/` only while the optional `workflows` Compose profile is running. Public n8n webhook/form/MCP ingress remains blocked by Nginx.
 
 ## Docker network segregation
 
-Compose uses `frontend` for Nginx, Next.js and Node, plus `backend` for Node, PostgreSQL, Redis and n8n. **Only Node joins both networks**. The customer web service cannot reach n8n, PostgreSQL or Redis directly. No backend service publishes a host port.
+Compose uses `frontend` for Nginx, Next.js and Node, plus `backend` for Node, PostgreSQL, Redis and n8n. **Nginx and Node join both networks** to allow the optional private n8n editor proxy. The customer web service cannot reach n8n, PostgreSQL or Redis directly. No backend service publishes a host port.
 
 ## P0 infrastructure files
 
@@ -54,12 +54,12 @@ docker compose ps
 bash scripts/p0-smoke.sh
 ```
 
-Expected public endpoints *after images start*: `http://localhost/` (customer shell), `http://localhost/api/health` (Fastify health). The actual Foundry chat is not present until P1/P2.
+Expected experimental endpoints *after images start*: `http://localhost:2000/` (customer shell), `http://localhost:2000/api/health` (Fastify health), optionally `http://localhost:2000/n8n/` (private editor). The Gemini model integration has not yet been implemented.
 
 ## POC safety and constraints
 
-- Port 80 is HTTP and suitable only for localhost/isolated testing. Use upstream HTTPS before handling real customer PII, OTP or uploads publicly.
+- Port 2000 is HTTP and suitable only for localhost/isolated testing. Use upstream HTTPS before handling real customer PII, OTP or uploads publicly.
 - No public n8n editor, private database, Redis, Node or Foundry credential endpoint.
-- Preserve `postgres-data`, `redis-data`, `n8n-data` and `azure-cli-auth`; `down -v` deletes these.
+- Preserve the explicitly named `ai-service-agent-gemini-*` volumes; `docker compose down -v` deletes experimental data. Never delete or mount Foundry main volumes.
 - Node uses the restricted **non-superuser** PostgreSQL `agent_runtime` role and transaction-local agent RLS context; never use the migration owner for application queries.
 - Do not claim images built or live Azure access verified until actual Docker commands run in a Docker-enabled environment.
