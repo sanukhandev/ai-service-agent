@@ -8,8 +8,7 @@ import { ConversationContextRepository, type FactValue } from "./context.js";
 import type { TicketScope } from "./types.js";
 
 // Construct this adapter per authorized ticket request, not as a singleton with
-// a mutable global current user. It implements existing P3 tool contracts
-// without changing the Track E source files.
+// a mutable global current user. It binds the published catalog to the authorized ticket and current session.
 export function scopedIntentToolRepositories(
   db: PersistenceDatabase,
   scope: TicketScope,
@@ -19,7 +18,7 @@ export function scopedIntentToolRepositories(
   facts: TicketFactRepository;
   ticketIntents: TicketIntentRepository;
 } {
-  const legacyCatalog = new PgCatalogRepository(new AgentScopedDatabase(db.pool));
+  const catalogRepository = new PgCatalogRepository(new AgentScopedDatabase(db.pool));
   const context = new ConversationContextRepository(db);
 
   function check(agentId: string, requestedTicketId?: string): void {
@@ -35,7 +34,7 @@ export function scopedIntentToolRepositories(
       if (catalogVersion !== pinned.intentCatalogRevision) {
         throw new PersistenceError("NOT_FOUND", "Intent catalog revision is not pinned to the ticket");
       }
-      return legacyCatalog.listIntents(agentId, catalogVersion);
+      return catalogRepository.listIntents(agentId, catalogVersion);
     },
     async listOfferings(
       agentId: string, catalogVersion: string, intentKey?: string,
@@ -45,7 +44,7 @@ export function scopedIntentToolRepositories(
       if (catalogVersion !== pinned.offeringCatalogRevision) {
         throw new PersistenceError("NOT_FOUND", "Offering catalog revision is not pinned to the ticket");
       }
-      return legacyCatalog.listOfferings(agentId, catalogVersion, intentKey);
+      return catalogRepository.listOfferings(agentId, catalogVersion, intentKey);
     },
   };
   const facts: TicketFactRepository = {
