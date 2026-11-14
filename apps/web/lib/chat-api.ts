@@ -8,6 +8,9 @@ export interface Ticket {
   subject?: string | null;
   status: TicketStatus;
   createdAt: string;
+  sessionId?: string | null;
+  sessionStatus?: "active" | "expired" | "closed";
+  expiresAt?: string | null;
 }
 
 export interface SourceReference {
@@ -34,7 +37,9 @@ export interface AcceptedMessage {
   ticketId: string;
   messageId: string;
   requestId: string;
-  status: "accepted";
+  status: "accepted" | "duplicate";
+  sessionId?: string;
+  expiresAt?: string;
 }
 
 export class ChatApiError extends Error {
@@ -90,7 +95,7 @@ function invalidContract(): never {
   throw new ChatApiError("The service returned an unexpected response. Please try again.", 0, "INVALID_CONTRACT");
 }
 
-async function request(path: string, init: RequestInit, expectedStatus: number): Promise<unknown> {
+async function request(path: string, init: RequestInit, expectedStatus: number | readonly number[]): Promise<unknown> {
   let response: Response;
   try {
     response = await fetch(path, {
@@ -126,7 +131,7 @@ async function request(path: string, init: RequestInit, expectedStatus: number):
       typeof problem.requestId === "string" ? problem.requestId : undefined,
     );
   }
-  if (response.status !== expectedStatus) invalidContract();
+  if (!(Array.isArray(expectedStatus) ? expectedStatus.includes(response.status) : response.status === expectedStatus)) invalidContract();
   return payload;
 }
 
@@ -151,9 +156,9 @@ export async function sendCustomerMessage(
   const data = await request(`/api/v1/tickets/${encodeURIComponent(ticketId)}/messages`, {
     method: "POST",
     body: JSON.stringify({ requestId, text }),
-  }, 202);
+  }, [200, 202]);
   if (!isRecord(data) || data.ticketId !== ticketId || data.requestId !== requestId ||
-      data.status !== "accepted" || typeof data.messageId !== "string") invalidContract();
+      !["accepted","duplicate"].includes(String(data.status)) || typeof data.messageId !== "string") invalidContract();
   return data as unknown as AcceptedMessage;
 }
 
