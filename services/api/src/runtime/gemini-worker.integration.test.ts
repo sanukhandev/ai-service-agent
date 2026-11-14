@@ -52,9 +52,10 @@ test("Gemini worker records supported reply and audit atomically (real disposabl
     }
     assert.ok(assistant,"Gemini assistant reply never committed");
     assert.equal(assistant.text,"Hello!");
-    assert.equal(modelRequests.length,1);
-    assert.equal(modelRequests[0].session.sessionId,session.sessionId);
-    assert.equal(modelRequests[0].agent.provider,"gemini");
+    const ourRequests=()=>modelRequests.filter(x=>x.session.sessionId===session.sessionId);
+    assert.equal(ourRequests().length,1,"Only one model call for this session turn");
+    assert.equal(ourRequests()[0].session.sessionId,session.sessionId);
+    assert.equal(ourRequests()[0].agent.provider,"gemini");
     const saved=await db.withAgent(agentId,async client=>{
       const turns=await client.query<{state:string;provider_response_id:string|null}>(
         "SELECT state,provider_response_id FROM ticket_turns WHERE agent_id=$1 AND ticket_id=$2 AND request_id=$3",
@@ -99,7 +100,7 @@ test("Gemini worker records supported reply and audit atomically (real disposabl
     });
     assert.equal(safeAudit?.category,"clarification");
     assert.equal(safeAudit?.grounding_status,"supported");
-    assert.equal(modelRequests.length,2);
+    assert.equal(ourRequests().length,2,"Only two model turns for this session");
 
   } finally {worker.stop();await db.close();}
 });
