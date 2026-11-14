@@ -45,7 +45,11 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 6
+test "$migrations" = 7
+# New OTP/payment/invoice tables must enforce agent-scoped row-level security.
+payment_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname IN ('ticket_payment_otps','ticket_payment_attempts','ticket_payment_invoices') AND relrowsecurity AND relforcerowsecurity")
+test "$payment_rls" = 3
 count=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM ticket_messages WHERE ticket_id='$ticket_id' AND role='customer'")
 test "$count" = 1
@@ -110,5 +114,19 @@ test "$private_pdf" = 404
 quoted=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/quotations")
 printf '%s' "$quoted" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["quotation"]["state"]=="queued";assert d["quotation"]["pdfAvailable"] is False'
 printf '%s\n' 'P4 quotation offline DB smoke PASS'
+# P5 customer payment routes are still disabled without explicit test-mode flags.
+unauthorized_payment=$(curl --silent -o /dev/null -w '%{http_code}' \
+  "http://localhost/api/v1/tickets/$ticket_id/payments")
+test "$unauthorized_payment" = 404
+payment_status=$(curl --fail --silent --show-error -b "$jar" \
+  "http://localhost/api/v1/tickets/$ticket_id/payments")
+printf '%s' "$payment_status" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["enabled"] is False;assert d["payments"] == [];assert d["invoice"] is None'
+otp_disabled=$(curl --silent -o /dev/null -w '%{http_code}' -b "$jar" \
+  -H 'Content-Type: application/json' -d '{}' \
+  "http://localhost/api/v1/tickets/$ticket_id/payments/otp")
+test "$otp_disabled" = 503
+printf '%s\\n' 'P5 scoped payment tables and disabled-by-default routes PASS'
+
+
 
 printf '%s\n' 'Live Foundry and browser certification remain BLOCKED without credentials.'
