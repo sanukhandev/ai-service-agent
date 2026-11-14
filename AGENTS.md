@@ -1,5 +1,7 @@
 # AGENTS.md — AI Service Agent development contract
 
+**Gemini experiment branch override (this branch only):** On `experiment/gemini-file-search-poc`, follow [the Gemini experimental implementation plan](docs/gemini-experiment-implementation-plan.md) for AI provider, knowledge, infrastructure and conversation-session behavior; it supersedes conflicting Foundry-only directions below. Preserve `main` unchanged and never merge/cherry-pick Gemini changes into it. **AI memory is session-only: 60 minutes of inactivity from the last accepted customer message; expiration starts a fresh AI conversation with no carryover.** PostgreSQL retains historical tickets/messages; Redis is only active-context cache. The Foundry instructions below describe the original baseline and are not the active model-integration target on this branch.
+
 ## 1. Current scope (POC)
 
 Build one generic, **agent-centric** business assistant platform. Sara / ANCFZ is an example configuration. The repository is a clean rebuild, not a migration of old `agentic-rag-ai` code.
