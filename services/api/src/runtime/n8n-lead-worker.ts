@@ -5,6 +5,8 @@
  */
 import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
+import { workerTicketScope } from "../repositories/types.js";
 import { leadDispatchEnabled, verifiedLeadResult } from "./lead-operations.js";
 
 interface Claim {
@@ -153,6 +155,24 @@ export class N8nLeadWorker {
           reason:"Provider outcome unverified; manual reconciliation required",
         },
       );
+      if(success) {
+        // Save the chat notification atomically with the verified Salesforce state.
+        // Closed tickets retain their durable operation event but receive no new messages.
+        const ticket=await client.query<{status:string}>(
+          "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
+          [op.agentId,op.ticketId],
+        );
+        const agent=await client.query<{status:string}>(
+          "SELECT status FROM agents WHERE id=$1",[op.agentId],
+        );
+        if(ticket.rows[0]?.status!=="closed" && agent.rows[0]?.status==="active") {
+          await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+            client,workerTicketScope(op.agentId,op.ticketId),op.ticketId,
+            lifecycleNoticeId("lead.verified",op.operationId),
+            "Your ANCFZ Salesforce lead has been created and verified. Its reference is available in your ticket.",
+          );
+        }
+      }
     });
   }
 

@@ -38,9 +38,9 @@ async function asBase64(file:File):Promise<string>{
   return encoded;
 }
 export function PurchaseChecklist({
-  ticketId,quote,onReady,
+  ticketId,quote,onReady,revision,
 }:{
-  ticketId:string;quote:Quote|null;onReady:(ready:boolean)=>void;
+  ticketId:string;quote:Quote|null;onReady:(ready:boolean)=>void;revision:number;
 }){
   const [data,setData]=useState<Purchase|null>(null);
   const [busy,setBusy]=useState<string|null>(null);
@@ -66,9 +66,11 @@ export function PurchaseChecklist({
       }catch{if(active)onReady(false);}
     }
     void refresh();
-    const timer=setInterval(()=>{void refresh();},5000);
-    return ()=>{active=false;clearInterval(timer);onReady(false);};
-  },[url,quote?.id,onReady]);
+    // A routine SSE refresh must not reset readiness or unmount an in-progress OTP form.
+    return ()=>{active=false;};
+  },[url,quote?.id,onReady,revision]);
+
+  useEffect(()=>()=>{onReady(false);},[ticketId,onReady]);
 
   async function upload(key:string,file:File|undefined){
     if(!file || busy)return;

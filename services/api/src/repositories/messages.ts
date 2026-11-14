@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireBounded, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "./events.js";
 import {
@@ -41,6 +43,17 @@ function assertReferences(refs: readonly SourceReference[]): void {
   }
 }
 
+/** Stable, domain-separated UUID for one lifecycle milestone per provider operation. */
+export function lifecycleNoticeId(stage: string, entityId: string): string {
+  requireUuid(entityId, "entityId");
+  if (!/^[a-z][a-z0-9_.-]{1,80}$/.test(stage)) {
+    throw new PersistenceError("INVALID_INPUT", "Invalid lifecycle notification stage");
+  }
+  const hash = createHash("sha256").update("assistant-notice:v1:" + stage + ":" + entityId).digest("hex");
+  return hash.slice(0, 8) + "-" + hash.slice(8, 12) + "-4" + hash.slice(13, 16) +
+    "-8" + hash.slice(17, 20) + "-" + hash.slice(20, 32);
+}
+
 export class TicketMessageRepository {
   constructor(private readonly db: PersistenceDatabase) {}
 
@@ -62,11 +75,55 @@ export class TicketMessageRepository {
     return this.write(scope, ticketId, "assistant", requestId, text, [...sourceReferences]);
   }
 
+  /** Write an assistant lifecycle notice in the SAME trusted, agent-scoped transaction
+   * as the provider state transition. Both the notice and SSE event are atomic.
+   * An existing requestId returns the prior message without emitting a duplicate.
+   * Caller must use an already-scoped transaction and a server-derived ticket scope.
+   */
+  async createAssistantMessageTx(
+    client: PoolClient, scope: TicketScope, ticketId: string, requestId: string,
+    text: string, sourceReferences: readonly SourceReference[] = [],
+  ): Promise<{ message: MessageRecord; duplicated: boolean }> {
+    requireUuid(requestId, "requestId");
+    requireBounded(text, "message", 30_000);
+    assertReferences(sourceReferences);
+    return this.writeInTx(client, scope, ticketId, "assistant", requestId, text, [...sourceReferences]);
+  }
+
+  /**
+   * Best-effort notification in a trusted provider-finalization transaction.
+   * A failed notification insert must never roll back an independently verified
+   * payment/lead result or its durable operation event. The operation event
+   * remains available to SSE even if the optional chat notice fails.
+   */
+  async tryAssistantLifecycleNoticeTx(
+    client: PoolClient, scope: TicketScope, ticketId: string, requestId: string,
+    text: string,
+  ): Promise<boolean> {
+    await client.query("SAVEPOINT service_agent_optional_notice");
+    try {
+      await this.createAssistantMessageTx(client,scope,ticketId,requestId,text);
+      await client.query("RELEASE SAVEPOINT service_agent_optional_notice");
+      return true;
+    } catch {
+      await client.query("ROLLBACK TO SAVEPOINT service_agent_optional_notice");
+      await client.query("RELEASE SAVEPOINT service_agent_optional_notice");
+      return false;
+    }
+  }
+
   private async write(
     scope: TicketScope, ticketId: string, role: MessageRow["role"],
     requestId: string, text: string, refs: SourceReference[],
   ): Promise<{ message: MessageRecord; duplicated: boolean }> {
-    return this.db.withAgent(scope.agentId, async (client) => {
+    return this.db.withAgent(scope.agentId, (client) =>
+      this.writeInTx(client, scope, ticketId, role, requestId, text, refs));
+  }
+
+  private async writeInTx(
+    client: PoolClient, scope: TicketScope, ticketId: string, role: MessageRow["role"],
+    requestId: string, text: string, refs: SourceReference[],
+  ): Promise<{ message: MessageRecord; duplicated: boolean }> {
       const ticket = await authorizedTicket(client, scope, ticketId, true);
       const prior = await client.query<MessageRow & { identical_refs: boolean }>(
         "SELECT *, source_references = $5::jsonb AS identical_refs FROM ticket_messages WHERE agent_id = $1 AND ticket_id = $2 AND role = $3 AND request_id = $4",
@@ -114,7 +171,6 @@ export class TicketMessageRepository {
         role === "customer" ? "message.accepted" : "assistant.message",
         role === "customer" ? customerEvent : assistantEvent);
       return { message: mapMessage(row), duplicated: false };
-    });
   }
 
   async getMessageByRequestId(

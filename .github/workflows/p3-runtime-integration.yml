@@ -41,6 +41,8 @@ jobs:
         run: node scripts/check-p4-quotation.mjs
       - name: Validate Node P5 2Checkout OTP/payment/invoice safety offline
         run: node scripts/check-p5-2checkout.mjs
+      - name: Validate SSE milestone notices and fail-safe persistence
+        run: node scripts/check-sse-lifecycle-notifications.mjs
       - name: Validate Compose and Nginx-only ingress
         run: |
           docker compose config --quiet

@@ -139,6 +139,21 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
+  // Changes only when durable SSE events arrive (or a connection is restored).
+  // Child action forms refresh from this revision instead of periodic GET polling.
+  const [eventRevision, setEventRevision] = useState(0);
+  const panelRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePanelRefresh = useCallback(() => {
+    // Coalesce the large replay batch on reconnect into one panel refresh.
+    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
+    panelRefreshTimer.current = setTimeout(() => {
+      panelRefreshTimer.current = null;
+      setEventRevision((previous) => previous + 1);
+    }, 150);
+  }, []);
+  useEffect(() => () => {
+    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
+  }, [ticket?.id]);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
   const [showLatest, setShowLatest] = useState(false);
@@ -151,12 +166,6 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const prevMessageCount = useRef(0);
-  const knownMessages = useRef<ChatMessage[]>([]);
-
-  useEffect(() => {
-    knownMessages.current = messages;
-  }, [messages]);
-
   useEffect(() => {
     let subscribed = true;
     if (!initPromise.current) initPromise.current = initializeTicket(agentKey);
@@ -203,13 +212,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       if (history.ticket.agentKey !== agentKey)
         throw new ChatApiError("Ticket agent mismatch.", 404, "NOT_FOUND");
       setTicket(history.ticket);
-      const sawNewReply = history.messages.some(
-        (message) =>
-          message.role === "assistant" &&
-          !knownMessages.current.some((old) => old.id === message.id),
-      );
       setMessages((current) => mergeMessages(current, history.messages));
-      if (sawNewReply) setTurnState("idle");
+      // A lifecycle assistant notice can arrive during an active Foundry turn.
+      // Only the authoritative ticket state decides whether processing finished.
+      if (history.ticket.status !== "processing") setTurnState("idle");
     } catch (error) {
       if (error instanceof ChatApiError && error.status === 404) {
         rememberTicket(agentKey, null);
@@ -227,6 +233,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
   const handleEvent = useCallback(
     (event: TicketEvent) => {
+      if (!["assistant.processing", "agent.processing", "agent.response.started"].includes(event.name)) {
+        schedulePanelRefresh();
+      }
       const incomingMessage = messageFromEvent(event.data);
       const incomingTicket = ticketFromEvent(event.data);
       if (
@@ -240,7 +249,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       if (incomingMessage) {
         setMessages((existing) => mergeMessages(existing, [incomingMessage]));
         if (incomingMessage.role === "assistant") {
-          setTurnState("idle");
+          // Do not clear a running Foundry turn for an unsolicited workflow notice.
           setSendError(null);
         }
       }
@@ -288,10 +297,13 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           break;
       }
     },
-    [agentKey, ticket?.id, refresh],
+    [agentKey, ticket?.id, refresh, schedulePanelRefresh],
   );
 
-  const stream = useTicketEvents(ticket?.id ?? null, handleEvent, refresh);
+  const stream = useTicketEvents(ticket?.id ?? null, handleEvent, () => {
+    void refresh();
+    schedulePanelRefresh();
+  });
 
   const send = useCallback(
     async (text: string) => {
@@ -369,6 +381,8 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     turnState === "accepted" ||
     turnState === "processing" ||
     (ticket?.status === "processing" && turnState !== "sending");
+  // Preserve existing Foundry-turn serialization and input locking.
+  // Background n8n/Salesforce/payment/invoice work does NOT set isProcessing.
   const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isProcessing;
 
   const currentStatus = ticket ? statusConfig[ticket.status] : null;
@@ -683,7 +697,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           )}
 
           {/* Selected catalog actions have one authoritative Node UI. */}
-          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} />}
+          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} revision={eventRevision} />}
 
           <ChatComposer
             onSend={send}

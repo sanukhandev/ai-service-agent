@@ -8,7 +8,7 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
-import { TicketMessageRepository } from "../repositories/messages.js";
+import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { createHash } from "node:crypto";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
@@ -277,6 +277,11 @@ export class PaymentOperations {
       await appendEventTx(client,scope.agentId,ticketId,"payment.queued",{
         paymentId:attemptId,quotationId:input.quotationId,
       });
+      // OTP verification, payment queue and assistant message commit atomically.
+      await new TicketMessageRepository(this.db).createAssistantMessageTx(
+        client,scope,ticketId,lifecycleNoticeId("otp.verified",row.id),
+        "Your synthetic test OTP has been verified. Your sandbox order is queued; payment has not yet been confirmed.",
+      );
       return {payment:paymentView(paid.rows[0]),badCode:false};
     });
     if(outcome.badCode)throw new PersistenceError("INVALID_INPUT","Invalid test OTP");
@@ -338,6 +343,22 @@ export class PaymentOperations {
           SET state='verifying',verification_started_at=now(),updated_at=now()
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,paymentId]);
+      await appendEventTx(client,scope.agentId,ticketId,"payment.verification.started",{
+        paymentId,testOnly:true,
+      });
+      const ticket=await client.query<{status:string}>(
+        "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
+        [scope.agentId,ticketId],
+      );
+      const agent=await client.query<{status:string}>(
+        "SELECT status FROM agents WHERE id=$1",[scope.agentId],
+      );
+      if(ticket.rows[0]?.status!=="closed" && agent.rows[0]?.status==="active") {
+        await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+          client,scope,ticketId,lifecycleNoticeId("payment.verification.started",paymentId),
+          "Your sandbox payment verification has started. You can continue chatting while the provider status is checked.",
+        );
+      }
       return {
         expected:{
           ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
@@ -393,9 +414,26 @@ export class PaymentOperations {
             queued.rows[0]?.id,docNumber],
         );
         }
-        await appendEventTx(client,scope.agentId,ticketId,"payment.verified",{
-          paymentId,quotationId:expected.quotationId,testOnly:true,
-        });
+        if(claim.previousState!=="verified_test_payment") {
+          await appendEventTx(client,scope.agentId,ticketId,"payment.verified",{
+            paymentId,quotationId:expected.quotationId,testOnly:true,
+          });
+        }
+        // A customer may close the ticket while the provider GET is in flight.
+        // That must not roll back a verified payment or leave it stuck verifying.
+        const activeTicket=await client.query<{status:string}>(
+          "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
+          [scope.agentId,ticketId],
+        );
+        const activeAgent=await client.query<{status:string}>(
+          "SELECT status FROM agents WHERE id=$1",[scope.agentId],
+        );
+        if(activeTicket.rows[0]?.status!=="closed" && activeAgent.rows[0]?.status==="active") {
+          await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+            client,scope,ticketId,lifecycleNoticeId("payment.verified",paymentId),
+            "Your sandbox payment has been independently verified as COMPLETE. I am preparing your TEST invoice now.",
+          );
+        }
       }else{
         await appendEventTx(client,scope.agentId,ticketId,"payment.checked",{
           paymentId,providerStatus:result?.providerStatus??"unavailable",verified:false,
