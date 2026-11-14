@@ -17,6 +17,7 @@ import { TurnQueue,type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ActionProposalOperations, registerOperationTools } from "./action-proposals.js";
+import { buildSessionContext, extractiveSummary, shouldRefreshSummary } from "./conversation-continuity.js";
 
 const TOOL_NAMES: ReadonlySet<string> = new Set([
   "find_intents","select_ticket_intent","get_intent_requirements",
@@ -91,13 +92,14 @@ export class GeminiTurnWorker {
     let toolsExecuted=false;
     try {
       const scope=workerTicketScope(turn.agentId,turn.ticketId);
-      const active=await this.sessions.forTicket(scope,turn.ticketId);
+      const active=await this.sessions.forModelTurn(scope,turn.ticketId,turn.messageId);
       if(!active?.active)throw new PersistenceError("CONFLICT","SESSION_EXPIRED");
       const session=active.session;
       const agent=await this.bindings.forSession(scope,session.sessionId);
       const current=active.messages.find(x=>x.id===turn.messageId);
       if(!current || current.role!=="customer")throw new Error("CUSTOMER_MESSAGE_NOT_FOUND");
       const context=await this.context.read(scope,turn.ticketId);
+      const actions=await new IntentActionOperations(this.db).catalog(scope,turn.ticketId);
       if(!context.intentCatalogRevision || !context.offeringCatalogRevision)
         throw new Error("PINNED_CATALOG_MISSING");
       const registry=new AgentToolRegistry();
@@ -143,9 +145,18 @@ export class GeminiTurnWorker {
       const history=active.messages.filter(m=>m.id!==turn.messageId)
         .slice(-16).map(m=>({role:m.role as "customer"|"assistant",
           text:m.text,sourceMessageId:m.id}));
+      const oldCustomerTurns=active.olderCustomerMessages;
+      const summary=extractiveSummary(context,oldCustomerTurns);
+      const sessionContext=buildSessionContext(context,actions,
+        summary?.text??null,history);
+      // Refresh an extractive, provenance-labelled summary periodically.
+      // The summary never authorizes actions, revises facts or provides RAG evidence.
+      if(summary && shouldRefreshSummary(context.summary?.text??null,summary.coveredThrough)){
+        await this.context.appendSummary(scope,turn.ticketId,summary.text);
+      }
       const request:ModelTurnRequest={
         requestId:turn.requestId,acceptedCustomerMessageId:turn.messageId,
-        agent,session,currentSessionHistory:history,
+        agent,session,currentSessionHistory:history,sessionContext,
         customerMessage:current.text,
         allowedBuiltinTools:agent.knowledge?["file_search"]:[],
         allowedBusinessToolNames:requestedTools,deadlineMs:45000,

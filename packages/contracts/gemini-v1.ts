@@ -102,6 +102,8 @@ export interface ModelTurnRequest {
   readonly agent: AgentRuntimeBinding;
   readonly session: AiSessionState;
   readonly currentSessionHistory: readonly ModelConversationMessage[];
+  /** Bounded Node-derived ticket state; never standalone business evidence. */
+  readonly sessionContext?: string;
   readonly customerMessage: string;
   readonly allowedBuiltinTools: readonly GeminiBuiltinToolName[];
   readonly allowedBusinessToolNames: readonly NodeBusinessToolName[];

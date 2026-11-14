@@ -207,6 +207,55 @@ export class GeminiSessionRepository {
     return id ? this.recover(scope,id) : null;
   }
 
+  /**
+   * Authoritative bounded model history; unlike browser pagination this reads
+   * the latest messages at or BEFORE the claimed customer message.
+   * Future accepted turns are intentionally excluded. Oldest-first result
+   * includes at most 16 preceding messages and the current message.
+   */
+  async forModelTurn(scope:TicketScope,ticketId:string,customerMessageId:string){
+    requireUuid(ticketId,"ticketId");requireUuid(customerMessageId,"customerMessageId");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      const found=await client.query<{id:string}>(
+        "SELECT id FROM ai_conversation_sessions WHERE agent_id=$1 AND ticket_id=$2",
+        [scope.agentId,ticketId]);
+      if(!found.rows[0])return null;
+      const row=await lockedSession(client,scope,found.rows[0].id);
+      const at=await clock(client);
+      if(await expireIfNeeded(client,row,at))return {
+        active:false,session:mapSession({...row,status:"expired" as const,
+          continuation_opaque_ref:null,pending_tool_state_ref:null}),
+        messages:[],olderCustomerMessages:[],
+      };
+      const current=await client.query<{message_sequence:string}>(
+        "SELECT message_sequence FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 AND role='customer'",
+        [scope.agentId,ticketId,customerMessageId]);
+      if(!current.rows[0])throw new PersistenceError("NOT_FOUND","Accepted customer message unavailable");
+      const latest=await client.query<CustomerMessageRow>(
+        `SELECT id,message_sequence,created_at,content,role,request_id
+         FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2
+           AND message_sequence<=$3::bigint
+         ORDER BY message_sequence DESC LIMIT 17`,
+        [scope.agentId,ticketId,current.rows[0].message_sequence]);
+      const chronological=latest.rows.reverse();
+      if(!chronological.some(m=>m.id===customerMessageId))
+        throw new PersistenceError("CONFLICT","Current turn missing from bounded history");
+      // These are unverified customer excerpts, not catalog or RAG evidence.
+      const older=await client.query<Pick<CustomerMessageRow,"id"|"message_sequence"|"content">>(
+        `SELECT id,message_sequence,content FROM ticket_messages
+         WHERE agent_id=$1 AND ticket_id=$2 AND role='customer'
+           AND message_sequence<$3::bigint
+         ORDER BY message_sequence DESC LIMIT 24`,
+        [scope.agentId,ticketId,chronological[0].message_sequence]);
+      return {active:true,session:mapSession(row),
+        messages:chronological.map(mapMessage),
+        olderCustomerMessages:older.rows.reverse().map(m=>({
+          sequence:String(m.message_sequence),text:m.content,
+        }))};
+    });
+  }
+
   /** Browser refresh, Redis loss and model cursor recovery all use this path. */
   async recover(scope: TicketScope, sessionId: string, afterSequence = "0", limit = 500) {
     if(!/^(0|[1-9][0-9]{0,18})$/.test(afterSequence) || !Number.isSafeInteger(limit)
