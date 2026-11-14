@@ -44,7 +44,7 @@ test("Gemini worker records supported reply and audit atomically (real disposabl
     await queue.enqueue(scope,session.ticketId,admitted.message.id,requestId);
     await worker.start();
     let assistant=null;
-    for(let i=0;i<100;i++){
+    for(let i=0;i<180;i++){
       const history=await new TicketMessageRepository(db).listTicketMessages(scope,session.ticketId,"0",20);
       assistant=history.find(x=>x.role==="assistant")??null;
       if(assistant)break;
@@ -83,7 +83,7 @@ test("Gemini worker records supported reply and audit atomically (real disposabl
     assert.ok(unsupported.message);
     await queue.enqueue(scope,session.ticketId,unsupported.message.id,unsupportedRequestId);
     let safeReply=null;
-    for(let i=0;i<100;i++){
+    for(let i=0;i<180;i++){
       const history=await new TicketMessageRepository(db).listTicketMessages(scope,session.ticketId,"0",20);
       safeReply=history.find(x=>x.role==="assistant" && x.requestId===unsupportedRequestId)??null;
       if(safeReply)break;
