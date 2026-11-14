@@ -168,7 +168,7 @@ export class TicketMessageRepository {
   }
 
   async recentMessages(scope: TicketScope, ticketId: string, limit = 20): Promise<MessageRecord[]> {
-    const take = pageSize(limit, 100);
+    const take = pageSize(limit, 200);
     return this.db.withAgent(scope.agentId, async (client) => {
       await authorizedTicket(client, scope, ticketId);
       const result = await client.query<MessageRow>(
