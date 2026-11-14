@@ -26,13 +26,17 @@ services:
 
   api:
     build:
-      context: ./services/api
+      context: .
+      dockerfile: services/api/Dockerfile
     environment:
       API_HOST: 0.0.0.0
       API_PORT: "4000"
       AZURE_CONFIG_DIR: /home/app/.azure
       APP_ENV: ${APP_ENV:-development}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:2000}
+      # Gemini adapter is not activated until the single P7 Node worker is verified.
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-2.5-flash}
       FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
       FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
@@ -66,6 +70,7 @@ services:
       PGDATABASE: ${POSTGRES_DB:-ai_service_agent_gemini}
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
+      GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-2.5-flash}
       FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
       FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
