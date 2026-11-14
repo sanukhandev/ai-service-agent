@@ -5,6 +5,10 @@ on:
     paths:
       - "scripts/check-n8n-anzfc-seed.mjs"
       - "scripts/check-n8n-mock-otp.mjs"
+      - "scripts/check-ancfz-billing-workflows.mjs"
+      - "scripts/check-2checkout-upgrade.mjs"
+      - "scripts/upgrade-n8n-2checkout.mjs"
+      - "scripts/update-n8n-2checkout.ps1"
       - "scripts/setup-n8n-mock-otp.mjs"
       - "scripts/seed-n8n-anzfc.mjs"
       - "infra/n8n/ancfz/**"
@@ -33,3 +37,13 @@ jobs:
         run: node scripts/seed-n8n-anzfc.mjs --stage=setup --dry-run
       - name: Validate local mock OTP add-on offline
         run: node scripts/check-n8n-mock-otp.mjs
+      - name: Validate ANCFZ payment and invoice fail-closed contracts offline
+        run: node scripts/check-ancfz-billing-workflows.mjs
+      - name: Validate guarded existing n8n workflow upgrade
+        run: node scripts/check-2checkout-upgrade.mjs
+      - name: Parse PowerShell operator script on Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $source = Get-Content -Raw scripts/update-n8n-2checkout.ps1
+          $null = [ScriptBlock]::Create($source)
