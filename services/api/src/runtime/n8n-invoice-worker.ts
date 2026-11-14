@@ -8,6 +8,7 @@ import { TicketMessageRepository } from "../repositories/messages.js";
 import { workerTicketScope } from "../repositories/types.js";
 import { paymentEnabled } from "./payment-evidence.js";
 import { boundedJson, verifyInvoicePdf } from "./n8n-quote-worker.js";
+import { invoiceBillingName } from "./purchase-operations.js";
 interface Claim {
   agentId:string;ticketId:string;quotationId:string;paymentId:string;
   invoiceId:string;outboxId:string;documentNumber:string;
@@ -93,7 +94,8 @@ export class N8nInvoiceWorker {
       return {
         agentId,ticketId:x.ticket_id,quotationId:x.quotation_id,paymentId:x.payment_id,
         invoiceId:x.id,outboxId:x.outbox_id,documentNumber:x.document_number,
-        orderReference:x.order_reference,customerName:x.customer_name,
+        orderReference:x.order_reference,
+        customerName:await invoiceBillingName(client,agentId,x.ticket_id,x.quotation_id),
         offeringLabel:x.offering_label,amount:x.amount,currency:x.currency.trim(),
       };
     });
