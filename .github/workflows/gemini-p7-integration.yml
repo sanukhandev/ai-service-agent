@@ -45,6 +45,8 @@ jobs:
         run: npx tsc -p services/api/src/gemini/tsconfig.p1.json --noEmit false --outDir /tmp/gemini-p1-dist
       - name: Run P1 standalone offline tests
         run: node --test /tmp/gemini-p1-dist/services/api/src/gemini/adapter.test.js
+      - name: Validate manual G1 live probe syntax without credentials
+        run: node --check scripts/gemini-g1-live.mjs
       - name: Run P5 offline workflow adapter
         run: node --experimental-transform-types --test services/api/src/integrations/gemini-n8n/adapter.test.mjs
       - name: Run P6 offline harness (not application certification)
