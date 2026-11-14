@@ -95,7 +95,15 @@ function formatInline(
         // Invoice PDFs are ticket-owned application attachments, not IQ
         // source IDs. Never rewrite the route through Foundry source download.
         const invoiceRoute = ticketId
-          ? new RegExp("^/api/v1/tickets/"+ticketId.replace(/[.*+?^${ }()|[\]\\]/g,"\\        const isInternalSearch = linkUrl.includes("search.windows.net") || linkUrl.includes("blob.core.windows.net") || linkUrl.startsWith("/api/v1/");")+"/invoices/[a-f0-9-]{36}/pdf$")
+          ? new RegExp("^/api/v1/tickets/"+encodeURIComponent(ticketId)+"/invoices/[0-9a-f-]{36}/pdf$")
+          : null;
+        if(invoiceRoute?.test(linkUrl)){
+          return <a key={index} href={linkUrl} download
+            className="inline-flex items-center gap-1 font-semibold text-indigo-700 underline">
+            <DownloadIcon className="size-3" />{linkText}
+          </a>;
+        }
+        const isInternalSearch = linkUrl.includes("search.windows.net") || linkUrl.includes("blob.core.windows.net") || linkUrl.startsWith("/api/v1/");")+"/invoices/[a-f0-9-]{36}/pdf$")
           : null;
         if(invoiceRoute?.test(linkUrl)){
           return <a key={index} href={linkUrl} download
