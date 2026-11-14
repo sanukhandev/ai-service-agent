@@ -57,7 +57,7 @@ commercial authority. Catalog publication never changes an active agent version.
 
 Run: bash infra/postgres/gemini-p2-validate.sh
 
-This uses ONLY ai-service-agent-gemini-p2-verify with separate volumes; runs
+The validator overrides every fixed named volume/network and refuses existing test state.\nIt uses ONLY ai-service-agent-gemini-p2-verify resources; runs
 fresh/repeat migration, a checksum tamper negative test, two-agent SQL approval
 and RLS assertions, repeat catalog publication, and Node sessions tests against
 actual PostgreSQL. It removes the disposable test project afterward. Neither

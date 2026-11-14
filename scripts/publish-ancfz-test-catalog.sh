@@ -32,16 +32,26 @@ fi
 #
 # Windows / Git Bash cannot pass the ~90 KiB JSON as one docker.exe argument.
 # Copy the catalog to the PostgreSQL container and read it server-side.
-container_id="$(docker compose -p "$GEMINI_COMPOSE_PROJECT" ps -q postgres)"
+# Override required for any alternate project: Compose file has fixed volume names.
+COMPOSE_ARGS=(-p "$GEMINI_COMPOSE_PROJECT")
+if [[ "$GEMINI_COMPOSE_PROJECT" != "ai-service-agent-gemini" ]]; then
+  if [[ -z "${GEMINI_COMPOSE_OVERRIDE:-}" || ! -f "$GEMINI_COMPOSE_OVERRIDE" ]]; then
+    echo "Disposable Gemini project requires isolated Compose override" >&2; exit 2
+  fi
+  COMPOSE_ARGS+=(-f "$ROOT/docker-compose.yml" -f "$GEMINI_COMPOSE_OVERRIDE")
+elif [[ -n "${GEMINI_COMPOSE_OVERRIDE:-}" ]]; then
+  echo "Primary Gemini project must not use an arbitrary Compose override" >&2; exit 2
+fi
+container_id="$(docker compose "${COMPOSE_ARGS[@]}" ps -q postgres)"
 if [[ -z "$container_id" ]]; then
-  echo "PostgreSQL service is not running. Start with docker compose -p "$GEMINI_COMPOSE_PROJECT" up -d." >&2
+  echo "PostgreSQL service is not running in selected Gemini project" >&2
   exit 1
 fi
 
 seed_basename="ancfz-test-seed-$(date +%s)-$$-${RANDOM}.json"
 seed_path="/tmp/$seed_basename"
 cleanup() {
-  MSYS_NO_PATHCONV=1 docker compose -p "$GEMINI_COMPOSE_PROJECT" exec -T postgres rm -f "$seed_path" >/dev/null 2>&1 || true
+  MSYS_NO_PATHCONV=1 docker exec -u 0 "$container_id" rm -f "$seed_path" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
@@ -51,12 +61,12 @@ MSYS_NO_PATHCONV=1 docker cp \
   "${container_id}:${seed_path}"
 
 # Do not depend on NTFS file mode bits.
-MSYS_NO_PATHCONV=1 docker compose -p "$GEMINI_COMPOSE_PROJECT" exec -T postgres chmod 0644 "$seed_path"
+MSYS_NO_PATHCONV=1 docker exec -u 0 "$container_id" chmod 0644 "$seed_path"
 
 # Only short arguments cross Windows -> Docker Desktop. The JSON data remains
 # inside Postgres' private container, and is never passed via an environment
 # variable or a host process argument.
-MSYS_NO_PATHCONV=1 docker compose -p "$GEMINI_COMPOSE_PROJECT" exec -T postgres \
+MSYS_NO_PATHCONV=1 docker compose "${COMPOSE_ARGS[@]}" exec -T postgres \
   psql -v ON_ERROR_STOP=1 \
        --username postgres \
        --dbname "${POSTGRES_DB:-ai_service_agent_gemini}" \
