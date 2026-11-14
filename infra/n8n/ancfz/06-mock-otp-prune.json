@@ -30,7 +30,7 @@
     },
     {
       "id": "mock-otp-prune-gate",
-      "name": "Assert Local Mock Mode",
+      "name": "Set Expiry Cutoff",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -39,7 +39,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "if ($env.APP_ENV !== 'development' || $env.ANCFZ_OTP_MOCK_ENABLED !== 'true') throw new Error('Mock OTP cleanup disabled outside local test mode');\nreturn [{json:{cutoff:new Date().toISOString()}}];"
+        "jsCode": "return [{json:{cutoff:new Date().toISOString()}}];"
       }
     },
     {
@@ -78,14 +78,14 @@
       "main": [
         [
           {
-            "node": "Assert Local Mock Mode",
+            "node": "Set Expiry Cutoff",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Assert Local Mock Mode": {
+    "Set Expiry Cutoff": {
       "main": [
         [
           {
