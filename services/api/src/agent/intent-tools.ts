@@ -87,6 +87,7 @@ export function registerIntentTools(
   facts: TicketFactRepository,
   ticketIntents: TicketIntentRepository,
   purchaseReadiness?: () => Promise<unknown>,
+  actionReadiness?: () => Promise<unknown>,
 ): void {
   const handlers: ToolHandler[] = [
     {
@@ -156,6 +157,7 @@ export function registerIntentTools(
           allowedActions: intent.allowedActions,
           ...(operationKey==="purchase_quotation" && purchaseReadiness
             ? {purchase: await purchaseReadiness()} : {}),
+          ...(actionReadiness ? {actionExecution: await actionReadiness()} : {}),
           requirements: intent.requirements
             .filter((req) => !operationKey || req.requiredFor.includes(operationKey))
             .map((req) => ({
