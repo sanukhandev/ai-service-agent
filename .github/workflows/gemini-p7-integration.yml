@@ -1,0 +1,66 @@
+name: Gemini P7 integrated-source checks
+on:
+  push:
+    branches: [experiment/gemini-file-search-poc]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  api-build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install dependencies from experiment manifests
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Build existing API with integrated feature sources
+        run: npm run build --workspace @ai-service-agent/api
+      - name: Run P3 knowledge tests against compiled API
+        run: node --test services/api/src/knowledge/knowledge.test.mjs
+      - name: Run P4 grounding tests against compiled API
+        run: node --test services/api/src/grounding/__tests__/grounding.test.mjs
+
+  independent-adapters:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install workspaces
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Typecheck and compile standalone P1 adapter
+        run: npx tsc -p services/api/src/gemini/tsconfig.p1.json --noEmit false --outDir /tmp/gemini-p1-dist
+      - name: Run P1 standalone offline tests
+        run: node --test /tmp/gemini-p1-dist/services/api/src/gemini/adapter.test.js
+      - name: Run P5 offline workflow adapter
+        run: node --experimental-transform-types --test services/api/src/integrations/gemini-n8n/adapter.test.mjs
+      - name: Run P6 offline harness (not application certification)
+        run: node scripts/check-gemini-certification.mjs --mode=offline
+      - name: Check P2 migration validation script syntax
+        run: bash -n infra/postgres/gemini-p2-validate.sh
+
+  g0-invariants:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Verify frozen contract
+        run: npm exec --yes --package=typescript@5.9.3 -- tsc -p packages/contracts/tsconfig.gemini.json
+      - name: Verify isolation and policy
+        run: node scripts/check-gemini-g0.mjs
