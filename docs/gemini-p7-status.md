@@ -60,7 +60,18 @@ npm run build --workspace @ai-service-agent/api
 GEMINI_G1_ALLOW_BILLABLE_RUN=YES GEMINI_G1_MODEL_ID=gemini-3.8-flash node scripts/gemini-g1-live.mjs
 ```
 
-A `workflow_dispatch` variant lives at `.github/workflows/gemini-g1-live.yml`, requiring the `GEMINI_API_KEY` Actions secret. Because GitHub ordinarily requires the workflow file to exist on the default branch for `workflow_dispatch`, the **local script is the reliable path without modifying main**. Do not relax the experiment-to-main prohibition merely to run the workflow.
+A `workflow_dispatch` variant lives at `.github/workflows/gemini-g1-live.yml`, requiring the `GEMINI_API_KEY` Actions secret. GitHub ordinarily requires the workflow file to exist on the default branch to offer manual dispatch; **do not copy it into main**.
+
+For an experiment-only GitHub Actions run without modifying main, configure `GEMINI_API_KEY` privately in repository Actions secrets, then intentionally trigger the billable synthetic test with an exact opt-in commit on `experiment/gemini-file-search-poc`:
+
+```bash
+git switch experiment/gemini-file-search-poc
+git pull --ff-only origin experiment/gemini-file-search-poc
+git commit --allow-empty -m "test(gemini-g1): [G1-LIVE-OPT-IN]"
+git push origin experiment/gemini-file-search-poc
+```
+
+The workflow runs only when the pushed HEAD commit message contains `[G1-LIVE-OPT-IN]`; ordinary branch pushes produce a **skipped** G1 workflow and do not incur live-test charges. The runner checks out the exact triggering SHA. Review the job output and synthetic store cleanup record before declaring G1 passed. The local script above remains an alternative. No environment secret or real provider result can be inferred from green offline CI.
 
 ## Operational restrictions
 
