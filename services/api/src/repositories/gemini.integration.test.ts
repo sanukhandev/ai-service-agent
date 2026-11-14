@@ -153,5 +153,15 @@ test("Gemini P2 authoritative sessions, boundaries and restart recovery", async 
       assert.equal(reloaded.active,true);
       assert.deepEqual(reloaded.messages.map(x=>x.text),["durable"]);
     } finally {await secondDb.close();}
+  } catch (error) {
+    // Disposable synthetic DB diagnostics: never print SQL parameters or secrets.
+    const cause=(error as {cause?: {code?:string;table?:string;constraint?:string;message?:string}}).cause;
+    console.error("P2_INTEGRATION_DB_DIAGNOSTIC", {
+      sqlstate:cause?.code??null,
+      relation:cause?.table??null,
+      constraint:cause?.constraint??null,
+      message:cause?.message?.slice(0,240)??null,
+    });
+    throw error;
   } finally {await db.close();}
 });
