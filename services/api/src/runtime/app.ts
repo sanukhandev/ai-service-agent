@@ -3,8 +3,7 @@ import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessageRepository, TicketEventRepository } from "../repositories/index.js";
 import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord, type SourceReference } from "../repositories/types.js";
 import { TurnQueue } from "./turn-queue.js";
-import { FoundryClient } from "../foundry/client.js";
-import { AgentToolRegistry } from "../agent/tool-registry.js";
+import { GeminiSessionRepository, GeminiBindingRepository } from "../repositories/gemini.js";
 import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations } from "./quotation-operations.js";
 
@@ -124,6 +123,8 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const agents=new AgentRepository(db);
   const sessions=new GuestSessionRepository(db);
   const tickets=new TicketRepository(db);
+  const aiSessions=new GeminiSessionRepository(db);
+  const geminiBindings=new GeminiBindingRepository(db);
   const messages=new TicketMessageRepository(db);
   const events=new TicketEventRepository(db);
   const leads=new LeadOperations(db);
@@ -174,7 +175,8 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     rejectCrossSite(request);
     const agent=await agents.resolvePublicKey(request.params.agentKey);
     if(!agent || agent.status!=="active") throw new PersistenceError("NOT_FOUND","Agent not found");
-    await agents.requireActive(agent.id);
+    // GeminiSessionRepository.startNew independently verifies the active
+    // published Gemini binding. Do not resolve a Foundry-only configuration here.
     let token=cookieToken(request);
     if(!token || !(await sessions.isValid(agent.id,token))) {
       token=(await sessions.create(agent.id)).token;
@@ -196,8 +198,9 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       reply.header("Set-Cookie",`sa_guest=${token}; Path=/api; HttpOnly; SameSite=${sameSite}${secureFlag}`);
     }
     const scope:TicketScope={agentId:agent.id,owner:{kind:"guest",token}};
-    const ticket=await tickets.create(scope);
-    return reply.code(201).send(ticketView(ticket,agent.key));
+    const ai=await aiSessions.startNew(scope);
+    const ticket=await tickets.get(scope,ai.ticketId);
+    return reply.code(201).send({...ticketView(ticket,agent.key),sessionId:ai.sessionId,expiresAt:ai.expiresAt});
   });
 
   app.get("/api/v1/tickets/:ticketId",async(request)=>{
@@ -209,7 +212,10 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       "SELECT agent_key FROM agents WHERE id=$1",[scope.agentId])).rows[0]?.agent_key;
     if(!alias) throw new PersistenceError("NOT_FOUND","Ticket not found");
     const history=await messages.listTicketMessages(scope,id,"0",200);
-    return {ticket:ticketView(ticket,alias),messages:history.map(messageView)};
+    const ai=await aiSessions.forTicket(scope,id);
+    return {ticket:{...ticketView(ticket,alias),sessionId:ai?.session.sessionId??null,
+      sessionStatus:ai?.session.status??"closed",expiresAt:ai?.session.expiresAt??null},
+      messages:history.map(messageView)};
   });
 
   app.post("/api/v1/tickets/:ticketId/messages",async(request,reply)=>{
@@ -224,9 +230,21 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       typeof body["requestId"]!=="string" || typeof body["text"]!=="string") {
       throw new PersistenceError("INVALID_INPUT","Invalid message payload");
     }
-    const result=await messages.createCustomerMessage(scope,id,body["requestId"],body["text"]);
-    await queue.enqueue(scope,id,result.message.id,body["requestId"]);
-    return reply.code(202).send({ticketId:id,messageId:result.message.id,requestId:body["requestId"],status:"accepted"});
+    const located=await aiSessions.forTicket(scope,id);
+    if(!located||!located.active) {
+      return reply.code(409).send({code:"SESSION_EXPIRED",message:"Start a new conversation",newSessionRequired:true});
+    }
+    const accepted=await aiSessions.admitCustomerMessage(scope,located.session.sessionId,body["requestId"],body["text"]);
+    if(accepted.kind==="expired") {
+      return reply.code(409).send({code:"SESSION_EXPIRED",message:"Start a new conversation",newSessionRequired:true});
+    }
+    if(!accepted.message) throw new PersistenceError("CONFLICT","Customer message not accepted");
+    await queue.enqueue(scope,id,accepted.message.id,body["requestId"]);
+    return reply.code(accepted.kind==="duplicate"?200:202).send({
+      ticketId:id,sessionId:accepted.session.sessionId,messageId:accepted.message.id,
+      requestId:body["requestId"],status:accepted.kind==="duplicate"?"duplicate":"accepted",
+      expiresAt:accepted.session.expiresAt,
+    });
   });
 
   const downloadSourceHandler = async (request: FastifyRequest, reply: FastifyReply) => {
@@ -253,26 +271,21 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       throw new PersistenceError("NOT_FOUND", "Source document not found for this ticket");
     }
 
-    const binding = await agents.getPinnedForTicket(scope, ticketId);
-    if (!binding.foundryProjectEndpoint) {
-      throw new PersistenceError("NOT_CONFIGURED", "Foundry project endpoint not configured");
+    // Source download remains closed unless the exact File Search document
+    // identifier is tied to this session's approved, pinned source registry.
+    // A provider store name or display title is NEVER a source identity.
+    const ai=await aiSessions.forTicket(scope,ticketId);
+    if(!ai?.active || !ai.session.knowledgeVersionId) {
+      throw new PersistenceError("NOT_FOUND","Approved source document unavailable");
     }
-
-    const foundry = new FoundryClient(new AgentToolRegistry(), {
-      projectEndpoint: binding.foundryProjectEndpoint,
-      defaultAgentName: binding.foundryAgentName,
-      defaultAgentVersion: binding.foundryAgentVersion,
-    });
-    let file: Awaited<ReturnType<FoundryClient["downloadFile"]>>;
-    try {
-      file = await foundry.downloadFile(sourceId, targetRef.title ?? undefined);
-    } catch {
-      throw new PersistenceError("NOT_FOUND", "Exact cited document could not be retrieved");
-    }
-    reply.header("Content-Type", file.mimeType);
-    reply.header("Content-Disposition", `attachment; filename="${encodeURIComponent(file.filename)}"`);
-    reply.header("Cache-Control", "private, no-cache, no-store");
-    return reply.send(file.data);
+    const binding=await geminiBindings.forSession(scope,ai.session.sessionId);
+    if(!binding.knowledge) throw new PersistenceError("NOT_FOUND","Approved source document unavailable");
+    await geminiBindings.approvedDocument(scope,ai.session.sessionId,
+      binding.knowledge.storeResourceName,sourceId);
+    // Private originals are not yet provisioned as an audited backend vault.
+    // Returning 404 is mandatory until the trusted original-storage resolver
+    // and digest verification are integrated; no Foundry/URL fallback.
+    throw new PersistenceError("NOT_FOUND","Original document download not available");
   };
 
   app.get<{Params:{ticketId:string;sourceId:string}}>("/api/v1/tickets/:ticketId/sources/:sourceId/download", downloadSourceHandler);
