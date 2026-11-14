@@ -25,6 +25,20 @@ printf '%s' "$history" | python3 -c 'import sys,json;d=json.load(sys.stdin);asse
 unauthorized=$(curl --silent -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$ticket_id")
 test "$unauthorized" = 404
 
+# A citation in a ticket must not grant an anonymous caller access to that
+# ticket or a provider file. Synthetic source exists only in disposable CI.
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" <<SQL
+UPDATE ticket_messages
+SET source_references='[{"sourceId":"file-ci-source-ref","title":"CI synthetic source"}]'::jsonb
+WHERE ticket_id='$ticket_id' AND role='customer';
+SQL
+unauthorized_source=$(curl --silent -o /dev/null -w '%{http_code}' \
+  "http://localhost/api/v1/tickets/$ticket_id/sources/file-ci-source-ref/download")
+test "$unauthorized_source" = 404
+unknown_source=$(curl --silent -o /dev/null -w '%{http_code}' -b "$jar" \
+  "http://localhost/api/v1/tickets/$ticket_id/sources/file-not-cited/download")
+test "$unknown_source" = 404
+
 stream=$(curl --silent -N --max-time 4 -b "$jar" -H 'Last-Event-ID: 0' \
   "http://localhost/api/events/tickets/$ticket_id" || true)
 printf '%s' "$stream" | grep -q 'event: message.accepted'
