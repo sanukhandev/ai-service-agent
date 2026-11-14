@@ -78,7 +78,7 @@ async function run(){
     assert.equal(created.duplicated,false);
     assert.equal((await purchases.confirm(scope,ticketId,consent)).duplicated,true);
     await assert.rejects(()=>purchases.confirm(scope,ticketId,{...consent,requestId:randomUUID()}),conflict);
-    await assert.rejects(()=>upload("shareholder_identity_pack",doc1),conflict);
+    await assert.rejects(()=>upload("passport",doc1),conflict);
     await db.withAgent(agent.id,async client=>{
       await assertPurchaseReady(client,agent.id,ticketId,quoted.id);
       assert.equal(await invoiceBillingName(client,agent.id,ticketId,quoted.id),"TEST SANDBOX PERSON");
