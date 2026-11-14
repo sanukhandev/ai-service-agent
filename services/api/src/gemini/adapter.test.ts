@@ -88,12 +88,23 @@ test("File Search uses only assigned approved store and preserves citations", as
   assert.equal(out.kind,"candidate");
   if(out.kind==="candidate") {
     assert.equal(out.candidate.sourceAnnotations[0]?.sourceTitle,"License document");
-    assert.equal(out.candidate.sourceAnnotations[0]?.providerResourceName,"fileSearchStores/approved");
+    assert.equal(out.candidate.sourceAnnotations[0]?.providerResourceName,null,"A store ID is not a document ID");
     assert.equal(out.candidate.sourceAnnotations[0]?.locator,"page:2");
     assert.equal(out.candidate.usage.inputTokens,12);
   }
   assert.deepEqual((f.received[0] as {config:{tools:unknown}}).config.tools,
     [{fileSearch:{fileSearchStoreNames:["fileSearchStores/approved"]}}]);
+});
+
+test("only exact document resource is used as evidence identity",async()=>{
+  const f=fake([response("Supported",[{retrievedContext:{
+    fileSearchStore:"fileSearchStores/approved",
+    uri:"fileSearchStores/approved/documents/doc-123",text:"The approved document",
+  }}])]);
+  const out=await make(f.client).runTurn(request());
+  assert.equal(out.kind,"candidate");
+  if(out.kind==="candidate")assert.equal(out.candidate.sourceAnnotations[0]?.providerResourceName,
+    "fileSearchStores/approved/documents/doc-123");
 });
 
 test("unknown source provenance is not fabricated",async()=>{
