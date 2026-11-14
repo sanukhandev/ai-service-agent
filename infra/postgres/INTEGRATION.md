@@ -1,95 +1,32 @@
-# P2 persistence integration contract
+# Gemini persistence and migration integration
 
-This folder owns additive migrations 003, 004 and 005; the pre-existing 001 and
-002 are unchanged. Apply 001 -> 002, then P0 role bootstrap, then 003 -> 004 -> 005 to a fresh disposable
-database, or apply ONLY unapplied numbered scripts to an existing database.
-Never rerun 001/002 or reset a persistent volume. Use a migration ledger and
-content checksums in the integration owner's deployment orchestration.
+**Active branch:** `experiment/gemini-file-search-poc`. The numbered PostgreSQL migration chain is immutable and applied by `infra/bootstrap/apply-migrations.sh` with a checksum ledger.
 
-## Runtime account
+## Schema and startup
 
-P0 bootstrap creates the restricted `agent_runtime` LOGIN with an isolated
-`POSTGRES_APP_PASSWORD`. Migration 004 reuses that role and reduces its broad
-bootstrap table grants to the operations actually required by these repositories.
-Migration 005 grants the additional provider conversation table access.
+- Fresh volumes initialize `001_core.sql`, `002_intents_and_ticket_facts.sql` and the restricted application role bootstrap.
+- The one-off `migrate` service applies `003` through `015` in sequence, verifies hashes, then runs `infra/bootstrap/seed-sara.sql` to establish the version-pinned Sara Gemini example.
+- Migrations `009`–`015` add Gemini model/source/session/evidence authority, immutable provenance, encrypted pending-function state and ingestion metadata. Earlier migrations include durable tickets, catalog and event/outbox structures still needed by Gemini.
+- Existing columns with provider-neutral/historical names are not an active model integration. **Never edit or remove applied migration files**; use a reviewed new forward migration if actual schema retirement is required.
 
-Use the P0 Compose `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER=agent_runtime`,
-`PGPASSWORD` environment settings. An optional `DATABASE_URL` may override
-the PG* connection parameters. The application runtime starts by calling
-`db.assertSafeRuntimeRole()` and rejects any user other than `agent_runtime`
-or one with superuser / BYPASSRLS privileges.
+## Authorization and runtime credentials
 
-No new `ai_service_runtime` group or second app login is necessary. The
-`postgres` migration owner must never serve application requests. All
-agent-private SQL runs in a transaction after Node applies trusted
-`SET LOCAL app.agent_id`; RLS supplements, not replaces, ticket ownership checks.
+Node connects using `PGUSER=agent_runtime` and `POSTGRES_APP_PASSWORD`, distinct from the migration owner's `POSTGRES_PASSWORD`. The runtime role must not be superuser or `BYPASSRLS`. All private agent queries use transaction-local agent scope plus ticket ownership checks. Preserve composite agent foreign keys and index coverage for conversations, sessions, source revocation and outbox.
 
-## Integration patch required outside Track B ownership
+## Session invariants
 
-1. Docker Compose owner: mount the new SQL files under
-   /docker-entrypoint-initdb.d for FRESH databases; run the new migrations
-   separately in existing databases. Keep the P0 API PG* connection variables pointing
-   to the restricted agent_runtime login (or configure DATABASE_URL explicitly). Do not supply POSTGRES_USER=postgres to API.
-2. Fastify owner: create ONE PersistenceDatabase on startup, await
-   assertSafeRuntimeRole(), and onClose await db.close(). Construct
-   AgentRepository, GuestSessionRepository, TicketRepository,
-   TicketMessageRepository, ConversationContextRepository and
-   TicketEventRepository and ConversationContinuityRepository from it.
-3. Auth owner: resolve agentKey on the server, validate active/published
-   configuration, verify a cookie-bound guest token or secure authenticated
-   account session, then construct a TicketScope. Never accept accountId,
-   agentId, ticketId ownership, source metadata or authenticated status from
-   Foundry function arguments. Use same trusted scope for SSE replay.
-4. P3 integration owner: create scopedIntentToolRepositories(db, scope,
-   ticketId) per authorized ticket invocation and pass its three adapters
-   into registerIntentTools. This routes tools to the new authorized fact,
-   intent and catalog methods, preserving existing interfaces. Do not
-   globally register a mutable per-request scope.
-5. Customer acceptance: createCustomerMessage(scope, ticketId, requestId,
-   text) durably commits message and event before acknowledging HTTP 202.
-   Existing requestIds return duplicated=true without a new event.
-6. Foundry adapter: use ConversationContinuityRepository.get/bind/advanceCursor
-   to persist the external provider conversation ID and compare-and-swap
-   response cursor. Continue the same provider conversation on reconnect.
-   This table holds no SDK calls, tokens or Foundry secrets. Then use
-   createAssistantMessage(scope, ticketId, requestId,
-   text, verifiedSourceReferences) only after validation. Source references
-   must be passed from actual Foundry output; the DB deliberately does not
-   fabricate or independently verify citations.
-7. SSE: listAfter(scope, ticketId, Last-Event-ID, limit) yields monotonically
-   ordered persisted ticket events. Replay the DB before Redis fanout.
-8. Explicit action approval owner: authorize/preflight the operation and
-   customer consent BEFORE enqueueAuthorizedOperation; use a stable
-   idempotency key. This P2 repository only records the outbox transaction,
-   never dispatches n8n itself.
-9. Ticket closure owner: only pass confirmedCustomerClosure=true after
-   verified customer confirmation and after resolving in-flight operations.
-   The repository does not implement business-operation state machines.
+PostgreSQL is the authoritative source of session activity and expiry. Each accepted customer message advances the sliding 60-minute deadline; reconnects, Redis eviction and assistant messages do not. Expired AI sessions produce fresh conversations without cross-session model memory. The original ticket history stays accessible through the existing customer-authorization path.
 
-The ticket's pinned agent_version_id and both catalog version foreign keys
-must be passed into the conversation/tool scope. No auto-switch to current
-catalog revision when continuing an existing ticket.
+Model-generated function continuation state is encrypted under an agent/session boundary, not a global reusable provider cursor. Material factual answer acceptance, evidence audit, assistant message persistence and event publication must remain in the same trusted transaction.
 
-## Manual disposable database smoke checklist
+## Isolated acceptance
 
-- Apply migrations 001/002, P0 role bootstrap, then 003/004/005 with ON_ERROR_STOP=1.
-- Seed two agents with active, published versions and published intent and
-  offering catalogs; create one verified account in each agent.
-- Login using agent_runtime, not postgres. Confirm SELECT without
-  SET LOCAL app.agent_id returns zero scoped rows.
-- In agent A transaction, insert/read an authorized ticket and message; verify
-  the same IDs are invisible under agent B. Test both SELECT and UPDATE.
-- Test foreign-key rejection for cross-agent ticket/message/fact references.
-- Repeat identical customer requestId: same messageId and exactly one
-  message.accepted event. New request IDs produce increasing message_sequence.
-- Append two events, query after the first sequence, and ensure only the
-  second is returned. Repeat an outbox key and ensure one row/event.
-- Correct a fact from a second customer message, confirm old/new provenance
-  is present in ticket_fact_events.
-- Bind a provider conversation; reject rebinding to a different conversation
-  and reject a stale compare-and-swap response cursor.
-- Expire guest session and verify ticket access is denied. Upgrade ticket
-  after verified account authentication and confirm the old guest token
-  cannot read the account-linked ticket.
+```bash
+bash infra/postgres/gemini-p2-validate.sh
+```
 
-These are validation instructions, NOT claims that the checks passed.
+The validation script creates a **disposable, separately named Compose project**, checks fresh/repeated/checksum migration behavior, agent RLS/catalog publication, and real Node repository/HTTP/fake-model Gemini worker integration. It must never point at shared production or main application state. Never run `docker compose down -v` on an existing non-test project.
+
+## Remaining certification
+
+Passing the disposable database gate proves only the tested local persistence behavior. Live File Search document identity, real provider workflows, full multi-agent security and performance still require separate P6/G1 evidence. Consult [P7 status](../../docs/gemini-p7-status.md).
