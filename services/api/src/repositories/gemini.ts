@@ -305,6 +305,52 @@ export class GeminiBindingRepository {
     });
   }
 
+
+  /** This is the runtime binding for a specific authorized ACTIVE AI session.
+   * Session-pinned catalogs take precedence over newly published catalog revisions.
+   */
+  async forSession(scope:TicketScope,sessionId:string) {
+    return this.db.withAgent(scope.agentId,async client=>{
+      const s=await lockedSession(client,scope,sessionId);
+      if(await expireIfNeeded(client,s,await clock(client)))
+        throw new PersistenceError("CONFLICT","AI session expired");
+      const query=await client.query<{
+        model_id:string;persona_version:string;system_instructions:string;
+        allowed_node_tools:string[];state:string|null;
+        store_resource_name:string|null;content_digest_sha256:string|null;
+        approval_reference:string|null;published_at:Date|null;
+      }>([
+        "SELECT v.model_id,v.persona_version,v.system_instructions,v.allowed_node_tools,",
+        "k.state,k.store_resource_name,k.content_digest_sha256,k.approval_reference,k.published_at",
+        "FROM agent_versions v LEFT JOIN gemini_knowledge_versions k",
+        "ON k.agent_id=v.agent_id AND k.id=$3",
+        "WHERE v.agent_id=$1 AND v.id=$2 AND v.provider='gemini'",
+        "AND v.publication_state='published' AND v.published_at IS NOT NULL",
+      ].join(" "),[scope.agentId,s.agent_version_id,s.knowledge_version_id]);
+      const v=query.rows[0];
+      if(!v) throw new PersistenceError("NOT_CONFIGURED","Session-pinned Gemini version missing");
+      if(s.knowledge_version_id && (v.state!=="published" && v.state!=="retired"))
+        throw new PersistenceError("NOT_CONFIGURED","Session-pinned knowledge revoked");
+      if(s.knowledge_version_id && (!v.store_resource_name || !v.content_digest_sha256 || !v.approval_reference))
+        throw new PersistenceError("NOT_CONFIGURED","Session-pinned knowledge incomplete");
+      return {
+        agentId:scope.agentId,agentVersionId:s.agent_version_id,provider:"gemini" as const,
+        modelId:v.model_id,personaVersion:v.persona_version,
+        systemInstructions:v.system_instructions,authorizedToolNames:v.allowed_node_tools,
+        intentCatalogVersionId:s.intent_catalog_version_id,
+        offeringCatalogVersionId:s.offering_catalog_version_id,
+        knowledge:s.knowledge_version_id ? {
+          agentId:scope.agentId,knowledgeVersionId:s.knowledge_version_id,
+          provider:"gemini_file_search" as const,
+          storeResourceName:v.store_resource_name as string,
+          state:v.state as "published"|"retired",
+          contentDigestSha256:v.content_digest_sha256 as string,
+          approvalReference:v.approval_reference,publishedAt:asIso(v.published_at),
+        }:null,
+      };
+    });
+  }
+
   /** Called with provider annotation IDs only AFTER resolving authorized session. */
   async approvedDocument(scope:TicketScope,sessionId:string,
     storeResourceName:string,documentResourceName:string) {
