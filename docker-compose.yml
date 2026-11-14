@@ -132,8 +132,6 @@ services:
       N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_INSTANCE_OWNER_LAST_NAME:-}
       N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}
       # Optional ANCFZ configuration. Keep provider secrets in n8n credentials.
-      # MockGateway Demo Orders requires a configured guest identifier.
-      MOCKGATEWAY_GUEST_ID: ${MOCKGATEWAY_GUEST_ID:-}
       ANCFZ_OTP_FROM_EMAIL: ${ANCFZ_OTP_FROM_EMAIL:-}
       # Explicit local POC-only mock OTP recording. Disabled unless opted in.
       APP_ENV: ${APP_ENV:-development}
