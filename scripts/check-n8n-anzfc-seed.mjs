@@ -23,6 +23,7 @@ assert.equal(parseArgs(["--workspace=personal", "--stage=import"]).workspace, "p
 assert.equal(parseArgs(["--workspace=project"]).workspace, "project");
 assert.equal(parseArgs(["--stage=owner"]).stage, "owner");
 assert.equal(parseArgs(["--stage=inspect"]).stage, "inspect");
+assert.equal(parseArgs(["--stage=setup"]).stage, "setup");
 assert.equal(parseArgs(["--stage=import"]).stage, "import");
 assert.equal(parseArgs(["--dry-run"]).dryRun, true);
 assert.throws(() => parseArgs(["--workspace=unknown"]));
@@ -56,6 +57,10 @@ assert(source.includes("--projectId="), "Explicit project import must remain sup
 assert(source.includes("import:credentials"));
 assert(source.includes("import:workflow"));
 assert(source.includes("--activeState=false"));
+assert(source.includes("async function setupWorkspace") || source.includes("async function setupWorkspace("));
+assert(source.includes('action: "inspect"'));
+assert(source.includes('await sleep(1000)'));
+assert(source.includes("seedWorkspace({ workspace });"));
 for (const name of [
   "N8N_INSTANCE_OWNER_MANAGED_BY_ENV", "N8N_INSTANCE_OWNER_EMAIL",
   "N8N_INSTANCE_OWNER_FIRST_NAME", "N8N_INSTANCE_OWNER_LAST_NAME",
@@ -80,6 +85,10 @@ run=spawnSync(process.execPath,["scripts/seed-n8n-anzfc.mjs","--workspace=projec
 assert.equal(run.status,0,run.stderr);
 assert(run.stdout.includes("workspace=project"));
 assert(run.stdout.includes("project=anzfc"));
+run=spawnSync(process.execPath,["scripts/seed-n8n-anzfc.mjs","--stage=setup","--dry-run"],{cwd,encoding:"utf8"});
+assert.equal(run.status,0,run.stderr);
+assert(run.stdout.includes("stage=setup"));
+assert(run.stdout.includes("No Docker, database, provider or network calls made"));
 run=spawnSync(process.execPath,["--check","infra/n8n/ancfz/seed-project.mjs"],{cwd,encoding:"utf8"});
 assert.equal(run.status,0,run.stderr);
 
