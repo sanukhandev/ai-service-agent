@@ -1,5 +1,5 @@
 {
-  "name": "ANCFZ | MockGateway Demo Orders Status (Fail Closed Until Verified)",
+  "name": "ANCFZ | 2Checkout Mock Payment Verification",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -41,13 +41,38 @@
         300
       ],
       "parameters": {
-        "jsCode": "// This is a fail-closed stub. The supplied demo Orders POST is not a payment\n// status endpoint. Configure a documented status API and live-test it FIRST.\nconst b=$input.first().json.body??{};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||!uuid.test(b.ticketId)) throw new Error('Invalid ANCFZ scope');\nif(typeof b.orderReference!=='string'||!b.orderReference.trim()||b.orderReference.length>200) throw new Error('Missing provider order reference');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference)) throw new Error('Invalid authorized order correlation');\nif(b.currency!=='AED'||typeof b.amount!=='string'||!/^(?:0|[1-9]\\d{0,7})\\.\\d{2}$/.test(b.amount)) throw new Error('Invalid expected payment');\nreturn [{json:{ticketId:b.ticketId,orderReference:b.orderReference,externalReference:b.externalReference,amount:b.amount,currency:'AED'}}];",
+        "jsCode": "// Trusted Node request only. All fields are compared against an immutable quote in Node.\nconst b=$input.first().json.body ?? {};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||!uuid.test(b.ticketId))throw Error('Invalid agent/ticket');\nif(typeof b.quotationId!=='string'||!uuid.test(b.quotationId))throw Error('Invalid quotation ID');\nif(typeof b.orderReference!=='string'||!/^[A-Za-z0-9_-]{1,120}$/.test(b.orderReference))throw Error('Invalid 2Checkout order reference');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference))throw Error('Invalid external reference');\nif(b.currency!=='AED'||typeof b.amount!=='string'||!/^[1-9]\\d{0,7}\\.\\d{2}$|^0\\.(?!00)\\d{2}$/.test(b.amount))\n  throw Error('Invalid authorized amount/currency');\nreturn [{json:{ticketId:b.ticketId,quotationId:b.quotationId,orderReference:b.orderReference,\n  externalReference:b.externalReference,amount:b.amount,currency:b.currency}}];",
         "mode": "runOnceForAllItems"
       }
     },
     {
-      "id": "result",
-      "name": "Reject Unverified Demo Order",
+      "id": "2checkout-status-request",
+      "name": "2Checkout Mock GET Order",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        710,
+        300
+      ],
+      "parameters": {
+        "method": "GET",
+        "url": "={{ 'https://mockgateway.com/api/base/2checkout-fzucuq/rest/6.0/orders/' + encodeURIComponent($('Validate Verification Request').first().json.orderReference) + '/' }}",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "timeout": 20000
+        }
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "4d9487aa-e07b-4bfd-92b9-a9699ffb5e45",
+          "name": "ANCFZ - MockGateway Demo X-API-Key"
+        }
+      }
+    },
+    {
+      "id": "verify-result",
+      "name": "Validate Gateway Status",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
@@ -55,7 +80,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// Never infer payment from customer claims, order creation or a guessed GET.\n// The operator must add a documented Demo Orders GET/status endpoint,\n// verify returned provider ID, amount, currency and a terminal paid state,\n// and independently validate it in Node before issuing an invoice.\nconst expected=$('Validate Verification Request').first().json;\nreturn [{json:{status:'verification_unconfigured',verified:false,provider:'mockgateway_demo_orders',orderReference:expected.orderReference,ticketId:expected.ticketId,amount:expected.amount,currency:expected.currency}}];",
+        "jsCode": "// This runs after a FRESH authenticated GET, never after a redirect or POST.\n// COMPLETE is accepted ONLY with matching provider reference, amount and currency.\nconst r=$input.first().json;\nconst expected=$('Validate Verification Request').first().json;\nif(!r||typeof r!=='object'||Array.isArray(r))throw Error('Invalid 2Checkout verification response');\nconst ref=r.RefNo ?? r.OrderNo;\nif(ref!==expected.orderReference)throw Error('2Checkout order reference mismatch');\nif(r.ExternalReference!==expected.externalReference)throw Error('2Checkout external reference mismatch');\nif(r.Currency!==expected.currency)throw Error('2Checkout currency mismatch');\nif(typeof r.GrossPrice!=='string'||r.GrossPrice!==expected.amount)\n  throw Error('2Checkout gross price mismatch');\nconst providerStatus=r.Status;\nif(!['COMPLETE','PENDING','DECLINED','REFUNDED'].includes(providerStatus))\n  throw Error('Unsupported 2Checkout order status');\nconst paid=providerStatus==='COMPLETE';\nreturn [{json:{\n  status:paid?'verified_test_payment':providerStatus==='PENDING'?'payment_pending':\n    providerStatus==='DECLINED'?'payment_declined':'payment_refunded',\n  verified:paid, provider:'2checkout_mock', providerStatus,\n  orderReference:ref,externalReference:expected.externalReference,\n  ticketId:expected.ticketId,quotationId:expected.quotationId,\n  amount:expected.amount,currency:expected.currency,\n  invoiceReference:typeof r.InvoiceID==='string'?r.InvoiceID:null,\n}}];",
         "mode": "runOnceForAllItems"
       }
     },
@@ -93,14 +118,25 @@
       "main": [
         [
           {
-            "node": "Reject Unverified Demo Order",
+            "node": "2Checkout Mock GET Order",
             "type": "main",
             "index": 0
           }
         ]
       ]
     },
-    "Reject Unverified Demo Order": {
+    "2Checkout Mock GET Order": {
+      "main": [
+        [
+          {
+            "node": "Validate Gateway Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Gateway Status": {
       "main": [
         [
           {
