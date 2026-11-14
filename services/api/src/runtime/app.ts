@@ -220,7 +220,8 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const alias=(await db.pool.query<{agent_key:string}>(
       "SELECT agent_key FROM agents WHERE id=$1",[scope.agentId])).rows[0]?.agent_key;
     if(!alias) throw new PersistenceError("NOT_FOUND","Ticket not found");
-    const history=await messages.listTicketMessages(scope,id,"0",200);
+    // A reload must show the most recent transcript, not the first 200 rows.
+    const history=await messages.recentMessages(scope,id,200);
     const ai=await aiSessions.forTicket(scope,id);
     return {ticket:{...ticketView(ticket,alias),sessionId:ai?.session.sessionId??null,
       sessionStatus:ai?.session.status??"closed",expiresAt:ai?.session.expiresAt??null},
@@ -272,10 +273,10 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     // from an authorized ticket message; no partial matches or random fallback.
     const sourceId = rawSourceId;
     if (sourceId.length > 512) throw new PersistenceError("NOT_FOUND", "Source document not found");
-    const history = await messages.listTicketMessages(scope, ticketId, "0", 200);
-    const targetRef: SourceReference | undefined = history
-      .flatMap(message => message.sourceReferences ?? [])
-      .find(ref => ref.sourceId === sourceId);
+    // Exact ticket/agent-scoped lookup across the entire transcript. The
+    // previously bounded first-page lookup incorrectly denied later citations.
+    const targetRef: SourceReference | null =
+      await messages.findSourceReference(scope,ticketId,sourceId);
     if (!targetRef) {
       throw new PersistenceError("NOT_FOUND", "Source document not found for this ticket");
     }

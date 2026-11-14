@@ -149,6 +149,24 @@ export class TicketMessageRepository {
     });
   }
 
+  /**
+   * Secure exact source lookup across all assistant messages in this ticket,
+   * not just the first 200. Approval/download checks still run in the caller.
+   */
+  async findSourceReference(scope:TicketScope,ticketId:string,sourceId:string):Promise<SourceReference|null>{
+    requireBounded(sourceId,"sourceId",512);
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const matches=await client.query<{source_references:SourceReference[]}>(
+        `SELECT source_references FROM ticket_messages
+          WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant'
+            AND source_references @> $3::jsonb
+          ORDER BY message_sequence DESC LIMIT 1`,
+        [scope.agentId,ticketId,JSON.stringify([{sourceId}])]);
+      return matches.rows[0]?.source_references.find(r=>r.sourceId===sourceId)??null;
+    });
+  }
+
   async recentMessages(scope: TicketScope, ticketId: string, limit = 20): Promise<MessageRecord[]> {
     const take = pageSize(limit, 100);
     return this.db.withAgent(scope.agentId, async (client) => {
