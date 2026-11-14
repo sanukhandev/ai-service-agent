@@ -46,6 +46,29 @@ Replace Microsoft Foundry Agent Service (GPT-5.4) and Foundry IQ **on this exper
 
 **Provider state:** while active, prefer Gemini's supported stateful interaction continuation and persist its current opaque reference with the **session**, provider and model. If continuity fails, rebuild from the current session's durable messages. Preserve provider-required tool continuation signatures/steps when a live pending tool call must resume; otherwise quarantine uncertain tool outcomes, rather than replaying side effects.
 
+## 2A. Approved voice interface — Speech-to-Text → Gemini text → Text-to-Speech
+
+**Decision:** Use a conventional STT/TTS pipeline for the POC. **Do not implement Gemini Live API, real-time audio-to-audio reasoning, or a separate voice-agent orchestration path.** Text chat and spoken chat must use the same Node-owned Gemini text-conversation worker, intent catalog, tool registry, knowledge search and 60-minute AI-session policy.
+
+**Turn flow:**
+1. Browser requests microphone consent, captures the customer's utterance and stops or detects an end of speech.
+2. Speech-to-Text (STT) transcribes that utterance, returns text and an optional confidence/quality signal. Reject empty input; allow correction of critical ambiguous numbers, names and identifiers.
+3. Browser submits the *transcript* through the existing authenticated Node message endpoint for the current unexpired AI session. The **same session** is used whether the input is typed or dictated. A newly accepted customer transcript counts as activity and slides the 60-minute deadline; microphone use, silence and unsubmitted STT activity do not.
+4. Node persists the accepted message, runs the **same Gemini text model and agent instructions** as typed chat, and allows Gemini to request File Search and trusted Node business tools. Tool execution stays Node-authorized. The model returns a concise conversational answer, not a script.
+5. Node persists the assistant answer and SSE event. The browser sends this answer to the configured TTS service and plays the resulting audio. Preserve the answer as normal visible chat text; TTS output is an alternate presentation, not a second model decision.
+6. On cancellation or navigation, cancel pending microphone/STT/TTS work and stop playback without canceling already committed business operations. Do not allow overlapping response audio for the same customer turn.
+
+**Voice-first prompt behavior:** Prefer short natural sentences; typically ask only one useful question at a time. Avoid reading out citations, Markdown, tool names, raw JSON, large lists, URLs and operational diagnostics. Business facts must still come from approved knowledge or Node-owned structured catalog data, even though citation metadata is **not displayed or read aloud**. Preserve provenance internally for diagnostics and grounding verification; never fabricate it. A customer may still ask for a longer explanation.
+
+**Implementation boundaries:**
+- Add a thin STT input and TTS output layer to the existing Next.js chat. The chosen STT/TTS providers should be replaceable and configured without credentials embedded in browser source. Prefer server-mediated credentials and short-lived authorized tokens where available.
+- No changes to Node tool authorization, intent semantics, n8n business workflow rules or session-expiration invariants.
+- STT/TTS audio need not be stored durably; persist the accepted transcript and assistant text as ordinary ticket messages. Handle audio only as transient data unless the customer explicitly opts into a separate retention feature.
+- Do not send private knowledge source references, secrets or unnecessary PII to TTS. Review each speech provider's handling of customer audio and transcripts before using real customer information.
+- Voice latency includes microphone capture/end-of-speech, transcription, Gemini reasoning/retrieval/tools, speech synthesis and playback. Instrument the stages separately; this pipeline does not guarantee instant full-duplex conversation or barge-in comparable to a real-time Live API.
+
+**Acceptance:** Typed and spoken inputs yield equivalent authorized actions and session continuity; corrected transcripts are not accidentally treated as confirmed facts; Sara produces short speakable responses with no audible citations; refresh/restart/expiry behave identically for text and voice; mic-denied/STT/TTS unavailable cases fall back to text chat. Compare p50/p95 time from end of speech to first audible response and measure STT accuracy on ANCFZ terms, company names, numerals and visa counts.
+
 ## 3. Target request flow
 
 1. Browser submits customer message with the authorized server-side session binding to Node.
@@ -69,6 +92,7 @@ Replace Microsoft Foundry Agent Service (GPT-5.4) and Foundry IQ **on this exper
 | E5 Session persistence | `services/api/src/runtime/turn-queue.ts`, `services/api/src/repositories/**`, `infra/postgres/**` | Replace hard-coded `provider='foundry'` and `resp_` cursor constraints; add durable session metadata, expiry, provider-opaque continuation and recovery | Existing ticket/messages/events, RLS, atomic commits and idempotency |
 | E6 Business operations | `infra/n8n/**`, action workers | Integrate Gemini proposals through existing Node-only authorization/dispatch | No direct model-to-n8n execution, verified outcomes |
 | E7 Validation | tests, smoke scripts | Session lifecycle, knowledge, tool safety, grounded multi-turn and workflow tests | Accurate mock/local/live reporting |
+| E9 Voice input/output | `apps/web/**`, optional speech API adapter | Add STT input, reuse normal Node Gemini text turn, TTS output, cancellation, text fallback; no Gemini Live | Same 60-minute session, authorized tools, citations remain internal |
 | E8 Documentation | `docs/**`, `AGENTS.md` | Document Gemini-specific branch policy, API behavior, operational setup and final evaluation | No modifications to main |
 
 **Concrete existing code constraints:** `turn-worker.ts` currently uses Foundry `previousResponseId` and only loads 12 recent messages if that cursor is absent; `turn-queue.ts` queries `ticket_model_sessions` with `provider='foundry'`, validates `resp_` response IDs, and writes `'foundry'` on completion. Replace these assumptions in the Gemini branch; otherwise recovery or session expiry will be incorrect. Existing `repositories/context.ts` already stores ticket facts and summaries, but those **must not** be automatically injected into a brand-new AI session.
@@ -102,6 +126,8 @@ Source-download handling must use exact authorized source mappings. Do not trans
 12. Expiry with in-flight authorized n8n action: old ticket records independent verified result, new conversation gets no implicit authorization or outcome.
 13. Unauthorized source download and fabricated citation tests: denied/unresolved instead of returning unrelated content.
 14. Provider errors/tool timeouts: typed outcome, bounded retry/reconciliation and no claims of successful operations without evidence.
+
+15. Voice/STT/TTS: typed-vs-spoken parity, one shared 60-minute AI session, clear short TTS output, no spoken citations, invalid transcript handling, denied mic / provider failure fallback, stage latency measurements.
 
 **Certification target:** 100% preservation of committed ticket records, accepted current-session messages, validated customer facts within the active session and independently verified business outcomes; zero cross-session context leakage, unauthorized tool calls and duplicated side effects. Evaluate natural conversation, intent/tool choice, document grounding, citation correctness, latency and cost separately. Record measured results; targets do not equal achieved passes.
 
