@@ -86,6 +86,22 @@ async function actionRequirements(client:PoolClient,agentId:string,ticketId:stri
   return {requirements,missing:requirements.filter(x=>!x.present).map(x=>x.key),
     sourceFacts:facts.rows};
 }
+/**
+ * Enforce the same catalog prerequisites on direct HTTP calls that the
+ * intent-action panel displays. The browser and model cannot bypass them.
+ * Identity documents remain separately gated by purchase/service actions.
+ */
+export async function assertCatalogActionRequirementsTx(
+  client:PoolClient,agentId:string,ticketId:string,action:string,
+):Promise<void>{
+  const intent=await activeIntent(client,agentId,ticketId);
+  if(!intent||!intent.allowed_actions.includes(action))
+    throw new PersistenceError("CONFLICT","The selected intent does not authorize this action");
+  const {missing}=await actionRequirements(client,agentId,ticketId,intent.id,action);
+  if(missing.length)
+    throw new PersistenceError("CONFLICT",
+      "Collect the required "+action+" information in the ticket before proceeding");
+}
 export class IntentActionOperations {
   constructor(private readonly db:PersistenceDatabase){}
   async catalog(scope:TicketScope,ticketId:string){
