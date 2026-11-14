@@ -277,6 +277,25 @@ test("no business handler execution or side effect in adapter",async()=>{
   assert.equal(out.kind,"candidate");assert.equal(executed,0);
 });
 
+test("record_ticket_facts supports validated oneOf string, number and boolean",async()=>{
+  const schema={type:"object",additionalProperties:false,required:["facts"],properties:{
+    facts:{type:"array",maxItems:12,items:{type:"object",required:["key","value"],additionalProperties:false,
+      properties:{key:{type:"string"},value:{oneOf:[{type:"string"},{type:"number"},{type:"boolean"}]}}}}
+  }};
+  const model={
+    candidates:[{content:{role:"model",parts:[{functionCall:{id:"call-1",
+      name:"record_ticket_facts",args:{facts:[{key:"visaCount",value:2},{key:"multipleShareholders",value:false}]}}}]}}]
+  };
+  const f=fake([model]);
+  const q=request();const name="record_ticket_facts";
+  const req=request({agent:{...q.agent,authorizedToolNames:[name]},allowedBusinessToolNames:[name]});
+  const adapter=new GeminiModelAdapter(f.client,{pendingStore:new Store(),
+    declarations:()=>[{name,description:"Record stated customer facts",parameters:schema}]});
+  const result=await adapter.runTurn(req,{phase:"functions"});
+  assert.equal(result.kind,"candidate");
+  if(result.kind==="candidate")assert.equal(result.candidate.functionCalls[0]?.name,name);
+});
+
 test("schema-invalid function arguments rejected before business execution",async()=>{
   const bad={candidates:[{content:{role:"model",parts:[{functionCall:{
     id:"call-1",name:"find_intents",args:{query:27}
