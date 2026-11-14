@@ -24,6 +24,13 @@ const offline = spawnSync(process.execPath, ["scripts/setup-n8n-mock-otp.mjs", "
 });
 assert.equal(offline.status, 0, offline.stderr);
 assert.match(offline.stdout, /no changes made/i);
+const noSecretEnv = {...process.env};
+delete noSecretEnv.ANCFZ_N8N_WEBHOOK_SECRET;
+const noSecretSmoke = spawnSync(process.execPath, ["scripts/test-n8n-mock-otp.mjs"], {
+  cwd, env:noSecretEnv, encoding:"utf8",
+});
+assert.notEqual(noSecretSmoke.status,0,"Synthetic dispatch must require explicit secret");
+assert.match(noSecretSmoke.stderr,/Set ANCFZ_N8N_WEBHOOK_SECRET privately/);
 
 for (const wf of [delivery, cleanup]) {
   assert.equal(wf.active, false);
