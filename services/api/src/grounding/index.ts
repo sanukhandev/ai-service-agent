@@ -61,7 +61,7 @@ const SOFT_GREETING = /^(?:(?:hi|hello|hey|good morning|good afternoon|good even
 const QUESTION = /^(?:what|which|where|when|who|how|could|would|can|may|please|tell|do|does|did|is|are|shall|should)\b/i;
 const FACTUAL_QUESTION = /\b(?:cost|price|aed|usd|visa|license|licence|eligible|required|included|completed|approved|issued|succeeded|successful|\d)\b/i;
 const NEGATION = /\b(?:not|no|never|cannot|can't|won't|without|excluded|prohibited)\b/i;
-const SCOPE_WORDS = ["only", "at least", "at most", "up to", "more than", "less than", "must", "required", "optional", "eligible", "free", "guaranteed"];
+const SCOPE_WORDS = ["only", "at least", "at most", "up to", "more than", "less than", "must", "required", "optional", "eligible", "free", "guaranteed", "guarantee", "will", "can", "may", "might", "should", "shall", "always", "never", "every", "all", "any", "none", "usually", "typically", "generally"];
 const WORD_EQUIVALENTS: Readonly<Record<string, string>> = Object.freeze({
   registration: "register", registering: "register", registered: "register", register: "register",
   setup: "register", establish: "register", establishing: "register", formation: "register",
