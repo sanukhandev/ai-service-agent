@@ -1,6 +1,6 @@
 # Implementation plan — POC first, testing and admin later
 
-> **Gemini experiment override — this branch only:** The active Gemini implementation plan is [Gemini experimental implementation plan](gemini-experiment-implementation-plan.md). It specifies a **60-minute sliding inactivity timeout**, a **fresh AI conversation after expiry**, durable PostgreSQL ticket records and Redis-only active context. All Foundry phases below are historical baseline reference for the independent `main` branch and are **not** the Gemini branch delivery plan. Never merge this experimental branch into `main`.
+> **Gemini experiment override — this branch only:** The **sole authoritative active execution plan** is [Gemini experimental implementation plan](gemini-experiment-implementation-plan.md), especially its **§3A strict document-grounding policy** and **§5 six parallel workstreams (P1–P6), contract freeze, Git branch/worktree controls, file ownership, integration gates and stop conditions**. It specifies 60-minute session-only AI memory, durable PostgreSQL tickets and Redis-only active context. **Do not execute the Foundry-specific phases or old parallel tracks below for this branch**: they are historical baseline context, not tasks. All PRs must target `experiment/gemini-file-search-poc`, never `main`.
 
 ## Current state
 
