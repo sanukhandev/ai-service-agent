@@ -5,6 +5,7 @@ import {mkdtemp,writeFile,rm,readFile,symlink} from 'node:fs/promises';
 import {join} from 'node:path';
 import {validateSource,readSourceFile,zipEntries,expandApprovedArchive,withPrivateStage} from '../../dist/knowledge/intake.js';
 import {KnowledgePublisher} from '../../dist/knowledge/publisher.js';
+import {normalizedSourceText} from '../../dist/knowledge/normalizer.js';
 import {GoogleFileSearchProvider,FileSearchError} from '../../dist/knowledge/provider.js';
 const AGENT='11111111-1111-4111-8111-111111111111',OTHER='22222222-2222-4222-8222-222222222222';
 const VERSION='33333333-3333-4333-8333-333333333333',VERSION2='44444444-4444-4444-8444-444444444444';
@@ -239,3 +240,17 @@ test('real provider transport resolves exact ACTIVE File Search document using m
  assert.equal(result.rawAnnotations.length,1);
 });
 
+
+
+test("approved TXT, DOCX and text PDF normalize deterministically; unverified binary rejected",async()=>{
+  assert.equal(await normalizedSourceText(Buffer.from(" Policy text \r\n","utf8"),"text/plain"),"Policy text");
+  const docx=Buffer.from("UEsDBBQAAAAIAGWWbl3y7KMrdgAAAIwAAAATAAAAW0NvbnRlbnRfVHlwZXNdLnhtbCWOSw7CMAxErxJlD65YsKiSbIAbcAErcj8iH6txpXJ7nLKceTP2uPeXqZkjp9K8XUR4BGhxoYztWpmKkqluGUXlNgNj/OBMcBuGO8RahIpcpN+wwT1pwj2JeR1qt7UWb7VuzeOf66+8Rea0RhTF0CkEB+eI8ANQSwMEFAAAAAgAZZZuXdJvbvStAAAA6QAAABEAAAB3b3JkL2RvY3VtZW50LnhtbEWOSQ7CMAxFr2JlwY6msECodFjBCeAAITWlIokjJ3S4PQks2DzL+vbTr7vFGpiQw0iuEbuiFIBOUz+6oRG362V7FF1bz1VP+m3RRUj3LlRzI54x+krKoJ9oVSjIo0vZg9iqmFYe5EzceyaNISSdNXJflgdp1ehEVt6pX/P0GZwR2/OidDQrxBnNhKDJe2R4GDUE2CjrT0AOIYwpZHjhWtQyv2Xyl/7Ln1r+a7cfUEsBAhQDFAAAAAgAZZZuXfLsoyt2AAAAjAAAABMAAAAAAAAAAAAAAIABAAAAAFtDb250ZW50X1R5cGVzXS54bWxQSwECFAMUAAAACABllm5d0m9u9K0AAADpAAAAEQAAAAAAAAAAAAAAgAGnAAAAd29yZC9kb2N1bWVudC54bWxQSwUGAAAAAAIAAgCAAAAAgwEAAAAA","base64");
+  const extracted=await normalizedSourceText(docx,
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  assert.match(extracted,/Exactly twelve copper flags & one silver key/);
+  const pdf=Buffer.from("JVBERi0xLjMKJZOMi54gUmVwb3J0TGFiIEdlbmVyYXRlZCBQREYgZG9jdW1lbnQgKG9wZW5zb3VyY2UpCjEgMCBvYmoKPDwKL0YxIDIgMCBSCj4+CmVuZG9iagoyIDAgb2JqCjw8Ci9CYXNlRm9udCAvSGVsdmV0aWNhIC9FbmNvZGluZyAvV2luQW5zaUVuY29kaW5nIC9OYW1lIC9GMSAvU3VidHlwZSAvVHlwZTEgL1R5cGUgL0ZvbnQKPj4KZW5kb2JqCjMgMCBvYmoKPDwKL0NvbnRlbnRzIDcgMCBSIC9NZWRpYUJveCBbIDAgMCAzMDAgMjUwIF0gL1BhcmVudCA2IDAgUiAvUmVzb3VyY2VzIDw8Ci9Gb250IDEgMCBSIC9Qcm9jU2V0IFsgL1BERiAvVGV4dCAvSW1hZ2VCIC9JbWFnZUMgL0ltYWdlSSBdCj4+IC9Sb3RhdGUgMCAvVHJhbnMgPDwKCj4+IAogIC9UeXBlIC9QYWdlCj4+CmVuZG9iago0IDAgb2JqCjw8Ci9QYWdlTW9kZSA vVXNlTm9uZSAvUGFnZXMgNiAwIFIgL1R5cGUgL0NhdGFsb2cKPj4KZW5kb2JqCjUgMCBvYmoKPDwKL0F1dGhvciAoYW5vbnltb3VzKSAvQ3JlYXRpb25EYXRlIChEOjIwMjYxMTE0MTg1MTExKzAwJzAwJykgL0NyZWF0b3IgKGFub255bW91cykgL0tleXdvcmRzICgpIC9Nb2REYXRlIChEOjIwMjYxMTE0MTg1MTExKzAwJzAwJykgL1Byb2R1Y2VyIChSZXBvcnRMYWIgUERGIExpYnJhcnkgLSBcKG9wZW5zb3VyY2VcKSkgCiAgL1N1YmplY3QgKHVuc3BlY2lmaWVkKSAvVGl0bGUgKHVudGl0bGVkKSAvVHJhcHBlZCAvRmFsc2UKPj4KZW5kb2JqCjYgMCBvYmoKPDwKL0NvdW50IDEgL0tpZHMgWyAzIDAgUiBdIC9UeXBlIC9QYWdlcwo+PgplbmRvYmoKNyAwIG9iago8PAovRmlsdGVyIFsgL0FTQ0lJODVEZWNvZGUgL0ZsYXRlRGVjb2RlIF0gL0xlbmd0aCAxNDYKPj4Kc3RyZWFtCkdhcEBFMGIvZSMnRXJoWTByN3RwVDU3cVFVKHVlKSEkVTcoXGZnRyMtSlZvUWpzPHIiLTtVU0xhaiw/Z01mUUI4ZFwoZyY8PVdsVkM5YCdbVmk9J2gyKixkKV8rPG4hJSg+ciZEUCNsPUdDYUdyTyxvVTJAK2NsaSYoci4mPj5uT3ImK29Zb1YiYiJpRVsjXX4+ZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgOAowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwNjEgMDAwMDAgbiAKMDAwMDAwMDA5MiAwMDAwMCBuIAowMDAwMDAwMTk5IDAwMDAwMCBuIAowMDAwMDAzOTIgMDAwMDAgbiAKMDAwMDAwMDQ2MCAwMDAwMCBuIAowMDAwMDAwNzIxIDAwMDAwMCBuIAowMDAwMDA3ODAgMDAwMDAgbiAKdHJhaWxlcgo8PAovSUQgCls8YjUxODFjMWMyMzc5YWQwMjA0YTRjYzQ1ZmFjNzFlNjc+PGI1MTgxYzFjMjM3OWFkMDIwNGE0Y2M0NWZhYzcxZTY3Pl0KJSBSZXBvcnRMYWIgZ2VuZXJhdGVkIFBERiBkb2N1bWVudCAtLSBkaWdlc3QgKG9wZW5zb3VyY2UpCgovSW5mbyA1IDAgUgovUm9vdCA0IDAgUgovU2l6ZSA4Cj4+CnN0YXJ0eHJlZgoxMDE2CiUlRU9GCg==","base64");
+  const fromPdf=await normalizedSourceText(pdf,"application/pdf");
+  assert.match(fromPdf,/eleven silver keys/);
+  await assert.rejects(normalizedSourceText(Buffer.from(""),"application/pdf"),
+    /KNOWLEDGE_UNSAFE_SOURCE_SIZE/);
+});
