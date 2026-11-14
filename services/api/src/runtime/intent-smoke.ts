@@ -4,7 +4,8 @@
  * Requires two distinct persisted customer messages created through the API.
  */
 import assert from "node:assert/strict";
-import { PersistenceDatabase } from "../database/pool.js";
+import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
+import { assertCatalogActionRequirementsTx } from "./intent-action-operations.js";
 import { AgentRepository } from "../repositories/agent.js";
 import { ConversationContextRepository } from "../repositories/context.js";
 import { scopedIntentToolRepositories } from "../repositories/intent-adapter.js";
@@ -67,6 +68,10 @@ async function main() {
     const items=requirements.requirements as Array<{key:string;value:unknown}>;
     assert.equal(items.find(x=>x.key==="visa_count")?.value,1);
     assert.ok(items.some(x=>x.key==="shareholder_count"&&x.value===null));
+    await assert.rejects(()=>db.withAgent(identity.id,client=>
+      assertCatalogActionRequirementsTx(client,identity.id,ticketId,"generate_quote")),
+      err=>err instanceof PersistenceError&&err.code==="CONFLICT");
+
     const offers=await invoke("get_offerings",{intentKey:"company_formation"});
     assert.ok(Array.isArray(offers.offerings));
     assert.ok((offers.offerings as Array<{key:string}>).some(x=>x.key==="company_setup_consultation"));
@@ -79,6 +84,11 @@ async function main() {
     assert.equal(stored.activeIntent,"company_formation");
     assert.equal(stored.knownFacts.visa_count,2);
     assert.equal(stored.knownFacts.office_preference,"shared office");
+    await db.withAgent(identity.id,async client=>{
+      await assertCatalogActionRequirementsTx(client,identity.id,ticketId,"create_lead");
+      await assertCatalogActionRequirementsTx(client,identity.id,ticketId,"generate_quote");
+    });
+
     const events=await db.withAgent(identity.id,async client=>{
       const result=await client.query<{ count:string }>(
         "SELECT count(*) FROM ticket_fact_events WHERE agent_id=$1 AND ticket_id=$2 AND source_message_id=$3",
