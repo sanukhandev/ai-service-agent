@@ -12,7 +12,7 @@ ticket_json=$(curl --fail --silent --show-error -c "$jar" \
 ticket_id=$(printf '%s' "$ticket_json" | python3 -c 'import json,sys; d=json.load(sys.stdin);assert d["agentKey"]=="ancfz";print(d["id"])')
 request_id=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
-body=$(printf '{"requestId":"%s","text":"I want to start an IT services company with one visa and shared office."}' "$request_id")
+body=$(printf '{"requestId":"%s","text":"I want to start an IT services company with one visa and shared office. My contact email is demo@example.invalid."}' "$request_id")
 first=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
   -d "$body" "http://localhost/api/v1/tickets/$ticket_id/messages")
 again=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
@@ -58,7 +58,7 @@ test "$count" = 1
 # Both source message IDs are persisted through the public API first.
 first_id=$(printf '%s' "$first" | python3 -c 'import json,sys;print(json.load(sys.stdin)["messageId"])')
 correction_request=$(python3 -c 'import uuid;print(uuid.uuid4())')
-correction_body=$(printf '{"requestId":"%s","text":"Correction: I need two visas, not one."}' "$correction_request")
+correction_body=$(printf '{"requestId":"%s","text":"Correction: I need two visas, not one, and there will be two shareholders."}' "$correction_request")
 correction=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
   -d "$correction_body" "http://localhost/api/v1/tickets/$ticket_id/messages")
 correction_id=$(printf '%s' "$correction" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["status"]=="accepted";print(d["messageId"])')
