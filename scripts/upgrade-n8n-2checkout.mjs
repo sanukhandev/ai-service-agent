@@ -1,10 +1,10 @@
 #!/usr/bin/env node
 /**
- * Offline-safe operator control for upgrading exactly two existing inactive
+ * Offline-safe operator control for upgrading exactly three existing inactive
  * n8n workflows. Requires real owner API key over Docker stdin only.
  *
  * --inspect: read only
- * --backup:  inspect and save two full definitions outside repository
+ * --backup:  inspect and save three full definitions outside repository
  * --apply:   inspect, save backups, then update in place; always inactive
  */
 import { spawnSync } from "node:child_process";
@@ -49,8 +49,8 @@ function helper(action, key, expected) {
   return response;
 }
 function saveBackups(snapshot) {
-  if (!Array.isArray(snapshot) || snapshot.length !== 2) {
-    throw Error("Cannot write a backup: exactly two payment workflows are required");
+  if (!Array.isArray(snapshot) || snapshot.length !== 3) {
+    throw Error("Cannot write a backup: exactly three invoice/payment workflows are required");
   }
   const root = join(homedir(), "ai-service-agent-n8n-backups");
   mkdirSync(root, { recursive: true, mode: 0o700 });
@@ -76,7 +76,7 @@ function saveBackups(snapshot) {
 export function main(args = process.argv.slice(2)) {
   const action = parseArgs(args);
   if (action === "--dry-run") {
-    console.log("2Checkout mock upgrade dry run: two existing inactive payment workflows; no Docker/provider/credential changes");
+    console.log("2Checkout mock upgrade dry run: three existing inactive payment workflows; no Docker/provider/credential changes");
     return;
   }
   const key = process.env.N8N_API_KEY;
@@ -98,7 +98,7 @@ export function main(args = process.argv.slice(2)) {
   }
   const evidence = helper("snapshot", key.trim());
   const backup = saveBackups(evidence.snapshot);
-  console.log("Saved two inactive workflow backups at: " + backup.folder);
+  console.log("Saved three inactive workflow backups at: " + backup.folder);
   if (action === "--backup") return;
 
   // The helper rechecks both live definitions and refuses mutation if their
@@ -106,7 +106,7 @@ export function main(args = process.argv.slice(2)) {
   const result = helper("apply", key.trim(), backup.expected);
   if (!result.applied) throw Error("n8n workflow apply did not confirm completion");
   console.log(JSON.stringify({ ok: true, applied: true, workflows: result.workflows }));
-  console.log("Payment workflows remain INACTIVE. Update the rotated merchant Header Auth credential manually.");
+  console.log("Updated invoice/payment workflows remain INACTIVE. Update the rotated merchant Header Auth credential manually.");
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   try { main(); }
