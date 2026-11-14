@@ -4,6 +4,8 @@ import { TurnQueue } from "./runtime/turn-queue.js";
 import { TurnWorker } from "./runtime/turn-worker.js";
 import { N8nLeadWorker } from "./runtime/n8n-lead-worker.js";
 import { N8nQuoteWorker } from "./runtime/n8n-quote-worker.js";
+import { N8nPaymentWorker } from "./runtime/n8n-payment-worker.js";
+import { N8nInvoiceWorker } from "./runtime/n8n-invoice-worker.js";
 
 const port=Number(process.env.API_PORT??"4000");
 const host=process.env.API_HOST??"0.0.0.0";
@@ -15,10 +17,14 @@ const app=createApi(db,queue);
 const worker=new TurnWorker(db,queue,(data,message)=>app.log.info(data,message));
 const leadWorker=new N8nLeadWorker(db,(data,message)=>app.log.info(data,message));
 const quoteWorker=new N8nQuoteWorker(db,(data,message)=>app.log.info(data,message));
+const paymentWorker=new N8nPaymentWorker(db,(data,message)=>app.log.info(data,message));
+const invoiceWorker=new N8nInvoiceWorker(db,(data,message)=>app.log.info(data,message));
 app.addHook("onClose",async()=>{
   worker.stop();
   leadWorker.stop();
   quoteWorker.stop();
+  paymentWorker.stop();
+  invoiceWorker.stop();
   await db.close();
 });
 
@@ -32,6 +38,8 @@ try {
   await worker.start();
   leadWorker.start();
   quoteWorker.start();
+  paymentWorker.start();
+  invoiceWorker.start();
 } catch(error) {
   app.log.error({errorCode:(error as Error).name,message:(error as Error).message},"Runtime startup failed");
   process.exitCode=1;
