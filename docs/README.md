@@ -8,6 +8,7 @@ The only active AI runtime on `experiment/gemini-file-search-poc` is the Node-ow
 - [Gemini implementation plan](gemini-experiment-implementation-plan.md) — original G0–P7 requirements, ownership and gates
 - [Frozen G0 contracts](gemini-g0-contracts.md) — versioned session, evidence, policy and tool definitions
 - [P7 implementation and certification status](gemini-p7-status.md) — verified tests, outstanding provider/UAT requirements
+- [Main → Gemini integration record](gemini-main-sync.md) — ANCFZ catalog, 2Checkout mock, document workflow and migration conflict resolutions
 - [P7 integration preflight](gemini-p7-preflight.md) — branch/source integration evidence
 
 ## Architecture and engineering guides
