@@ -7,7 +7,7 @@ The **Angular Admin Portal is deferred beyond this POC**. Do not recreate `apps/
 - Next.js, React, TypeScript, Tailwind CSS v4.
 - Google Font **Inter**, delivered through bundled/self-hosted `@fontsource/inter` assets.
 - Use semantic HTML and lightweight local components. Avoid heavy UI component kits, dashboards, animation frameworks or speculative shared UI packages.
-- Browser accesses the same-origin Node API through Nginx only (`/api/` and `/api/events/`). Do not call Foundry, n8n, Redis or PostgreSQL from the browser.
+- Browser accesses the same-origin Node API through Nginx only (`/api/` and `/api/events/`). Do not call Gemini, File Search, n8n, Redis or PostgreSQL from the browser.
 
 ## Minimal screens
 
