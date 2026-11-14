@@ -117,7 +117,20 @@ export class TurnWorker {
       const toolRegistry=new AgentToolRegistry();
       const adapters=scopedIntentToolRepositories(this.db,scope,turn.ticketId);
       registerIntentTools(toolRegistry,adapters.catalog,adapters.facts,adapters.ticketIntents,
-        ()=>new PurchaseOperations(this.db).read(scope,turn.ticketId));
+        async()=>{
+          const p=await new PurchaseOperations(this.db).read(scope,turn.ticketId);
+          // Only checklist status goes to Foundry; never private document
+          // IDs, file names, bytes, purchase consent text or payment secrets.
+          return {
+            supported:p.supported,intentKey:p.intentKey,
+            quotationReady:Boolean(p.quotationId),confirmed:p.confirmed,
+            readyForOtp:p.readyForOtp,missing:p.missing,
+            documentRequirements:p.requirements.map(d=>({
+              key:d.key,label:d.label,guidance:d.guidance,
+              required:d.required,uploaded:d.uploaded,
+            })),
+          };
+        });
       const toolContext:TrustedToolContext={
         agentId:turn.agentId,ticketId:turn.ticketId,
         principalId:"ticket:"+turn.ticketId,
