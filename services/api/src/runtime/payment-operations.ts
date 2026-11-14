@@ -416,7 +416,10 @@ export class PaymentOperations {
           "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
           [scope.agentId,ticketId],
         );
-        if(activeTicket.rows[0]?.status!=="closed") {
+        const activeAgent=await client.query<{status:string}>(
+          "SELECT status FROM agents WHERE id=$1",[scope.agentId],
+        );
+        if(activeTicket.rows[0]?.status!=="closed" && activeAgent.rows[0]?.status==="active") {
           await new TicketMessageRepository(this.db).createAssistantMessageTx(
             client,scope,ticketId,lifecycleNoticeId("payment.verified",paymentId),
             "Your sandbox payment has been independently verified as COMPLETE. I am preparing your TEST invoice now.",
