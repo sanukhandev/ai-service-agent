@@ -1,5 +1,5 @@
 // Lightweight deterministic tool-call smoke using the real Node registry.
-// Does not contact Foundry or execute business actions.
+// Does not contact Gemini or execute business actions.
 import fs from "node:fs";
 import assert from "node:assert/strict";
 import { AgentToolRegistry } from "../services/api/dist/agent/tool-registry.js";
