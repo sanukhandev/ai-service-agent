@@ -5,7 +5,7 @@ import { readFileSync, mkdtempSync, writeFileSync, rmSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { dirname, resolve, join } from "node:path";
 import { tmpdir } from "node:os";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   OWNER_EMAIL, PROJECT_NAME, WORKFLOWS, parseArgs, extractHtpasswdHash,
   validateExistingConfig, workspaceImportArgs,
@@ -119,8 +119,12 @@ try {
     workspace:"personal",apiKey:"x".repeat(40),projectName:"anzfc",
     credentialIds:fixtureCredentials,workflowNames:fixtureWorkflows.map(w=>w.name),
   };
+  // Node's ESM --import option requires a file:// URL for Windows absolute
+  // paths: C:\\... otherwise becomes the unsupported "c:" protocol.
+  const preloadUrl = pathToFileURL(preloadPath).href;
+  assert(preloadUrl.startsWith("file://"));
   function simulate(action, fixture) {
-    const proc=spawnSync(process.execPath,["--import",preloadPath,"infra/n8n/ancfz/seed-project.mjs"],{
+    const proc=spawnSync(process.execPath,["--import",preloadUrl,"infra/n8n/ancfz/seed-project.mjs"],{
       cwd,env:{...process.env,ANCFZ_SEED_FIXTURE:fixture},
       input:JSON.stringify({...request,action}),encoding:"utf8",
     });
