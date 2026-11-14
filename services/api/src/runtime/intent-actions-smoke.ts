@@ -7,6 +7,7 @@ import { GuestSessionRepository, TicketRepository } from "../repositories/ticket
 import { ConversationContextRepository } from "../repositories/context.js";
 import { TicketMessageRepository } from "../repositories/messages.js";
 import { IntentActionOperations, SERVICE_REQUEST_CONSENT, isServiceAction } from "./intent-action-operations.js";
+import { PurchaseOperations } from "./purchase-operations.js";
 
 const exampleValues:Record<string,string|number>={
   visa_count:2,customer_email:"synthetic@example.invalid",
@@ -35,6 +36,12 @@ async function main(){
     const context=new ConversationContextRepository(db);
     const messages=new TicketMessageRepository(db);
     const actions=new IntentActionOperations(db);
+    const documents=new PurchaseOperations(db,async()=>({
+      fullName:"TEST SANDBOX PERSON",documentNumberLast4:"1234",
+      model:"prebuilt-idDocument" as const,
+    }));
+    const syntheticPdf=Buffer.from("%PDF-1.4\\n"+("A".repeat(256))+"\\n%%EOF\\n");
+
     const candidates=[
       {intent:"visa_services",action:"create_enquiry"},
       {intent:"license_renewal",action:"create_renewal_request"},
@@ -56,13 +63,26 @@ async function main(){
         await assert.rejects(()=>actions.submit(scope,ticket.id,entry.action,request),conflict);
         const message=await messages.createCustomerMessage(scope,ticket.id,randomUUID(),
           "CI synthetic service request facts explicitly provided");
-        const values=selected.missing.map(key=>{
+        const values=selected.requirements.filter(r=>!r.present).map(r=>{
+          const key=r.key;
           const value=exampleValues[key];
           assert.ok(value!==undefined,"Missing CI value for "+key);
           return {key,value};
         });
-        await context.recordCustomerFacts(scope,ticket.id,message.message.id,values);
+        if(values.length)await context.recordCustomerFacts(scope,ticket.id,message.message.id,values);
       }
+      for(const requirementKey of ["passport","emirates_id"] as const){
+        const saved=await documents.upload(scope,ticket.id,{
+          requirementKey,fileName:requirementKey+".pdf",
+          contentType:"application/pdf",dataBase64:syntheticPdf.toString("base64"),
+        });
+        assert.ok(saved.documentId);
+      }
+      const identity=await documents.read(scope,ticket.id);
+      assert.equal(identity.supported,true);
+      assert.equal(identity.billingName,"TEST SANDBOX PERSON");
+      assert.equal(identity.quotationId,null);
+      assert.equal(identity.readyForOtp,false);
       const updated=await actions.catalog(scope,ticket.id);
       assert.equal(updated.actions.find(a=>a.actionKey===entry.action)?.ready,true);
       await assert.rejects(()=>actions.submit(scope,ticket.id,entry.action,{
