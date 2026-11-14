@@ -79,93 +79,32 @@ export class FoundryClient {
     }
   }
 
-  async downloadFile(fileId: string, title?: string): Promise<{ data: Buffer; filename: string; mimeType: string }> {
-    const canonicalFiles = [
-      "ANCFZ_KB_Rules_and_Regulations.docx",
-      "ANCFZ_KB_License_Cost_2026.docx",
-      "ANCFZ_KB_Packages_and_Offers.docx",
-      "ANCFZ_KB_Types_of_Companies.docx",
-      "ANCFZ_KB_Business_Activity_Categories.docx",
-      "ANCFZ_KB_FAQs.docx",
-      "ANCFZ_KB_Strategic_Partners.docx",
-      "ANCFZ_KB_Contact_Us.docx",
-    ];
-
-    try {
-      // 1. Direct file retrieval if fileId is a valid OpenAI file identifier
-      if (/^(assistant|file)-[A-Za-z0-9_-]+$/.test(fileId)) {
-        try {
-          const meta = await this.openai.files.retrieve(fileId);
-          const res = await this.openai.files.content(fileId);
-          const buffer = Buffer.from(await res.arrayBuffer());
-          const filename = meta.filename || title || `${fileId}.docx`;
-          const ext = filename.split(".").pop()?.toLowerCase();
-          const mimeType = ext === "docx"
-            ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-            : ext === "pdf"
-              ? "application/pdf"
-              : "application/octet-stream";
-          return { data: buffer, filename, mimeType };
-        } catch {
-          // Fall through to catalog matching
-        }
-      }
-
-      // 2. Fetch project file catalog and match by title/keyword
-      const list = await this.openai.files.list();
-      const files = list.data;
-
-      const query = `${title ?? ""} ${fileId}`.toLowerCase();
-      let matchedFile = files.find(f => {
-        const name = f.filename.toLowerCase();
-        if (query.includes("license") || query.includes("cost") || query.includes("fee")) return name.includes("license_cost");
-        if (query.includes("package") || query.includes("offer") || query.includes("price")) return name.includes("packages_and_offers");
-        if (query.includes("rule") || query.includes("regulation") || query.includes("law")) return name.includes("rules_and_regulations");
-        if (query.includes("compan") || query.includes("fze") || query.includes("fzc") || query.includes("branch")) return name.includes("types_of_companies");
-        if (query.includes("activit") || query.includes("categor")) return name.includes("business_activity");
-        if (query.includes("partner")) return name.includes("strategic_partners");
-        if (query.includes("faq") || query.includes("question")) return name.includes("faqs");
-        if (query.includes("contact")) return name.includes("contact_us");
-        return false;
-      });
-
-      // 3. Fallback: select canonical document based on numeric hash
-      if (!matchedFile) {
-        let hash = 0;
-        for (let i = 0; i < fileId.length; i++) hash = (hash * 31 + fileId.charCodeAt(i)) >>> 0;
-        const targetCanonical = canonicalFiles[hash % canonicalFiles.length];
-        matchedFile = files.find(f => f.filename === targetCanonical) || files[0];
-      }
-
-      if (matchedFile) {
-        const res = await this.openai.files.content(matchedFile.id);
-        const buffer = Buffer.from(await res.arrayBuffer());
-        const cleanName = matchedFile.filename.replace(/^\d+-/, "");
-        return {
-          data: buffer,
-          filename: cleanName,
-          mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        };
-      }
-    } catch {
-      // Fall through to text fallback
+  /** Resolve only a real provider file ID. Never substitute a different source or fabricate evidence. */
+  async downloadFile(fileId: string, _title?: string): Promise<{ data: Buffer; filename: string; mimeType: string }> {
+    if (!/^(assistant|file)-[A-Za-z0-9_-]+$/.test(fileId)) {
+      throw new FoundryError("FOUNDRY_IQ_TOOL_FAILED", "Cited source has no directly downloadable provider file ID", false);
     }
-
-    const filename = title ? (title.includes(".") ? title : `${title}.txt`) : `${fileId}.txt`;
-    const fallbackContent = Buffer.from(
-      `# Official ANCFZ Source Reference\n\n` +
-      `Title: ${title || fileId}\n` +
-      `Source Reference ID: ${fileId}\n` +
-      `Organization: Al Nakheel Commercial Free Zone (ANCFZ)\n` +
-      `Retrieved via: Microsoft Foundry IQ Knowledge Base\n\n` +
-      `This document reference was verified and cited by Sara in response to your service inquiry.\n` +
-      `For the complete regulatory catalog or formal documentation, please consult with your ANCFZ representative.\n`
-    );
-    return {
-      data: fallbackContent,
-      filename,
-      mimeType: "text/plain; charset=utf-8",
-    };
+    try {
+      const meta = await this.openai.files.retrieve(fileId);
+      if (!meta || typeof meta.filename !== "string" || !meta.filename.trim()) {
+        throw new Error("Provider file metadata unavailable");
+      }
+      const res = await this.openai.files.content(fileId);
+      const data = Buffer.from(await res.arrayBuffer());
+      if (data.length === 0 || data.length > 10 * 1024 * 1024) {
+        throw new Error("Provider source exceeds download safety limit");
+      }
+      const filename = meta.filename.replace(/[\\/\r\n]/g, "_").slice(0, 180);
+      const ext = filename.split(".").pop()?.toLowerCase();
+      const mimeType = ext === "docx"
+        ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        : ext === "pdf" ? "application/pdf"
+          : ext === "txt" ? "text/plain; charset=utf-8"
+            : "application/octet-stream";
+      return { data, filename, mimeType };
+    } catch (error) {
+      throw new FoundryError("FOUNDRY_IQ_TOOL_FAILED", "Exact cited provider document is unavailable", false, undefined, error);
+    }
   }
 
   async runTurn(input: FoundryTurnInput): Promise<FoundryTurnResult> {

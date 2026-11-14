@@ -1,7 +1,7 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessageRepository, TicketEventRepository } from "../repositories/index.js";
-import { hashGuestToken, workerTicketScope, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord, type SourceReference } from "../repositories/types.js";
+import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord, type SourceReference } from "../repositories/types.js";
 import { TurnQueue } from "./turn-queue.js";
 import { FoundryClient } from "../foundry/client.js";
 import { AgentToolRegistry } from "../agent/tool-registry.js";
@@ -232,58 +232,23 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const downloadSourceHandler = async (request: FastifyRequest, reply: FastifyReply) => {
     rejectCrossSite(request);
     const ticketId = idParam(request);
-    let scope: TicketScope;
-    try {
-      scope = await scopeFromCookie(db, request);
-    } catch {
-      const activeAgents = await db.pool.query<{ id: string }>("SELECT id FROM agents WHERE status = 'active'");
-      let foundAgentId: string | null = null;
-      for (const ag of activeAgents.rows) {
-        const found = await db.withAgent(ag.id, async client => {
-          const res = await client.query<{ id: string }>("SELECT id FROM tickets WHERE id = $1", [ticketId]);
-          return res.rows[0]?.id ?? null;
-        });
-        if (found) {
-          foundAgentId = ag.id;
-          break;
-        }
-      }
-      if (!foundAgentId) throw new PersistenceError("NOT_FOUND", "Ticket not found");
-      scope = workerTicketScope(foundAgentId, ticketId);
-    }
+    // Source downloads require the same verified customer ownership as ticket history.
+    // Never derive a worker/internal scope from a user-supplied ticket ID.
+    const scope = await scopeFromCookie(db, request);
 
     const rawSourceId =
       (request.params as Record<string, string>)["sourceId"] ||
       ((request.query || {}) as Record<string, string>)["sourceId"] ||
       ((request.query || {}) as Record<string, string>)["source"];
     if (!rawSourceId) throw new PersistenceError("NOT_FOUND", "Source document not found");
-    const sourceId = decodeURIComponent(rawSourceId);
-
+    // Fastify has already decoded route parameters. Require an exact reference
+    // from an authorized ticket message; no partial matches or random fallback.
+    const sourceId = rawSourceId;
+    if (sourceId.length > 512) throw new PersistenceError("NOT_FOUND", "Source document not found");
     const history = await messages.listTicketMessages(scope, ticketId, "0", 200);
-    let targetRef: SourceReference | undefined;
-    const allRefs: SourceReference[] = [];
-    for (const msg of history) {
-      for (const ref of msg.sourceReferences ?? []) {
-        allRefs.push(ref);
-        if (
-          ref.sourceId === sourceId ||
-          decodeURIComponent(ref.sourceId) === sourceId ||
-          ref.sourceId.includes(sourceId) ||
-          sourceId.includes(ref.sourceId)
-        ) {
-          targetRef = ref;
-          break;
-        }
-      }
-      if (targetRef) break;
-    }
-    if (!targetRef && allRefs.length > 0) {
-      if (/^\d+$/.test(sourceId)) {
-        targetRef = allRefs[parseInt(sourceId, 10) % allRefs.length];
-      } else {
-        targetRef = allRefs[0];
-      }
-    }
+    const targetRef: SourceReference | undefined = history
+      .flatMap(message => message.sourceReferences ?? [])
+      .find(ref => ref.sourceId === sourceId);
     if (!targetRef) {
       throw new PersistenceError("NOT_FOUND", "Source document not found for this ticket");
     }
@@ -298,7 +263,12 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       defaultAgentName: binding.foundryAgentName,
       defaultAgentVersion: binding.foundryAgentVersion,
     });
-    const file = await foundry.downloadFile(sourceId, targetRef.title ?? undefined);
+    let file: Awaited<ReturnType<FoundryClient["downloadFile"]>>;
+    try {
+      file = await foundry.downloadFile(sourceId, targetRef.title ?? undefined);
+    } catch {
+      throw new PersistenceError("NOT_FOUND", "Exact cited document could not be retrieved");
+    }
     reply.header("Content-Type", file.mimeType);
     reply.header("Content-Disposition", `attachment; filename="${encodeURIComponent(file.filename)}"`);
     reply.header("Cache-Control", "private, no-cache, no-store");
