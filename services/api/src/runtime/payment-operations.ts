@@ -288,9 +288,10 @@ export class PaymentOperations {
       );
       const p=selected.rows[0];
       if(!p)throw new PersistenceError("NOT_FOUND","Payment not found");
-      if(p.state==="verified_test_payment")return {alreadyVerified:true};
+      // A fresh GET can detect a later refund even after a prior COMPLETE.
       if(!p.order_reference||!["checkout_available","order_created_checkout_unavailable",
-         "payment_pending","payment_declined","payment_refunded","unknown_outcome","verifying"].includes(p.state))
+         "payment_pending","payment_declined","payment_refunded","unknown_outcome",
+         "verifying","verified_test_payment"].includes(p.state))
         throw new PersistenceError("CONFLICT","Payment order is not ready for independent verification");
       if(p.state==="verifying" && p.verification_started_at &&
          Date.now()-p.verification_started_at.getTime()<120000)
@@ -301,14 +302,12 @@ export class PaymentOperations {
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,paymentId]);
       return {
-        alreadyVerified:false,
         expected:{
           ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
           amount:p.amount,currency:p.currency.trim(),orderReference:p.order_reference,
         },
       };
     });
-    if(claim.alreadyVerified)return this.get(scope,ticketId);
     const expected=claim.expected as PaymentIdentity & {orderReference:string};
     let result:ReturnType<typeof verifyPaymentStatus>=null;
     try {
@@ -330,6 +329,11 @@ export class PaymentOperations {
         [scope.agentId,ticketId,paymentId,newState,result?.providerStatus??"verification_failed"],
       );
       if(result?.verified){
+        const existingInvoice=await client.query<{id:string}>(
+          "SELECT id FROM ticket_payment_invoices WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
+          [scope.agentId,ticketId,paymentId],
+        );
+        if(!existingInvoice.rows.length){
         const invoiceId=randomUUID();
         const docNumber="ANCFZ-TEST-INV-"+invoiceId;
         const queued=await client.query<{id:string}>(
@@ -345,6 +349,7 @@ export class PaymentOperations {
           [invoiceId,scope.agentId,ticketId,expected.quotationId,paymentId,
             queued.rows[0]?.id,docNumber],
         );
+        }
         await appendEventTx(client,scope.agentId,ticketId,"payment.verified",{
           paymentId,quotationId:expected.quotationId,testOnly:true,
         });
