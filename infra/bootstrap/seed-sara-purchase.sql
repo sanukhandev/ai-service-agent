@@ -32,6 +32,8 @@ BEGIN
         (('generate_quote'=ANY(i.allowed_actions)) AND
          (NOT 'create_lead'=ANY(i.allowed_actions) OR
           NOT 'purchase_quotation'=ANY(i.allowed_actions)))
+        OR (('purchase_quotation'=ANY(i.allowed_actions)) AND
+          NOT 'generate_quote'=ANY(i.allowed_actions))
         OR (SELECT count(*) FROM intent_document_requirements d
             WHERE d.agent_id=i.agent_id AND d.intent_id=i.id
               AND d.required AND d.requirement_key IN ('passport','emirates_id')) <> 2
@@ -58,7 +60,7 @@ BEGIN
         SELECT array_agg(DISTINCT a)
         FROM unnest(i.allowed_actions||ARRAY['create_lead','purchase_quotation']::text[]) AS a
       )
-      ELSE i.allowed_actions END
+      ELSE array_remove(i.allowed_actions,'purchase_quotation') END
   FROM intents i WHERE i.agent_id=agent AND i.catalog_version_id=source_catalog;
 
   INSERT INTO intent_requirements(
