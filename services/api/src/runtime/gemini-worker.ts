@@ -80,7 +80,8 @@ export class GeminiTurnWorker {
   private async verify(scope:ReturnType<typeof workerTicketScope>,
     session:AiSessionState,agent:AgentRuntimeBinding,candidate:ModelTurnCandidate) {
     const proof=await resolveGeminiEvidence(this.db,scope,session,agent,candidate);
-    return verifyGrounding({candidate,agent,session,...proof});
+    return verifyGrounding({candidate:proof.candidate,agent,session,
+      documents:proof.documents,catalogs:proof.catalogs,operations:proof.operations});
   }
 
   private async process(turn:PendingTurn):Promise<void> {
