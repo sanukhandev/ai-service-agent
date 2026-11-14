@@ -354,7 +354,7 @@ export class PaymentOperations {
         "SELECT status FROM agents WHERE id=$1",[scope.agentId],
       );
       if(ticket.rows[0]?.status!=="closed" && agent.rows[0]?.status==="active") {
-        await new TicketMessageRepository(this.db).createAssistantMessageTx(
+        await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
           client,scope,ticketId,lifecycleNoticeId("payment.verification.started",paymentId),
           "Your sandbox payment verification has started. You can continue chatting while the provider status is checked.",
         );
@@ -429,7 +429,7 @@ export class PaymentOperations {
           "SELECT status FROM agents WHERE id=$1",[scope.agentId],
         );
         if(activeTicket.rows[0]?.status!=="closed" && activeAgent.rows[0]?.status==="active") {
-          await new TicketMessageRepository(this.db).createAssistantMessageTx(
+          await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
             client,scope,ticketId,lifecycleNoticeId("payment.verified",paymentId),
             "Your sandbox payment has been independently verified as COMPLETE. I am preparing your TEST invoice now.",
           );
