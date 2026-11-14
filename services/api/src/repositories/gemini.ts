@@ -184,7 +184,7 @@ export class GeminiSessionRepository {
         messageId:inserted.rows[0].id,requestId,sequence:String(sequence),
       });
       const updated=await client.query<AiSessionRow>(
-        "UPDATE ai_conversation_sessions SET last_accepted_customer_message_at=$3,expires_at=$3+interval '60 minutes',updated_at=$3 WHERE agent_id=$1 AND id=$2 AND status='active' RETURNING *",
+        "UPDATE ai_conversation_sessions SET last_accepted_customer_message_at=$3::timestamptz,expires_at=$3::timestamptz+interval '60 minutes',updated_at=$3::timestamptz WHERE agent_id=$1 AND id=$2 AND status='active' RETURNING *",
         [scope.agentId,sessionId,at],
       );
       if(!updated.rows[0]) throw new PersistenceError("CONFLICT","Session transitioned during message acceptance");
