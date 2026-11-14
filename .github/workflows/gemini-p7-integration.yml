@@ -39,6 +39,8 @@ jobs:
           node-version: "22"
       - name: Install workspaces
         run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Build shared contract package
+        run: npm run build --workspace @ai-service-agent/contracts
       - name: Typecheck and compile standalone P1 adapter
         run: npx tsc -p services/api/src/gemini/tsconfig.p1.json --noEmit false --outDir /tmp/gemini-p1-dist
       - name: Run P1 standalone offline tests

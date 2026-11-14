@@ -6,7 +6,7 @@
 import type {
   AgentRuntimeBinding, ModelTurnRequest, ModelTurnResult, ModelTurnCandidate,
   ModelFunctionCall, NodeBusinessToolName, ProviderSourceAnnotation, ModelProviderErrorCode,
-} from "../../../../packages/contracts/gemini-v1.js";
+} from "@ai-service-agent/contracts/gemini-v1";
 
 export type ObjectValue = Record<string, unknown>;
 export type GeminiContent = { role: "user" | "model"; parts: ObjectValue[] };

@@ -1,0 +1,18 @@
+{
+  "name": "@ai-service-agent/contracts",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./gemini-v1": {
+      "types": "./dist/gemini-v1.d.ts",
+      "default": "./dist/gemini-v1.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3"
+  }
+}

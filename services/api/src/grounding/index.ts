@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-// @ts-ignore G0's type-only contract is outside the API's existing rootDir; integration owner owns tsconfig.
-import type { AgentRuntimeBinding, AiSessionState, ApprovedDocumentEvidence, AuthorizedActionOutcome, GroundingDecision, MaterialClaimDecision, ModelTurnCandidate, ResponseCategory, VerifiedClaimEvidence } from "../../../../packages/contracts/gemini-v1.js";
+import type { AgentRuntimeBinding, AiSessionState, ApprovedDocumentEvidence, AuthorizedActionOutcome, GroundingDecision, MaterialClaimDecision, ModelTurnCandidate, ResponseCategory, VerifiedClaimEvidence } from "@ai-service-agent/contracts/gemini-v1";
 
 /** P4 is read-only. The caller must load all records from authenticated Node repositories. */
 export const VERIFIER_VERSION = "gemini-grounding-p4.1" as const;
