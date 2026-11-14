@@ -2,7 +2,7 @@ import type {
   AgentRuntimeBinding,AiSessionState, GroundingDecision, ModelTurnCandidate,
   ModelTurnRequest,NodeBusinessToolName,
 } from "@ai-service-agent/contracts/gemini-v1";
-import { createOfficialGeminiAdapter, type GeminiModelAdapter } from "../gemini/adapter.js";
+import { createOfficialGeminiAdapter, type GeminiAdapterOptions, type GeminiModelAdapter } from "../gemini/adapter.js";
 import { verifyGrounding } from "../grounding/index.js";
 import { AgentToolRegistry, type RegisteredToolName, type TrustedToolContext } from "../agent/tool-registry.js";
 import { registerIntentTools } from "../agent/intent-tools.js";
@@ -40,7 +40,10 @@ export class GeminiTurnWorker {
 
   constructor(private readonly db:PersistenceDatabase,private readonly queue:TurnQueue,
     private readonly log:(data:Record<string,unknown>,message:string)=>void,
-    private readonly apiKey:string,private readonly encryptionKey:string) {
+    private readonly apiKey:string,private readonly encryptionKey:string,
+    private readonly adapterFactory:(apiKey:string,options:GeminiAdapterOptions)=>
+      Promise<Pick<GeminiModelAdapter,"runTurn"|"continueWithFunctionOutputs">>
+      =createOfficialGeminiAdapter) {
     this.sessions=new GeminiSessionRepository(db);
     this.bindings=new GeminiBindingRepository(db);
     this.context=new ConversationContextRepository(db);
@@ -110,7 +113,7 @@ export class GeminiTurnWorker {
       }));
       const requestedTools=definitions.map(d=>d.name as NodeBusinessToolName);
       const pendingStore=new PgGeminiPendingStore(this.db,turn.agentId,session.sessionId,this.encryptionKey);
-      const adapter:GeminiModelAdapter=await createOfficialGeminiAdapter(this.apiKey,{
+      const adapter=await this.adapterFactory(this.apiKey,{
         declarations:()=>definitions,pendingStore,combinedToolsLiveVerified:false,
         maxRounds:4,maxCalls:8,
       });
