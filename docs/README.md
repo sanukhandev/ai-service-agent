@@ -18,6 +18,7 @@ The only active AI runtime on `experiment/gemini-file-search-poc` is the Node-ow
 - [Product scope](01-product-and-scope.md)
 - [Node / Gemini / knowledge architecture](02-architecture.md)
 - [Gemini conversation and function continuation](03-gemini-and-conversation.md)
+- [Conversation continuity and SSE decisions](gemini-continuity-and-sse.md) — bounded history, state snapshot, deterministic summaries and safe frontend refresh
 - [PostgreSQL data model](04-data-model.md)
 - [Intent, tools and approved n8n workflows](05-tools-actions-workflows.md)
 - [Security and privacy](06-security-and-privacy.md)

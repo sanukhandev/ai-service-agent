@@ -19,7 +19,7 @@ The worker currently separates function passes and knowledge-only File Search pa
 ## Turn processing
 
 1. Fastify validates ticket ownership and accepts customer messages durably before enqueueing a model turn.
-2. The worker loads the active 60-minute AI session, published Gemini binding, catalog revisions and bounded recent conversation history.
+2. The worker loads the active 60-minute AI session, published Gemini binding, catalog revisions, and exactly the latest 16 preceding messages at or before the accepted customer turn. The Node-derived ticket context includes the active intent, verified/customer-stated fact status, missing requirements, action readiness and a periodically refreshed extractive summary of older customer excerpts. Historical snippets are not independent business evidence. Later queued customer messages are excluded from earlier turns.
 3. It invokes Gemini with an allowlisted function schema set, validates returned function calls and executes permitted Node handlers with trusted scope.
 4. Pending Gemini provider continuation is preserved in encrypted PostgreSQL storage scoped to agent/session. Tool call rounds and output sizes are bounded.
 5. The candidate factual answer is independently qualified against approved source documents and authorized catalog evidence.

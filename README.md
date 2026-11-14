@@ -54,6 +54,21 @@ A fresh isolated database publishes v2 automatically. Existing deployments
 require deliberate operator publication; active conversations keep their old
 version.
 
+## Conversation continuity and SSE
+
+The Gemini worker now builds each model request from the exact accepted turn,
+the latest preceding transcript messages, the current authoritative PostgreSQL
+intent/facts/actions, and a bounded extractive snapshot of older customer
+statements. Stored summaries are **not** business evidence or authorization.
+The first 200 messages are no longer mistaken for the most recent 200 during
+browser reload. Gemini sessions still expire after 60 minutes of inactivity.
+See [continuity and SSE design](docs/gemini-continuity-and-sse.md).
+
+The newer `main` SSE client changes were reviewed and selectively integrated:
+event-driven authorized panel refresh with a 60-second recovery fallback.
+Foundry-only assistant lifecycle-notification writes were not imported to avoid
+a second, unverified assistant-message publication path.
+
 ## First real-time test readiness
 
 Run the [non-billable local preflight](docs/gemini-live-test-readiness.md) before starting a live session. It checks configuration and, optionally, published Sara state and local API health, without sending any Google or n8n requests. A separate explicitly billable G1 probe verifies live Gemini and File Search compatibility. Do not enable financial dispatch for the initial conversation test.
