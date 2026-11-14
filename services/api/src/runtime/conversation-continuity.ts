@@ -35,7 +35,10 @@ function parseSummary(previous:string|null):ExtractiveMemory|null {
   try {
     const v=JSON.parse(previous) as Partial<ExtractiveMemory>;
     if(v.kind!=="gemini-extractive-summary-v1"||
-       !/^[0-9]{1,19}$/.test(v.coveredThrough??"")||!Array.isArray(v.excerpts))
+       !/^[0-9]{1,19}$/.test(v.coveredThrough??"")||!Array.isArray(v.excerpts)||
+       v.excerpts.length>MAX_MEMORY_EXCERPTS||
+       !v.excerpts.every(x=>typeof x?.quote==="string"&&x.quote.length<=180&&
+         typeof x.sequence==="string"&&/^[0-9]{1,19}$/.test(x.sequence)))
       return null;
     return v as ExtractiveMemory;
   }catch{return null;}
@@ -73,8 +76,18 @@ export function buildSessionContext(
     historicalCustomerExcerpts:parsed?.excerpts??[],
     precedence:"Current ticket facts supersede older customer excerpts. Disputed/customer_stated values are not independently verified. Neither these excerpts nor this snapshot establish business facts, authorization, prices or completed operations.",
   };
-  const output=JSON.stringify(state);
-  if(Buffer.byteLength(output,"utf8")>16_000)
+  // Adaptive bounds: keep current authoritative facts and action readiness
+  // ahead of older (nonauthoritative) chat excerpts, without throwing on long sessions.
+  let output=JSON.stringify(state);
+  while(Buffer.byteLength(output,"utf8")>15_000 && state.historicalCustomerExcerpts.length){
+    state.historicalCustomerExcerpts.shift();
+    output=JSON.stringify(state);
+  }
+  while(Buffer.byteLength(output,"utf8")>15_000 && state.missingRequirements.length){
+    state.missingRequirements.pop();
+    output=JSON.stringify(state);
+  }
+  if(Buffer.byteLength(output,"utf8")>16_384)
     throw new Error("CONTINUITY_CONTEXT_TOO_LARGE");
   return output;
 }
