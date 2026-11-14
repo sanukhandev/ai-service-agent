@@ -46,13 +46,13 @@ const invoice={
 };
 await assert.rejects(prepare(input(invoice),()=>{},Buffer,URL),/Invoice blocked/);
 await assert.rejects(prepare(input({...invoice,paymentVerified:true}),()=>{},Buffer,URL),/Invoice blocked/);
-await assert.rejects(prepare(input({...invoice,paymentVerified:true,paymentEvidence:{...evidence}}),()=>{},Buffer,URL),/Invoice blocked/);
 const evidence={
   status:"verified_test_payment",
   provider:"mockgateway_demo_orders",
   providerReference:"demoOrder_1234567",
   ticketId,quotationId,currency:"AED",amount:"425.25",
 };
+await assert.rejects(prepare(input({...invoice,paymentVerified:true,paymentEvidence:{...evidence}}),()=>{},Buffer,URL),/Invoice blocked/);
 await assert.rejects(prepare(input({...invoice,paymentVerified:true,paymentEvidence:{...evidence,amount:"425.26"}}),()=>{},Buffer,URL),/Invoice blocked/);
 await assert.rejects(prepare(input({...invoice,paymentVerified:true,paymentEvidence:{...evidence,ticketId:"other"}}),()=>{},Buffer,URL),/Invoice blocked/);
 const accepted=await prepare(input({...invoice,paymentVerified:true,quotationId,paymentEvidence:evidence}),()=>{},Buffer,URL);
