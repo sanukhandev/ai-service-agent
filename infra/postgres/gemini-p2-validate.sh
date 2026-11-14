@@ -87,5 +87,5 @@ FROM agents a WHERE a.agent_key='ancfz'")"
 test "$counts" = '21,97,55,1,1'
 echo 'TEST 6: Node repositories against actual PostgreSQL'
 compose build api
-compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini.integration.test.js dist/runtime/gemini-api.integration.test.js
+compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini.integration.test.js dist/runtime/gemini-api.integration.test.js dist/runtime/gemini-worker.integration.test.js
 echo 'P2 disposable database checks passed'
