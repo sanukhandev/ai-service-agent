@@ -13,8 +13,7 @@ import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled,
 
 const EMAIL=/^[A-Za-z0-9._%+-]+@example\.invalid$/i;
 const NAME=/^[A-Za-z][A-Za-z '._-]{0,99}$/;
-const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const PAYMENTS_URL="http://n8n:5678/webhook/ancfz/payment-verify";
+const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 type Quote = {id:string;amount:string;currency:string;state:string;has_pdf:boolean};
 type OtpRow = {
