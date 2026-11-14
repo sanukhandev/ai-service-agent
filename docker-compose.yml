@@ -36,6 +36,8 @@ services:
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:2000}
       # Gemini adapter is not activated until the single P7 Node worker is verified.
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_STATE_ENCRYPTION_KEY: ${GEMINI_STATE_ENCRYPTION_KEY:-}
+      GEMINI_APPROVED_TEXT_ROOT: /app/approved-text
       GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-2.5-flash}
       FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
