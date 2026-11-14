@@ -1,52 +1,39 @@
-# Security and privacy — Node-owned POC
+# Security and privacy — Gemini experiment
 
 ## Trust boundaries
 
-1. Node authenticates and authorizes customer/guest sessions and resolves Agent/ticket from server-controlled state.
-2. PostgreSQL is authoritative for transcript, customer facts, catalog versions, consent and authorized operation status.
-3. Foundry (Sara) is a conversational decision-maker, **not** a privileged principal. IQ snippets, function arguments, prompts and model messages must not override Node policy.
-4. n8n is a private workflow executor. Only a Node outbox worker may submit an **approved** operation, and only provider-correlated evidence may establish completion.
-
-The Angular Admin Portal and Python AI Gateway are not part of this POC. Controlled scripts and versioned configuration publish catalogs/agent bindings until a separate admin milestone.
+1. **Node owns authority:** browser input, model-generated tool calls, retrieval excerpts and n8n results never confer agent ownership, authorization, customer consent or document publication rights.
+2. **PostgreSQL owns durable state:** agents, tickets, messages, session deadlines, published catalogs, approved source versions, actions, evidence and events.
+3. **Gemini generates candidates only:** source-grounded business claims must pass the independent Node verifier before persistence or SSE publication.
+4. **n8n executes authorized operations only:** Node uses scoped consent, preflight, durable outbox and independently verified provider callbacks/results. An HTTP response alone is not proof of business completion.
 
 ## Agent and ticket isolation
 
-- Scope all agent-owned rows, blob keys, jobs, Redis keys and SSE events with trusted `agent_id`.
-- Composite foreign keys/RLS block cross-agent relational references. Node must run under a **non-superuser** PostgreSQL role, without `BYPASSRLS`, with a transaction-local agent context; never use the migration owner as runtime user.
-- The Node tool registry gets trusted context from the authenticated session. It rejects model-supplied `agentId`, `ticketId`, workflow endpoints and provider credentials.
-- A function request cannot bypass tool grants, input validation or preflight. Model-controlled context is never an authorization token.
-- Native Foundry IQ retrieval is configured on the published Foundry agent; review Azure resource/identity and knowledge attachment for separation from other Agents.
+- Derive `agent_id`, ticket ownership and pinned model/knowledge/catalog permissions server-side.
+- PostgreSQL tenant-like isolation is agent-scoped through composite foreign keys and transaction-local RLS with a non-superuser `agent_runtime` login. A model-provided ticket ID or external store URI is never sufficient authorization.
+- Keep agent knowledge bindings published/versioned. Only the explicitly authorized File Search store may be advertised; no browsing, Google Search, URL Context or arbitrary file/URL tools.
+- Confirm exact approved document identity and content digest (or approved structured catalog evidence) before accepting material claims. Revoked or ambiguous sources must fail closed, including after publication.
+- Scope Redis keys, original-document storage, signed callbacks, workflow bindings and SSE replay by trusted agent/ticket identity.
 
-## Email OTP and customer sessions (P5)
+## Sessions, OTP and credentials
 
-- Guest tickets use opaque scoped sessions and rate limiting.
-- Node performs email verification in a secure UI; hashed OTP challenge, expiry, attempts and replay protection. **Never send OTP, passwords or tokens to Foundry, model prompts, ticket chat or logging.**
-- Protect user existence from enumeration and bind tickets to verified owner or guest token.
-- Require meaningful customer consent for lead creation, formal quote submission, disclosure and external notifications.
-- Do not collect personal details merely to answer general information requests.
+- The **AI session** lasts 60 minutes since the most recent accepted customer message. Expiry creates a new AI context; no cross-session transcript or model continuation may be silently imported.
+- Guest/customer authentication is separate from AI session expiry. Rate-limit OTP, protect against enumeration, hash challenges and prevent replay. Never put OTPs, passwords, access tokens or provider secrets into the model prompt or customer chat.
+- Keep `GEMINI_API_KEY`, 32-byte hex `GEMINI_STATE_ENCRYPTION_KEY`, PostgreSQL migration owner password and restricted runtime password distinct and private. Pending Gemini function state is encrypted in PostgreSQL and bound to agent/session scope.
+- Do not commit `.env`, cloud identifiers containing secrets, customer data, API call bodies, private originals or n8n credential exports. Log redacted correlation IDs and controlled error types only.
 
-## PII policy
+## Knowledge and uploaded documents
 
-Since the **Python Model Gateway is removed**, don't add Presidio as a reason to reintroduce Python. Implement a small Node privacy adapter in P5; if contextual PII detection is necessary, evaluate **Azure AI Language PII** as an optional external provider. Prefer data minimization, secure structured fields, log masking and role-scoped access.
+Administrator-approved source originals and normalized extractable text are retained privately with immutable SHA-256 and version provenance. Indexing a document is not authorization to publish its content. Customer-uploaded ticket documents are private ticket artifacts and must **not** silently become agent-wide Gemini File Search knowledge.
 
-No detector catches every PII value. In particular, don't blindly remove legitimate customer contact details needed for an explicitly approved CRM operation. Do not expose sensitive identifiers in screenshots, logs, model tool outputs or customer-visible URLs.
+The ingestion pipeline handles supported normalized TXT/MD/DOCX and text-extractable PDF. Image-only scanned PDFs need separate approved OCR and verified text before being used to ground factual answers. Validate file path containment, type, size, digest, source approval and download ownership.
 
-Private customer documents belong to authorized ticket-scoped Azure Blob Storage, not to the shared Foundry IQ RAG source. Validate file signatures, sizes, access and OCR extraction provenance.
+## PII and network safeguards
 
-## Azure auth
+Collect personal information only for the user's requested service/action. Protect structured contact information and transcripts through authorization, restricted storage and selective log redaction; optional external PII services are not a substitute for access control.
 
-Local POC uses `@azure/identity`'s `AzureCliCredential` **inside the Node API**; P1 adds Azure CLI to the Linux Node runtime image. Mount the private `azure-cli-auth` named volume only there and use `AZURE_CONFIG_DIR=/home/app/.azure`. An authenticated Azure CLI session may survive rebuilds but can require interactive renewal. Never commit cached credentials, copy them into image layers, or mount the Windows CLI cache into a Linux container. Managed identity is for deployed environments.
+Only experiment Nginx publishes `127.0.0.1:2000:80` on the host; other containers stay internal. The localhost HTTP endpoint is **not suitable for public real-customer PII, identity documents or OTP handling**. Require TLS, hardened cookies, appropriate CSP, rate limits and independent review before external deployment. The optional n8n editor must not expose direct public webhook execution.
 
-The published Foundry agent/version, configured IQ knowledge and allowed function schemas are trusted versioned configuration. Neither the browser nor the model can select an arbitrary project endpoint or update the agent.
+## Security acceptance
 
-## Network
-
-- Only Nginx publishes port 80; every other service is Docker-internal.
-- There are no public `/admin/`, `/n8n/`, `/ai-gateway/` or database endpoints.
-- HTTP is allowed **only for localhost or isolated POC testing**; any real customer credentials, OTP, PII or uploads require upstream HTTPS before internet exposure.
-- Keep n8n credentials server-only; callback authorization/signatures and replay denial are required even on a private network.
-- Use strict same-origin browser API access, secure cookies where applicable, input-size bounds, appropriate CSP and redacted trace IDs.
-
-## Deferred H1 audit
-
-After the working POC, automate isolation tests, customer session/OTP tests, prompt injection and PII tests, n8n callback/replay checks, RLS/revocation checks and token leakage scans. **Do not defer implementing the underlying protections** simply because test automation is postponed.
+Automated policy/RLS/offline tests have passed at documented commits, but the full local/live P6 security matrix is not certified. Remaining checks include cross-agent leakage, source revocation, prompt injection, tool argument escalation, encrypted continuation replay, provider callback forgery, consent/idempotency, credential leaks and repeated failures under restart. See [P7 status](gemini-p7-status.md).
