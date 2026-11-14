@@ -3,7 +3,7 @@
 ## Scope and current certification
 
 This slice connects **one** ANCFZ workflow to the Node runtime: `ancfz_salesforce_lead`.
-It does not make n8n a ticket creator or a Foundry function tool. Tickets, chat,
+It does not make n8n a ticket creator or a Gemini function tool. Tickets, chat,
 intent selection, customer facts, consent and operation outcomes remain in PostgreSQL.
 
 **Disabled by default.** The merged n8n workflow is initially **inactive** with
