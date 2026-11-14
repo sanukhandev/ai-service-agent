@@ -1,5 +1,5 @@
 {
-  "name": "ANCFZ | MockGateway Demo Order Request (checkout URL if provided)",
+  "name": "ANCFZ | 2Checkout Mock Order Create",
   "active": false,
   "settings": {
     "executionOrder": "v1",
@@ -41,13 +41,13 @@
         300
       ],
       "parameters": {
-        "jsCode": "// Called only by authenticated Node dispatch once consent + OTP are persisted.\n// The flags are informational defense-in-depth; the future Node authorization\n// handler must validate them against durable quote/OTP state before dispatch.\nconst b = $input.first().json.body ?? {};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||b.otpVerified!==true||b.customerConsent!==true) throw new Error('ANCFZ approval missing');\nif(typeof b.ticketId!=='string'||!uuid.test(b.ticketId)) throw new Error('Invalid ticket ID');\nif(typeof b.quotationId!=='string'||!uuid.test(b.quotationId)) throw new Error('Invalid quotation ID');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference)) throw new Error('Invalid stable external reference');\nif(b.currency!=='AED') throw new Error('ANCFZ demo accepts AED quote only');\nif(typeof b.amount!=='string'||! /^(?:0|[1-9]\\d{0,7})\\.\\d{2}$/.test(b.amount)|| Number(b.amount)<=0) throw new Error('Expected approved decimal amount, e.g. 10.00');\nif(typeof b.firstName!=='string'||!b.firstName.trim()||b.firstName.length>100) throw new Error('Invalid billing first name');\nif(typeof b.email!=='string'||b.email.length>254||!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(b.email)) throw new Error('Invalid billing email');\nif(typeof b.countryCode!=='string'||!/^[A-Z]{2}$/.test(b.countryCode)) throw new Error('Invalid country code');\nreturn [{json:{agentKey:'ancfz',ticketId:b.ticketId,quotationId:b.quotationId,externalReference:b.externalReference,currency:'AED',amount:b.amount,firstName:b.firstName.trim(),email:b.email.trim(),countryCode:b.countryCode}}];",
+        "jsCode": "// Called only by authenticated Node dispatch once consent + OTP are persisted.\n// The flags are informational defense-in-depth; the future Node authorization\n// handler must validate them against durable quote/OTP state before dispatch.\nconst b = $input.first().json.body ?? {};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.agentKey!=='ancfz'||b.otpVerified!==true||b.customerConsent!==true) throw new Error('ANCFZ approval missing');\nif(typeof b.ticketId!=='string'||!uuid.test(b.ticketId)) throw new Error('Invalid ticket ID');\nif(typeof b.quotationId!=='string'||!uuid.test(b.quotationId)) throw new Error('Invalid quotation ID');\nif(typeof b.externalReference!=='string'||!/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(b.externalReference)) throw new Error('Invalid stable external reference');\nif(b.currency!=='AED') throw new Error('ANCFZ quotations must be in AED; verify the sandbox supports AED before enabling');\nif(typeof b.amount!=='string'||! /^(?:0|[1-9]\\d{0,7})\\.\\d{2}$/.test(b.amount)|| Number(b.amount)<=0) throw new Error('Expected approved decimal amount, e.g. 10.00');\nif(typeof b.firstName!=='string'||!b.firstName.trim()||b.firstName.length>100) throw new Error('Invalid billing first name');\nif(typeof b.email!=='string'||b.email.length>254||!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(b.email)) throw new Error('Invalid billing email');\nif(typeof b.countryCode!=='string'||!/^[A-Z]{2}$/.test(b.countryCode)) throw new Error('Invalid country code');\nreturn [{json:{agentKey:'ancfz',ticketId:b.ticketId,quotationId:b.quotationId,externalReference:b.externalReference,currency:'AED',amount:b.amount,firstName:b.firstName.trim(),email:b.email.trim(),countryCode:b.countryCode}}];",
         "mode": "runOnceForAllItems"
       }
     },
     {
       "id": "init",
-      "name": "MockGateway Demo Orders POST",
+      "name": "2Checkout Mock Orders POST",
       "type": "n8n-nodes-base.httpRequest",
       "typeVersion": 4.2,
       "position": [
@@ -56,16 +56,12 @@
       ],
       "parameters": {
         "method": "POST",
-        "url": "https://mockgateway.com/api/v1/public/demo/base/ancfz-f6i0ry/rest/6.0/orders/",
+        "url": "https://mockgateway.com/api/base/2checkout-fzucuq/rest/6.0/orders/",
         "authentication": "genericCredentialType",
         "genericAuthType": "httpHeaderAuth",
         "sendHeaders": true,
         "headerParameters": {
           "parameters": [
-            {
-              "name": "X-Guest-ID",
-              "value": "={{ $env.MOCKGATEWAY_GUEST_ID }}"
-            },
             {
               "name": "Content-Type",
               "value": "application/json"
@@ -96,7 +92,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// The supplied demo Orders endpoint is not the /api/pg/{slug}/init API.\n// Do not invent a checkout URL or report an order as paid.\nconst raw=$input.first().json;\nconst r=(raw && typeof raw==='object' && !Array.isArray(raw))?raw:{};\nconst expected=$('Validate Authorized Payment').first().json;\nconst ref=r.order_number ?? r.OrderNumber ?? r.OrderReference ?? r.order_id ?? r.id;\nif((typeof ref!=='string'&&typeof ref!=='number')||!String(ref).trim()||String(ref).length>200) throw new Error('MockGateway Orders response has no verifiable order reference');\n// Validate any provider-echoed correlation before showing a checkout link.\nconst echoedExternal = r.ExternalReference ?? r.externalReference ?? r.external_reference;\nif (echoedExternal !== undefined && echoedExternal !== expected.externalReference)\n  throw new Error('MockGateway order external reference mismatch');\nconst echoedCurrency = r.Currency ?? r.currency;\nif (echoedCurrency !== undefined && echoedCurrency !== expected.currency)\n  throw new Error('MockGateway order currency mismatch');\nconst echoedAmount = r.Amount ?? r.amount ?? r.Total ?? r.total;\nif (echoedAmount !== undefined) {\n  const numeric = typeof echoedAmount === 'number' || typeof echoedAmount === 'string'\n    ? Number(echoedAmount) : NaN;\n  if (!Number.isFinite(numeric) || numeric.toFixed(2) !== expected.amount)\n    throw new Error('MockGateway order amount mismatch');\n}\nconst maybeUrl=r.payment_url ?? r.paymentUrl ?? r.checkout_url ?? r.PaymentURL ?? r.PaymentUrl;\nlet paymentUrl=null;\nif(typeof maybeUrl==='string'&&maybeUrl.length<2048){\n  let u;\n  try { u=new URL(maybeUrl); } catch { throw new Error('Invalid gateway checkout URL'); }\n  if(u.protocol!=='https:'||!(u.hostname==='mockgateway.com'||u.hostname.endsWith('.mockgateway.com'))) throw new Error('Untrusted checkout URL');\n  paymentUrl=maybeUrl;\n}\nreturn [{json:{status:paymentUrl?'checkout_available':'order_created_checkout_unavailable',verified:false,provider:'mockgateway_demo_orders',orderReference:String(ref),paymentUrl,ticketId:expected.ticketId,quotationId:expected.quotationId,externalReference:expected.externalReference,amount:expected.amount,currency:expected.currency}}];",
+        "jsCode": "// 2Checkout mock REST/6.0 Orders. An order creation response is NEVER proof of payment.\nconst r = $input.first().json;\nif (!r || typeof r !== 'object' || Array.isArray(r)) throw Error('Invalid 2Checkout order response');\nconst e = $('Validate Authorized Payment').first().json;\nconst ref = r.RefNo ?? r.OrderNo ?? r.order_number;\nif (typeof ref !== 'string' || !/^[A-Za-z0-9_-]{1,120}$/.test(ref))\n  throw Error('Missing valid 2Checkout order reference');\nif (r.ExternalReference !== e.externalReference) throw Error('2Checkout external reference mismatch');\nif (r.Currency !== e.currency) throw Error('2Checkout currency mismatch');\nif (typeof r.GrossPrice !== 'string' || !/^\\d{1,9}\\.\\d{2}$/.test(r.GrossPrice) || r.GrossPrice !== e.amount)\n  throw Error('2Checkout gross amount mismatch');\nconst urlText = r.redirect_url ?? r.PaymentDetails?.PaymentMethod?.RedirectURL ?? null;\nlet checkoutUrl = null;\nif (urlText !== null) {\n  if (typeof urlText !== 'string' || urlText.length > 2048) throw Error('Invalid checkout URL');\n  const url = new URL(urlText);\n  if (url.protocol !== 'https:' || url.hostname !== 'mockgateway.com' ||\n      !url.pathname.startsWith('/pg/pay/') || url.username || url.password)\n    throw Error('Untrusted 2Checkout redirect URL');\n  checkoutUrl = urlText;\n}\nreturn [{json:{\n  status:checkoutUrl ? 'checkout_available' : 'order_created_checkout_unavailable',\n  verified:false, provider:'2checkout_mock', orderReference:ref,\n  externalReference:e.externalReference, ticketId:e.ticketId, quotationId:e.quotationId,\n  amount:e.amount, currency:e.currency, checkoutUrl,\n}}];",
         "mode": "runOnceForAllItems"
       }
     },
@@ -134,18 +130,7 @@
       "main": [
         [
           {
-            "node": "MockGateway Demo Orders POST",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
-    },
-    "MockGateway Demo Orders POST": {
-      "main": [
-        [
-          {
-            "node": "Inspect Demo Order Response",
+            "node": "2Checkout Mock Orders POST",
             "type": "main",
             "index": 0
           }
@@ -157,6 +142,17 @@
         [
           {
             "node": "Respond",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "2Checkout Mock Orders POST": {
+      "main": [
+        [
+          {
+            "node": "Inspect Demo Order Response",
             "type": "main",
             "index": 0
           }

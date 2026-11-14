@@ -58,7 +58,7 @@ smtp.data = {
   user: required("ANCFZ_SMTP_USER", 3),
   password: required("ANCFZ_SMTP_PASSWORD", 8),
 };
-gateway.data = { name: "X-API-Key", value: required("ANCFZ_MOCKGATEWAY_API_KEY", 16) };
+gateway.data = { name: "X-Avangate-Authentication", value: required("ANCFZ_2CHECKOUT_MERCHANT_SECRET", 16) };
 
 const json = JSON.stringify(creds, null, 2) + "\n";
 // Exclusive write prevents accidental overwrites of credentials already generated.

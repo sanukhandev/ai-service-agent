@@ -48,7 +48,7 @@ await assert.rejects(prepare(input(invoice),()=>{},Buffer,URL),/Invoice blocked/
 await assert.rejects(prepare(input({...invoice,paymentVerified:true}),()=>{},Buffer,URL),/Invoice blocked/);
 const evidence={
   status:"verified_test_payment",
-  provider:"mockgateway_demo_orders",
+  provider:"2checkout_mock",
   providerReference:"demoOrder_1234567",
   ticketId,quotationId,currency:"AED",amount:"425.25",
 };
@@ -84,33 +84,54 @@ for (const patch of [
   {amount:"425.251"},{externalReference:"invalid"},{ticketId:"wrong"},
 ]) await assert.rejects(validatePayment(input({...authorization,...patch}),()=>{},Buffer,URL));
 const inspectOrder=code(payment,"Inspect Demo Order Response");
-const orderResponse={id:"order_123",ExternalReference:authorization.externalReference,
-  Currency:"AED",Amount:"425.25",checkout_url:"https://pay.mockgateway.com/checkout/test123"};
+const orderResponse = {
+  RefNo:"123456789",OrderNo:"123456789",
+  ExternalReference:authorization.externalReference, Currency:"AED",GrossPrice:"425.25",
+  redirect_url:"https://mockgateway.com/pg/pay/1a2b3c4d-test",
+  Status:"PENDING",InvoiceID:"TEST-INV-123",
+};
 const context=()=>({first:()=>({json:val[0].json})});
 const good=(await inspectOrder({first:()=>({json:orderResponse})},context,Buffer,URL))[0].json;
-assert.equal(good.orderReference,"order_123");
+assert.equal(good.orderReference,"123456789");
 assert.equal(good.verified,false);
+assert.equal(good.provider,"2checkout_mock");
 assert.equal(good.status,"checkout_available");
-assert.equal(good.paymentUrl,orderResponse.checkout_url);
+assert.equal(good.checkoutUrl,orderResponse.redirect_url);
 for(const bad of [
-  {Currency:"USD"},{Amount:"425.26"},{ExternalReference:"ANCFZ-other"},
-  {checkout_url:"https://evil.example/pay"},
+  {Currency:"USD"},{GrossPrice:"425.26"},{ExternalReference:"ANCFZ-other"},
+  {redirect_url:"https://evil.example/pay"},{redirect_url:"http://mockgateway.com/pg/pay/x"},
 ]){
   await assert.rejects(inspectOrder({first:()=>({json:{...orderResponse,...bad}})},context,Buffer,URL));
 }
-const missingLink=(await inspectOrder({first:()=>({json:{id:"order_123"}})},context,Buffer,URL))[0].json;
-assert.equal(missingLink.paymentUrl,null);
+const missingLink=(await inspectOrder({first:()=>({json:{...orderResponse,redirect_url:undefined}})},context,Buffer,URL))[0].json;
+assert.equal(missingLink.checkoutUrl,null);
 assert.equal(missingLink.status,"order_created_checkout_unavailable");
 
-assert(!verify.nodes.some(n=>n.type==="n8n-nodes-base.httpRequest"),"Do not invent a payment status endpoint");
+const statusNode=verify.nodes.find(n=>n.name==="2Checkout Mock GET Order");
+assert.equal(statusNode.parameters.method,"GET");
+assert(statusNode.parameters.url.includes("/api/base/2checkout-fzucuq/rest/6.0/orders/"));
+assert.equal(statusNode.parameters.genericAuthType,"httpHeaderAuth");
 const req=code(verify,"Validate Verification Request");
 const v=(await req(input({
-  agentKey:"ancfz",ticketId,orderReference:"order_123",
+  agentKey:"ancfz",ticketId,quotationId,orderReference:"123456789",
   externalReference:authorization.externalReference,currency:"AED",amount:"425.25",
 }),()=>{},Buffer,URL))[0].json;
-const reject=code(verify,"Reject Unverified Demo Order");
-const status=(await reject({first:()=>({json:v})},()=>({first:()=>({json:v})}),Buffer,URL))[0].json;
-assert.equal(status.verified,false);
-assert.equal(status.status,"verification_unconfigured");
-assert.equal(status.ticketId,ticketId);
-console.log("ANCFZ billing offline PASS: escaped quotation/invoice PDF, correlated test-payment evidence, private Gotenberg, order-response validation, fail-closed payment status");
+const statusCode=code(verify,"Validate Gateway Status");
+const expected=()=>({first:()=>({json:v})});
+const fetched={RefNo:"123456789",ExternalReference:v.externalReference,Currency:"AED",
+  GrossPrice:"425.25",Status:"COMPLETE",InvoiceID:"sandbox-invoice-123"};
+const paid=(await statusCode({first:()=>({json:fetched})},expected,Buffer,URL))[0].json;
+assert.equal(paid.verified,true);
+assert.equal(paid.provider,"2checkout_mock");
+assert.equal(paid.status,"verified_test_payment");
+assert.equal(paid.quotationId,quotationId);
+assert.equal(paid.amount,"425.25");
+for(const providerStatus of ["PENDING","DECLINED","REFUNDED"]){
+  const pending=(await statusCode({first:()=>({json:{...fetched,Status:providerStatus}})},expected,Buffer,URL))[0].json;
+  assert.equal(pending.verified,false);
+}
+for(const patch of [
+  {RefNo:"other"},{ExternalReference:"ANCFZ-other"},{Currency:"USD"},
+  {GrossPrice:"425.26"},{Status:"UNKNOWN"}
+]) await assert.rejects(statusCode({first:()=>({json:{...fetched,...patch}})},expected,Buffer,URL));
+console.log("ANCFZ billing offline PASS: 2Checkout creation/independent verification, exact quote matching, invoice evidence and PDF safety");

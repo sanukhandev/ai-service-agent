@@ -34,7 +34,7 @@ const mapping = {
   "Receive Verification Request": "httpHeaderAuth",
   "Salesforce Apex REST Create Lead": "oAuth2Api",
   "Send ANCFZ OTP Email": "smtp",
-  "MockGateway Demo Orders POST": "httpHeaderAuth",
+  "2Checkout Mock Orders POST": "httpHeaderAuth",
 };
 const expectedId = {
   "httpHeaderAuth.webhook": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
@@ -52,7 +52,7 @@ for(const file of files) {
     const type=mapping[node.name];
     const ref=node.credentials?.[type];
     assert(ref, file+" missing credential reference: "+node.name);
-    const key=type==="httpHeaderAuth"?(node.name==="MockGateway Demo Orders POST"?"httpHeaderAuth.gateway":"httpHeaderAuth.webhook"):type;
+    const key=type==="httpHeaderAuth"?(node.name==="2Checkout Mock Orders POST"?"httpHeaderAuth.gateway":"httpHeaderAuth.webhook"):type;
     assert.equal(ref.id,expectedId[key]);
     assert.equal(ref.name,byId.get(ref.id).name);
     assert.equal(byId.get(ref.id).type,type);
@@ -70,14 +70,15 @@ try {
     ANCFZ_SMTP_HOST:"mail.example.net",
     ANCFZ_SMTP_USER:"test@example.net",
     ANCFZ_SMTP_PASSWORD:"nonproduction-smtp-password",
-    ANCFZ_MOCKGATEWAY_API_KEY:"nonproduction-test-key",
+    ANCFZ_2CHECKOUT_MERCHANT_SECRET:"nonproduction-test-key",
   };
   const args=["scripts/prepare-ancfz-credentials.mjs","--output",target];
   let r=spawnSync(process.execPath,args,{env:environment,encoding:"utf8"});
   assert.equal(r.status,0,r.stderr);
   const generated=JSON.parse(readFileSync(target,"utf8"));
   assert.equal(generated.length,4);
-  assert.equal(generated.find(c=>c.name.includes("MockGateway")).data.value,environment.ANCFZ_MOCKGATEWAY_API_KEY);
+  assert.equal(generated.find(c=>c.name.includes("MockGateway")).data.value,environment.ANCFZ_2CHECKOUT_MERCHANT_SECRET);
+  assert.equal(generated.find(c=>c.name.includes("MockGateway")).data.name,"X-Avangate-Authentication");
   const sf=generated.find(c=>c.name.includes("Salesforce"));
   assert.equal(sf.type,"oAuth2Api");
   assert.equal(sf.data.clientId,"xxxx");
@@ -88,9 +89,9 @@ try {
   // Never overwrite and never print secrets.
   r=spawnSync(process.execPath,args,{env:environment,encoding:"utf8"});
   assert.notEqual(r.status,0);
-  assert(!r.stdout.includes(environment.ANCFZ_MOCKGATEWAY_API_KEY));
+  assert(!r.stdout.includes(environment.ANCFZ_2CHECKOUT_MERCHANT_SECRET));
   // Reject missing secrets and writing inside the repository.
-  const missing={...environment};delete missing.ANCFZ_MOCKGATEWAY_API_KEY;
+  const missing={...environment};delete missing.ANCFZ_2CHECKOUT_MERCHANT_SECRET;
   r=spawnSync(process.execPath,["scripts/prepare-ancfz-credentials.mjs","--output",join(testDir,"missing.json")],{env:missing,encoding:"utf8"});
   assert.notEqual(r.status,0);
   r=spawnSync(process.execPath,["scripts/prepare-ancfz-credentials.mjs","--output","./ancfz-credentials.json"],{env:environment,encoding:"utf8"});

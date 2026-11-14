@@ -14,6 +14,7 @@ try {
     throw Error("Synthetic billing smoke requires APP_ENV=development");
   }
   const req = JSON.parse(input);
+  if (req?.action !== "quotation") throw Error("2Checkout verification requires a real provider order; synthetic status checks disabled");
   if (!["quotation", "verification"].includes(req.action) ||
       typeof req.secret !== "string" || req.secret.length < 32) {
     throw Error("Invalid synthetic billing smoke input");

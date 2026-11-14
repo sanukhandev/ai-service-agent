@@ -6,10 +6,10 @@ import { resolve } from "node:path";
 
 const cwd=resolve(fileURLToPath(new URL("../",import.meta.url)));
 const arg=process.argv[2];
-const action=arg==="--quotation"?"quotation":arg==="--payment-verify"?"verification":null;
+const action=arg==="--quotation"?"quotation":null;
 const secret=process.env.ANCFZ_N8N_WEBHOOK_SECRET;
 if(!action) {
-  console.error("Usage: node scripts/test-ancfz-billing-webhooks.mjs --quotation|--payment-verify");
+  console.error("Usage: node scripts/test-ancfz-billing-webhooks.mjs --quotation (2Checkout status requires a genuine order reference)");
   process.exitCode=1;
 } else if(typeof secret!=="string"||secret.length<32) {
   console.error("Set private ANCFZ_N8N_WEBHOOK_SECRET to match the n8n Header Auth credential");

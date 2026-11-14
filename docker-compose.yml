@@ -39,6 +39,11 @@ services:
       ANCFZ_LEAD_DISPATCH_ENABLED: ${ANCFZ_LEAD_DISPATCH_ENABLED:-false}
       ANCFZ_QUOTE_DISPATCH_ENABLED: ${ANCFZ_QUOTE_DISPATCH_ENABLED:-false}
       ANCFZ_N8N_WEBHOOK_SECRET: ${ANCFZ_N8N_WEBHOOK_SECRET:-}
+      # P5 sandbox-only 2Checkout path. All opt-ins must be enabled explicitly.
+      ANCFZ_PAYMENT_DISPATCH_ENABLED: ${ANCFZ_PAYMENT_DISPATCH_ENABLED:-false}
+      ANCFZ_TEST_OTP_ENABLED: ${ANCFZ_TEST_OTP_ENABLED:-false}
+      ANCFZ_OTP_MOCK_ENABLED: ${ANCFZ_OTP_MOCK_ENABLED:-false}
+      ANCFZ_OTP_PEPPER: ${ANCFZ_OTP_PEPPER:-}
       REDIS_URL: redis://redis:6379
       PGHOST: postgres
       PGPORT: "5432"
@@ -132,8 +137,6 @@ services:
       N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_INSTANCE_OWNER_LAST_NAME:-}
       N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}
       # Optional ANCFZ configuration. Keep provider secrets in n8n credentials.
-      # MockGateway Demo Orders requires a configured guest identifier.
-      MOCKGATEWAY_GUEST_ID: ${MOCKGATEWAY_GUEST_ID:-}
       ANCFZ_OTP_FROM_EMAIL: ${ANCFZ_OTP_FROM_EMAIL:-}
       # Explicit local POC-only mock OTP recording. Disabled unless opted in.
       APP_ENV: ${APP_ENV:-development}
