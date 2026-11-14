@@ -1,6 +1,6 @@
 {
   "schemaVersion": "poc-1",
-  "description": "Illustrative ANCFZ revision-2 POC catalog. The actual published SQL seed is infra/bootstrap/seed-sara-purchase.sql; for every supported intent only passport and Emirates ID are accepted as purchase documents. OCR from Azure Document Intelligence supplies the invoice billing name.",
+  "description": "Illustrative ANCFZ revision-2 POC catalog. The actual published SQL seed is infra/bootstrap/seed-sara-purchase.sql; for every supported intent only passport and Emirates ID are accepted as purchase documents. A separately approved, authenticated OCR provider is required for identity extraction before any synthetic TEST invoice.",
   "agentKey": "ancfz",
   "revision": 2,
   "intents": [
