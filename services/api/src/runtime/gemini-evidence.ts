@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
-import type { ModelTurnCandidate, AiSessionState, AgentRuntimeBinding } from "@ai-service-agent/contracts/gemini-v1";
+import type { ModelTurnCandidate, ProviderSourceAnnotation, AiSessionState, AgentRuntimeBinding } from "@ai-service-agent/contracts/gemini-v1";
 import type { SourceRecord, CatalogRecord, OperationRecord } from "../grounding/index.js";
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { GeminiBindingRepository } from "../repositories/gemini.js";
@@ -21,8 +21,9 @@ function sha(text:string):string{return createHash("sha256").update(text,"utf8")
 export async function resolveGeminiEvidence(
   db:PersistenceDatabase,scope:TicketScope,session:AiSessionState,
   agent:AgentRuntimeBinding,candidate:ModelTurnCandidate,
-):Promise<{documents:SourceRecord[];catalogs:CatalogRecord[];operations:OperationRecord[]}> {
+):Promise<{candidate:ModelTurnCandidate;documents:SourceRecord[];catalogs:CatalogRecord[];operations:OperationRecord[]}> {
   const documents:SourceRecord[]=[];
+  const normalizedAnnotations:ProviderSourceAnnotation[]=[];
   const store=agent.knowledge?.storeResourceName;
   const sourceRoot=process.env.GEMINI_APPROVED_TEXT_ROOT;
   if(store && sourceRoot && isAbsolute(sourceRoot) && candidate.sourceAnnotations.length<=16) {
@@ -31,10 +32,26 @@ export async function resolveGeminiEvidence(
     if(root) {
       for(const citation of candidate.sourceAnnotations){
         const id=citation.providerResourceName;
-        if(!id || !id.startsWith(store+"/documents/") ||
-           !/^fileSearchStores\/[A-Za-z0-9_-]+\/documents\/[A-Za-z0-9_-]+$/.test(id)) continue;
-        const found=await bindings.approvedDocument(scope,session.sessionId,store,id).catch(()=>null);
-        if(!found)continue;
+        const meta=citation.sourceMetadata;
+        // Metadata is returned by Google's retrieval tool, but becomes
+        // authoritative only after comparing ALL immutable fields to PostgreSQL.
+        let found=meta
+          ? await bindings.approvedDocumentFromMetadata(scope,session.sessionId,store,meta).catch(()=>null)
+          : null;
+        if(meta && !found) {
+          normalizedAnnotations.push(citation);continue;
+        }
+        if(id && found && id!==found.providerDocumentResourceName) {
+          normalizedAnnotations.push({...citation,providerResourceName:null});continue;
+        }
+        if(!found && id && id.startsWith(store+"/documents/") &&
+           /^fileSearchStores\/[A-Za-z0-9_-]+\/documents\/[A-Za-z0-9_-]+$/.test(id)) {
+          found=await bindings.approvedDocument(scope,session.sessionId,store,id).catch(()=>null);
+        }
+        if(!found) {normalizedAnnotations.push(citation);continue;}
+        // This is the stored Google document identity, verified by PostgreSQL
+        // (not fabricated from a title, snippet or model-provided store).
+        normalizedAnnotations.push({...citation,providerResourceName:found.providerDocumentResourceName});
         const revision=await db.withAgent(scope.agentId,async client=>{
           const r=await client.query<{normalized_text_ref:string;normalized_text_sha256:string|null}>(
             `SELECT r.normalized_text_ref,r.normalized_text_sha256
@@ -62,5 +79,9 @@ export async function resolveGeminiEvidence(
   // Existing test catalogs are explicitly unapproved. Catalog facts become
   // usable only after the independently approved, version-pinned provenance
   // resolver is implemented. Do not promote arbitrary model tool outputs.
-  return {documents,catalogs:[],operations:[]};
+  // P4 must see the authoritative post-resolution document resource name.
+  // If private source bytes are unavailable, it still rejects unsupported
+  // claims because no verified SourceRecord exists.
+  return {candidate:{...candidate,sourceAnnotations:normalizedAnnotations.length===candidate.sourceAnnotations.length
+    ? normalizedAnnotations:candidate.sourceAnnotations},documents,catalogs:[],operations:[]};
 }
