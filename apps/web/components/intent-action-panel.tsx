@@ -7,13 +7,13 @@ import { PaymentCheckout } from "./payment-checkout";
 import { PurchaseChecklist } from "./purchase-checklist";
 
 const consentText =
-  "I ask ANCFZ to record this POC service request using the information I provided in this ticket. I understand this does not submit an application to a bank, government body or external partner.";
+  "I authorize this agent to record a service request for staff review using facts I provided in this ticket. I understand no application is submitted to an external provider.";
 
 type Action={
   actionKey:string;label:string;
   kind:"ticket_request"|"salesforce_lead"|"quotation"|"purchase";
   requirements:{key:string;label:string;present:boolean}[];
-  missing:string[];ready:boolean;
+  missing:string[];ready:boolean;requiresIdentityDocuments?:boolean;
   request:{id:string;status:string}|null;
 };
 type Catalog={
@@ -77,9 +77,8 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
     <p className="text-xs font-semibold text-slate-700">
       Available actions for {catalog.intentName??catalog.intentKey.replaceAll("_"," ")}
     </p>
-    {/* Passport and Emirates ID intake applies to ALL intents, even those
-        without a priced quotation or an authorized payment path. */}
-    {!actions.some(a=>a.kind==="purchase")&&
+    {/* Only actions configured to require identity evidence show this checklist. */}
+    {!actions.some(a=>a.kind==="purchase")&&actions.some(a=>a.requiresIdentityDocuments)&&
       <PurchaseChecklist ticketId={ticketId} quote={null} onReady={noopReady}/>}
 
     {actions.map(action=>{

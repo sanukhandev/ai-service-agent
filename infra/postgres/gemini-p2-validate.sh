@@ -67,8 +67,9 @@ SELECT count(*) FROM schema_migrations WHERE name IN (
  '018_payment_auto_verification.sql',
  '019_identity_extraction.sql',
  '020_intent_service_requests.sql',
- '021_action_proposals.sql')")"
-test "$new_count" = '6'
+ '021_action_proposals.sql',
+ '022_agent_action_bindings.sql')")"
+test "$new_count" = '7'
 table_count="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
 SELECT count(*) FROM pg_class WHERE relkind='r' AND oid IN (
  to_regclass('public.ticket_payment_otps'),
@@ -78,9 +79,10 @@ SELECT count(*) FROM pg_class WHERE relkind='r' AND oid IN (
  to_regclass('public.ticket_purchase_documents'),
  to_regclass('public.ticket_purchase_confirmations'),
  to_regclass('public.ticket_service_requests'),
- to_regclass('public.ticket_action_proposals'))")"
-test "$table_count" = '8'
-echo 'Gemini and ANCFZ migrations 001-021 coexist without number collisions'
+ to_regclass('public.ticket_action_proposals'),
+ to_regclass('public.agent_action_bindings'))")"
+test "$table_count" = '9'
+echo 'Gemini and ANCFZ migrations 001-022 coexist without number collisions'
 echo 'TEST 3: Fail closed on migration checksum change'
 tampered="$(mktemp)"
 cp infra/postgres/009_gemini_bindings.sql "$tampered"

@@ -63,7 +63,7 @@ SQL
   esac
 }
 
-for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_gemini_bindings.sql /migrations/010_gemini_knowledge.sql /migrations/011_gemini_sessions_and_evidence.sql /migrations/012_gemini_evidence_authority.sql /migrations/013_gemini_provenance_immutability.sql /migrations/014_gemini_pending_states.sql /migrations/015_gemini_ingestion_metadata.sql /migrations/016_2checkout_test_payments.sql /migrations/017_intent_purchase_documents.sql /migrations/018_payment_auto_verification.sql /migrations/019_identity_extraction.sql /migrations/020_intent_service_requests.sql /migrations/021_action_proposals.sql; do
+for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_gemini_bindings.sql /migrations/010_gemini_knowledge.sql /migrations/011_gemini_sessions_and_evidence.sql /migrations/012_gemini_evidence_authority.sql /migrations/013_gemini_provenance_immutability.sql /migrations/014_gemini_pending_states.sql /migrations/015_gemini_ingestion_metadata.sql /migrations/016_2checkout_test_payments.sql /migrations/017_intent_purchase_documents.sql /migrations/018_payment_auto_verification.sql /migrations/019_identity_extraction.sql /migrations/020_intent_service_requests.sql /migrations/021_action_proposals.sql /migrations/022_agent_action_bindings.sql; do
   name=$(basename "$file")
   checksum=$(sha256sum "$file" | cut -d ' ' -f 1)
   current=$(psql -At -v ON_ERROR_STOP=1 -v file_name="$name" <<'SQL'
@@ -112,4 +112,4 @@ psql -v ON_ERROR_STOP=1 \
 # It does not activate payments, invoice dispatch or an OCR provider.
 psql -v ON_ERROR_STOP=1 -f /scripts/seed-sara-purchase.sql
 
-echo "Gemini migrations (003-021), Sara bootstrap and ANCFZ purchase policy validated"
+echo "Gemini migrations (003-022), Sara bootstrap and ANCFZ purchase policy validated"

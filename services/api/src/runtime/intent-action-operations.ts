@@ -13,7 +13,7 @@ import { appendEventTx } from "../repositories/events.js";
 import { identityDocumentReadinessTx, assertIdentityDocumentsReadyTx } from "./purchase-operations.js";
 
 export const SERVICE_REQUEST_CONSENT =
-  "I ask ANCFZ to record this POC service request using the information I provided in this ticket. I understand this does not submit an application to a bank, government body or external partner.";
+  "I authorize this agent to record a service request for staff review using facts I provided in this ticket. I understand no application is submitted to an external provider.";
 
 export const SERVICE_ACTION_LABELS={
   create_enquiry:"Service enquiry",
@@ -44,6 +44,7 @@ type IntentRow={id:string;intent_key:string;name:string;allowed_actions:string[]
 type FactRow={fact_key:string;value:unknown;verification_status:string;source_message_id:string};
 type RequirementRow={requirement_key:string;label:string;required_for:string[]};
 type RequestRow={id:string;action_key:string;status:string;request_id:string;created_at:Date;intent_id:string};
+type ActionBinding={action_key:string;label:string;execution_kind:"ticket_request"|"salesforce_lead"|"quotation"|"purchase";requires_identity_documents:boolean};
 function availableValue(v:unknown):boolean {
   if(typeof v==="string")return v.trim().length>0;
   if(typeof v==="number")return Number.isFinite(v);
@@ -97,6 +98,10 @@ export async function assertCatalogActionRequirementsTx(
   const intent=await activeIntent(client,agentId,ticketId);
   if(!intent||!intent.allowed_actions.includes(action))
     throw new PersistenceError("CONFLICT","The selected intent does not authorize this action");
+  const bind=await client.query<{execution_kind:string}>(
+    "SELECT execution_kind FROM agent_action_bindings WHERE agent_id=$1 AND action_key=$2 AND enabled=true",
+    [agentId,action]);
+  if(!bind.rows[0])throw new PersistenceError("CONFLICT","Action is not configured for this agent");
   const {missing}=await actionRequirements(client,agentId,ticketId,intent.id,action);
   if(missing.length)
     throw new PersistenceError("CONFLICT",
@@ -117,27 +122,32 @@ export class IntentActionOperations {
         [scope.agentId,ticketId,intent.id],
       );
       const byAction=new Map(requests.rows.map(x=>[x.action_key,x]));
+      const bound=await client.query<ActionBinding>(
+        "SELECT action_key,label,execution_kind,requires_identity_documents FROM agent_action_bindings WHERE agent_id=$1 AND enabled=true",
+        [scope.agentId]);
+      const bindings=new Map(bound.rows.map(x=>[x.action_key,x]));
       const identity=await identityDocumentReadinessTx(client,scope.agentId,ticketId,intent.id);
       const result=[];
       for(const action of intent.allowed_actions){
-        const kind=classifyAction(action);
-        if(!kind)continue;
+        const binding=bindings.get(action);
+        if(!binding)continue;
         const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action);
-        const missing=isServiceAction(action)
-          ? [...facts.missing,...identity.missing]:facts.missing;
-        result.push({actionKey:action,label:isServiceAction(action)?
-          SERVICE_ACTION_LABELS[action]:action.replaceAll("_"," "),
-          kind,requirements:facts.requirements,missing,
+        const missing=binding.requires_identity_documents
+          ? [...new Set([...facts.missing,...identity.missing])]:facts.missing;
+        result.push({actionKey:action,label:binding.label,
+          kind:binding.execution_kind,requirements:facts.requirements,missing,
+          requiresIdentityDocuments:binding.requires_identity_documents,
           ready:missing.length===0,
           request:byAction.has(action)?toView(byAction.get(action) as RequestRow):null});
       }
       return {intentKey:intent.intent_key,intentName:intent.name,
-        actions:result,unknownActions:intent.allowed_actions.filter(a=>!classifyAction(a))};
+        actions:result,unknownActions:intent.allowed_actions.filter(a=>!bindings.has(a))};
     });
   }
   async submit(scope:TicketScope,ticketId:string,action:string,raw:unknown){
     requireUuid(ticketId,"ticketId");
-    if(!isServiceAction(action))throw new PersistenceError("INVALID_INPUT","Unknown service action");
+    if(!/^[a-z][a-z0-9_]{0,127}$/.test(action))
+      throw new PersistenceError("INVALID_INPUT","Invalid service action");
     if(!raw||typeof raw!=="object"||Array.isArray(raw))
       throw new PersistenceError("INVALID_INPUT","Service-request consent is required");
     const input=raw as Record<string,unknown>;
@@ -153,7 +163,14 @@ export class IntentActionOperations {
       const intent=await activeIntent(client,scope.agentId,ticketId);
       if(!intent||!intent.allowed_actions.includes(action))
         throw new PersistenceError("CONFLICT","The selected intent does not allow this request");
-      await assertIdentityDocumentsReadyTx(client,scope.agentId,ticketId,intent.id);
+      const binding=await client.query<ActionBinding>(
+        "SELECT action_key,label,execution_kind,requires_identity_documents FROM agent_action_bindings WHERE agent_id=$1 AND action_key=$2 AND enabled=true",
+        [scope.agentId,action]);
+      const activeBinding=binding.rows[0];
+      if(!activeBinding||activeBinding.execution_kind!=="ticket_request")
+        throw new PersistenceError("INVALID_INPUT","Service action not configured");
+      if(activeBinding.requires_identity_documents)
+        await assertIdentityDocumentsReadyTx(client,scope.agentId,ticketId,intent.id);
       const {requirements,missing,sourceFacts}=await actionRequirements(
         client,scope.agentId,ticketId,intent.id,action);
       if(missing.length)
@@ -167,7 +184,7 @@ export class IntentActionOperations {
       if(saved.rows[0]){
         if(saved.rows[0].request_id!==normalizedRequestId)
           throw new PersistenceError("CONFLICT","A service request already exists for this intent/action");
-        return {request:toView(saved.rows[0]),duplicated:true};
+        return {request:toView(saved.rows[0]),duplicated:true,label:activeBinding.label};
       }
       const requestId=randomUUID();
       // Facts have customer-message provenance. Do not include raw passport
@@ -188,12 +205,12 @@ export class IntentActionOperations {
       await appendEventTx(client,scope.agentId,ticketId,"ticket.service_request.recorded",{
         serviceRequestId:requestId,intentKey:intent.intent_key,actionKey:action,
         status:"awaiting_staff_review",externalDispatch:false});
-      return {request:toView(inserted.rows[0]),duplicated:false};
+      return {request:toView(inserted.rows[0]),duplicated:false,label:activeBinding.label};
     });
     try {
       await new TicketMessageRepository(this.db).createAssistantMessage(
         workerTicketScope(scope.agentId,ticketId),ticketId,outcome.request.id,
-        "Sara: Your "+SERVICE_ACTION_LABELS[action].toLowerCase()+
+        "Sara: Your "+outcome.label.toLowerCase()+
         " is recorded in this ticket for ANCFZ staff review. "+
         "This POC has not submitted anything to an external authority or partner.",[]);
     } catch {/* Request is already durably recorded; chat can be refreshed. */}
