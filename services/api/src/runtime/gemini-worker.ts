@@ -148,7 +148,7 @@ export class GeminiTurnWorker {
       const oldCustomerTurns=active.olderCustomerMessages;
       const summary=extractiveSummary(context,oldCustomerTurns);
       const sessionContext=buildSessionContext(context,actions,
-        summary?.text??null,history);
+        summary?.text??context.summary?.text??null,history);
       // Refresh an extractive, provenance-labelled summary periodically.
       // The summary never authorizes actions, revises facts or provides RAG evidence.
       if(summary && shouldRefreshSummary(context.summary?.text??null,summary.coveredThrough)){
