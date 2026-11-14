@@ -53,7 +53,15 @@ jobs:
           for migration in \
             infra/postgres/003_conversation_persistence.sql \
             infra/postgres/004_runtime_role.sql \
-            infra/postgres/005_model_conversation_continuity.sql; do
+            infra/postgres/005_model_conversation_continuity.sql \
+            infra/postgres/006_runtime_turns.sql \
+            infra/postgres/007_authorized_lead_operations.sql \
+            infra/postgres/008_authorized_quotations.sql \
+            infra/postgres/009_2checkout_test_payments.sql \
+            infra/postgres/010_intent_purchase_documents.sql \
+            infra/postgres/011_payment_auto_verification.sql \
+            infra/postgres/012_identity_extraction.sql \
+            infra/postgres/013_intent_service_requests.sql; do
             docker compose exec -T postgres \
               psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" < "$migration"
           done
@@ -74,6 +82,13 @@ jobs:
             "SELECT amount::integer FROM offering_price_revisions pr JOIN offerings o ON pr.offering_id=o.id JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND o.offering_key='visa_1_y1'")" = 10800
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
             "SELECT count(*) FROM ancfz_test_catalog_seed_receipts")" = 1
+          # Every test intent receives exactly passport and Emirates ID;
+          # selectable actions must never omit the registered Node tool scope.
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT count(*) FROM intents i JOIN intent_catalog_versions v ON v.id=i.catalog_version_id WHERE v.status='published' AND (SELECT count(*) FROM intent_document_requirements d WHERE d.agent_id=i.agent_id AND d.intent_id=i.id)=2 AND (SELECT count(*) FROM intent_document_requirements d WHERE d.agent_id=i.agent_id AND d.intent_id=i.id AND d.required AND d.requirement_key IN ('passport','emirates_id'))=2")" = 21
+          test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
+            "SELECT count(*) FROM agents a JOIN agent_versions v ON v.id=a.active_version_id WHERE a.agent_key='ancfz' AND jsonb_typeof(v.persona_config->'toolNames')='array' AND jsonb_array_length(v.persona_config->'toolNames')>=5")" = 1
+
           echo "Published test seed PASS: 21 intents, 97 offerings, 55 prices, repeated run unchanged"
       - name: Validate restricted runtime role can read published catalog under RLS
         run: |
