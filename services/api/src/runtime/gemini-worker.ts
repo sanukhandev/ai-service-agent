@@ -14,6 +14,8 @@ import { ConversationContextRepository } from "../repositories/context.js";
 import { workerTicketScope } from "../repositories/types.js";
 import { resolveGeminiEvidence } from "./gemini-evidence.js";
 import { TurnQueue,type PendingTurn } from "./turn-queue.js";
+import { PurchaseOperations } from "./purchase-operations.js";
+import { IntentActionOperations } from "./intent-action-operations.js";
 
 const TOOL_NAMES: ReadonlySet<string> = new Set([
   "find_intents","select_ticket_intent","get_intent_requirements",
@@ -99,7 +101,24 @@ export class GeminiTurnWorker {
         throw new Error("PINNED_CATALOG_MISSING");
       const registry=new AgentToolRegistry();
       const repositories=scopedIntentToolRepositories(this.db,scope,turn.ticketId);
-      registerIntentTools(registry,repositories.catalog,repositories.facts,repositories.ticketIntents);
+      const purchases=new PurchaseOperations(this.db);
+      const intentActions=new IntentActionOperations(this.db);
+      registerIntentTools(registry,repositories.catalog,repositories.facts,repositories.ticketIntents,
+        async()=>{
+          const p=await purchases.read(scope,turn.ticketId);
+          // The language model receives readiness signals only, not document
+          // IDs, file names, raw OCR identities, billing names or OTP data.
+          return {supported:p.supported,intentKey:p.intentKey,
+            confirmed:p.confirmed,readyForOtp:p.readyForOtp,missing:p.missing,
+            requirements:p.requirements.map(x=>({key:x.key,required:x.required,uploaded:x.uploaded}))};
+        },
+        async()=>{
+          const status=await intentActions.catalog(scope,turn.ticketId);
+          return {intentKey:status.intentKey,
+            actions:status.actions.map(x=>({actionKey:x.actionKey,kind:x.kind,
+              ready:x.ready,missing:x.missing,status:x.request?.status??null})),
+            unknownActions:status.unknownActions};
+        });
       const allowed=new Set<RegisteredToolName>(agent.authorizedToolNames.filter(
         (name): name is RegisteredToolName=>TOOL_NAMES.has(name)));
       const toolContext:TrustedToolContext={
