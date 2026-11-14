@@ -365,7 +365,9 @@ export class PaymentOperations {
           verified_at=CASE WHEN $4='verified_test_payment' THEN COALESCE(verified_at,now()) ELSE verified_at END,
           verification_started_at=NULL,
           verification_attempts=LEAST(verification_attempts+1,60),
-          next_verification_at=now()+interval '30 seconds',updated_at=now()
+          next_verification_at=CASE
+             WHEN $4='verified_test_payment' THEN now()+interval '10 minutes'
+             ELSE now()+interval '30 seconds' END,updated_at=now()
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,paymentId,newState,resolved.providerStatus],
       );
