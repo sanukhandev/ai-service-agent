@@ -342,7 +342,9 @@ export class PaymentOperations {
       await client.query(
         `UPDATE ticket_payment_attempts SET state=$4,provider_status=$5,
           verified_at=CASE WHEN $4='verified_test_payment' THEN now() ELSE verified_at END,
-          verification_started_at=NULL,updated_at=now()
+          verification_started_at=NULL,
+          verification_attempts=LEAST(verification_attempts+1,60),
+          next_verification_at=now()+interval '30 seconds',updated_at=now()
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,paymentId,newState,result?.providerStatus??"verification_failed"],
       );
