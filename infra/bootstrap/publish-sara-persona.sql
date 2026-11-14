@@ -71,8 +71,8 @@ BEGIN
     owner_id,next_number,'gemini',previous.model_id,desired_version,
     desired_instructions,
     previous.allowed_node_tools || ARRAY(
-      SELECT tool_name FROM unnest(proposal_tools) AS tool_name
-      WHERE NOT (tool_name=ANY(previous.allowed_node_tools))
+      SELECT t.tool_name FROM unnest(proposal_tools) AS t(tool_name)
+      WHERE NOT (t.tool_name=ANY(previous.allowed_node_tools))
     ),
     previous.knowledge_status,previous.knowledge_version_id,
     previous.intent_catalog_version_id,previous.offering_catalog_version_id,
