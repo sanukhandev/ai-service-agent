@@ -1,12 +1,14 @@
 # AI Service Agent — POC
 
+**Gemini experiment environment:** This branch runs in a separate Docker Compose project, `ai-service-agent-gemini`, on **http://localhost:2000** (customer UI and API) and **http://localhost:2000/n8n/** (optional local n8n editor). The Foundry `main` stack keeps port 80. Volumes, networks, n8n owner and secrets must not be shared. The Gemini model/File Search runtime is not implemented yet; Foundry references below describe inherited baseline code pending replacement. See [Gemini implementation plan](docs/gemini-experiment-implementation-plan.md) and [Docker setup](docs/07-docker-and-deployment.md).
+
 A clean, generic **agent-centric business assistant** platform. Sara/ANCFZ is the first example, not business logic hardcoded into the runtime.
 
 > **Current status:** P3 Node runtime integration was merged to `main` (exact-head P0/P2/P3 offline CI passed); **live Sara / Foundry IQ validation remains pending**. ANCFZ-only P4 n8n workflow templates are included as **inactive integration starters**; they are **not wired to the Node authorization/OTP runtime or tested against providers**. Do not treat the POC as complete. Angular admin and Python Gateway are excluded.
 
 ## Active architecture
 
-Browser -> **Nginx (public port 80 only)** -> **Next.js customer app / Fastify Node API**.
+Browser -> **Nginx (experiment localhost port 2000 only)** -> **Next.js customer app / Fastify Node API**.
 
 The Node API connects directly to:
 - **Microsoft Foundry Agent Service**, using the existing, versioned GPT-5.4 Sara agent and attached **Foundry IQ** knowledge base.
@@ -23,7 +25,7 @@ apps/web/                Next.js + Tailwind v4 + self-hosted Inter
 services/api/            Node Fastify; Foundry SDK added in P1
 packages/contracts/      Public API and event contracts
 infra/postgres/          Agent-scoped SQL, migration ledger, durable turn queue
-infra/nginx/             Port-80-only reverse proxy
+infra/nginx/             Port-2000 host ingress (container port 80)
 docs/                    Engineering contract, plan and reference
 docker-compose.yml       Local/isolated deployment
 AGENTS.md                Repository development contract
@@ -58,8 +60,8 @@ The official PostgreSQL image initializes `001_core.sql`, `002_intents_and_ticke
 
 Set the real `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_AGENT_NAME` and `FOUNDRY_AGENT_VERSION` before starting the migration service. Changes to an existing published binding require explicit version publication, not silent seed mutation. See [P3 publication](docs/p3-foundry-runtime-and-publication.md).
 
-Only Nginx publishes host port 80. `http://localhost/` is the Next.js shell, and `http://localhost/api/health` is the Node health endpoint. These commands have not been executed/verified in this repository session.
+Only experiment Nginx publishes host port 2000. `http://localhost:2000/` is the Next.js shell, and `http://localhost:2000/api/health` is the Node health endpoint. These commands have not been executed/verified in this repository session.
 
-**Port 80 uses unencrypted HTTP:** Local/isolated POC only. Before public access with real customer PII, OTP or documents, add HTTPS at the ingress.
+**Port 2000 uses unencrypted HTTP:** Local/isolated POC only. Before public access with real customer PII, OTP or documents, add HTTPS at the ingress.
 
 Read [AGENTS.md](AGENTS.md), [documentation index](docs/README.md) and the [POC-first implementation plan](docs/10-implementation-plan.md).
