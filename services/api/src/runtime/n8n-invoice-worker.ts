@@ -206,7 +206,13 @@ export class N8nInvoiceWorker {
       const agent=await this.agentId();if(!agent)return;
       if(Date.now()-this.lastSweep>30000){
         await this.quarantine(agent);
-        await this.recoverInvoiceNotification(agent);
+        try{
+          await this.recoverInvoiceNotification(agent);
+        }catch{
+          // A chat-notification outage must never stop independent invoice
+          // rendering for a different customer ticket.
+          this.log({agentId:agent},"Invoice chat recovery will retry");
+        }
         this.lastSweep=Date.now();
       }
       const claim=await this.claim(agent);if(!claim)return;
