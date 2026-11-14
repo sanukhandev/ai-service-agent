@@ -46,6 +46,7 @@ const invoice={
 };
 await assert.rejects(prepare(input(invoice),()=>{},Buffer,URL),/Invoice blocked/);
 await assert.rejects(prepare(input({...invoice,paymentVerified:true}),()=>{},Buffer,URL),/Invoice blocked/);
+await assert.rejects(prepare(input({...invoice,paymentVerified:true,paymentEvidence:{...evidence}}),()=>{},Buffer,URL),/Invoice blocked/);
 const evidence={
   status:"verified_test_payment",
   provider:"mockgateway_demo_orders",
