@@ -15,6 +15,18 @@ interface Claim {
   orderReference:string;customerName:string;offeringLabel:string;
   amount:string;currency:string;
 }
+/**
+ * A GET verification in flight is not a refunded or failed payment. Defer
+ * invoice finalization until the independent provider check settles.
+ */
+export function invoiceFinalizationDecision(
+  paymentState:string|null,hasValidPdf:boolean,
+):"verified_completed"|"deferred"|"unknown_outcome" {
+  if(paymentState==="verifying")return "deferred";
+  return paymentState==="verified_test_payment"&&hasValidPdf
+    ?"verified_completed":"unknown_outcome";
+}
+
 export class N8nInvoiceWorker {
   private timer:ReturnType<typeof setInterval>|undefined;
   private stopped=false;
@@ -128,19 +140,41 @@ export class N8nInvoiceWorker {
       return verifyInvoicePdf(result,c);
     }catch{return null;}finally{clearTimeout(timer);}
   }
-  private async finalize(c:Claim,pdf:ReturnType<typeof verifyInvoicePdf>):Promise<boolean>{
+  private async finalize(c:Claim,pdf:ReturnType<typeof verifyInvoicePdf>):Promise<"verified_completed"|"deferred"|"unknown_outcome">{
     return this.db.withAgent(c.agentId,async client=>{
       const check=await client.query<{state:string}>(
         "SELECT state FROM ticket_payment_invoices WHERE agent_id=$1 AND id=$2 FOR UPDATE",
         [c.agentId,c.invoiceId],
       );
-      if(check.rows[0]?.state!=="running")return false;
+      if(check.rows[0]?.state!=="running")return "unknown_outcome";
       const pay=await client.query<{state:string}>(
         "SELECT state FROM ticket_payment_attempts WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE",
         [c.agentId,c.ticketId,c.paymentId],
       );
-      // Reject concurrent refunds before committing PDF bytes or a chat link.
-      const publish=Boolean(pdf)&&pay.rows[0]?.state==="verified_test_payment";
+      // A read-only gateway GET temporarily puts the payment into "verifying".
+      // Retain the invoice as queued instead of permanently dropping the PDF
+      // while that check is in progress. The next claim re-renders the same
+      // TEST invoice reference only if payment is independently confirmed.
+      const decision=invoiceFinalizationDecision(pay.rows[0]?.state??null,Boolean(pdf));
+      if(decision==="deferred"){
+        await client.query(
+          "UPDATE ticket_payment_invoices SET state='queued',updated_at=now() WHERE agent_id=$1 AND id=$2",
+          [c.agentId,c.invoiceId],
+        );
+        await client.query(
+          `UPDATE event_outbox
+             SET status='pending',lease_until=NULL,available_at=now()+interval '30 seconds'
+           WHERE agent_id=$1 AND id=$2`,
+          [c.agentId,c.outboxId],
+        );
+        await appendEventTx(client,c.agentId,c.ticketId,"invoice.deferred",{
+          invoiceId:c.invoiceId,paymentId:c.paymentId,reason:"payment_verification_in_progress",
+        });
+        return "deferred";
+      }
+      // Reject a verified refund (and any other non-paid state) before
+      // committing PDF bytes or exposing a chat download link.
+      const publish=decision==="verified_completed";
       await client.query(
         `UPDATE ticket_payment_invoices SET state=$3,bytes=$4,sha256=$5,updated_at=now()
           WHERE agent_id=$1 AND id=$2`,
@@ -156,7 +190,7 @@ export class N8nInvoiceWorker {
           invoiceId:c.invoiceId,paymentId:c.paymentId,testOnly:true,
           pdfVerified:publish,
         });
-      return publish;
+      return decision;
     });
   }
   private async notifyInvoice(
@@ -217,8 +251,8 @@ export class N8nInvoiceWorker {
       }
       const claim=await this.claim(agent);if(!claim)return;
       const pdf=await this.dispatch(claim);
-      const published=await this.finalize(claim,pdf);
-      if(published){
+      const finalized=await this.finalize(claim,pdf);
+      if(finalized==="verified_completed"){
         try{
           await this.notifyInvoice(claim);
         }catch{
@@ -226,7 +260,7 @@ export class N8nInvoiceWorker {
             "Invoice PDF saved; durable chat-link recovery will retry");
         }
       }
-      this.log({invoiceId:claim.invoiceId,status:published?"verified_completed":"unknown_outcome"},
+      this.log({invoiceId:claim.invoiceId,status:finalized},
         "ANCFZ TEST invoice recorded");
     }catch(e){
       this.log({errorCode:(e as Error).name},"ANCFZ invoice worker failed");
