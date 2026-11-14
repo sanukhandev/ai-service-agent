@@ -4,7 +4,7 @@ import {
   GeminiModelAdapter, type GeminiGenerateClient, type PendingFunctionStore,
   type PendingFunctionState, type GeminiContent,
 } from "./adapter.js";
-import type { ModelTurnRequest } from "../../../../packages/contracts/gemini-v1.js";
+import type { ModelTurnRequest } from "@ai-service-agent/contracts/gemini-v1";
 
 const now = new Date();
 const future = new Date(Date.now() + 3_600_000).toISOString();
