@@ -126,28 +126,35 @@ export class N8nInvoiceWorker {
       return verifyInvoicePdf(result,c);
     }catch{return null;}finally{clearTimeout(timer);}
   }
-  private async finalize(c:Claim,pdf:ReturnType<typeof verifyInvoicePdf>){
-    await this.db.withAgent(c.agentId,async client=>{
+  private async finalize(c:Claim,pdf:ReturnType<typeof verifyInvoicePdf>):Promise<boolean>{
+    return this.db.withAgent(c.agentId,async client=>{
       const check=await client.query<{state:string}>(
         "SELECT state FROM ticket_payment_invoices WHERE agent_id=$1 AND id=$2 FOR UPDATE",
         [c.agentId,c.invoiceId],
       );
-      if(check.rows[0]?.state!=="running")return;
+      if(check.rows[0]?.state!=="running")return false;
+      const pay=await client.query<{state:string}>(
+        "SELECT state FROM ticket_payment_attempts WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE",
+        [c.agentId,c.ticketId,c.paymentId],
+      );
+      // Reject concurrent refunds before committing PDF bytes or a chat link.
+      const publish=Boolean(pdf)&&pay.rows[0]?.state==="verified_test_payment";
       await client.query(
         `UPDATE ticket_payment_invoices SET state=$3,bytes=$4,sha256=$5,updated_at=now()
           WHERE agent_id=$1 AND id=$2`,
-        [c.agentId,c.invoiceId,pdf?"verified_completed":"unknown_outcome",
-          pdf?.bytes??null,pdf?.sha256??null],
+        [c.agentId,c.invoiceId,publish?"verified_completed":"unknown_outcome",
+          publish?pdf?.bytes??null:null,publish?pdf?.sha256??null:null],
       );
       await client.query(
         "UPDATE event_outbox SET status=$3,lease_until=NULL WHERE agent_id=$1 AND id=$2",
-        [c.agentId,c.outboxId,pdf?"completed":"dead"],
+        [c.agentId,c.outboxId,publish?"completed":"dead"],
       );
       await appendEventTx(client,c.agentId,c.ticketId,
-        pdf?"invoice.generated":"invoice.unknown_outcome",{
+        publish?"invoice.generated":"invoice.unknown_outcome",{
           invoiceId:c.invoiceId,paymentId:c.paymentId,testOnly:true,
-          pdfVerified:Boolean(pdf),
+          pdfVerified:publish,
         });
+      return publish;
     });
   }
   private async tick(){
@@ -158,8 +165,8 @@ export class N8nInvoiceWorker {
       if(Date.now()-this.lastSweep>30000){await this.quarantine(agent);this.lastSweep=Date.now();}
       const claim=await this.claim(agent);if(!claim)return;
       const pdf=await this.dispatch(claim);
-      await this.finalize(claim,pdf);
-      if(pdf){
+      const published=await this.finalize(claim,pdf);
+      if(published){
         // Download is authorized by the existing ticket-owned invoice PDF route.
         // Stable request ID prevents duplicate assistant messages on retries.
         const link="/api/v1/tickets/"+claim.ticketId+"/invoices/"+claim.invoiceId+"/pdf";
@@ -172,7 +179,7 @@ export class N8nInvoiceWorker {
           this.log({invoiceId:claim.invoiceId},"Invoice PDF saved but chat notification was unavailable");
         }
       }
-      this.log({invoiceId:claim.invoiceId,status:pdf?"verified_completed":"unknown_outcome"},
+      this.log({invoiceId:claim.invoiceId,status:published?"verified_completed":"unknown_outcome"},
         "ANCFZ TEST invoice recorded");
     }catch(e){
       this.log({errorCode:(e as Error).name},"ANCFZ invoice worker failed");
