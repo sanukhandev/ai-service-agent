@@ -1,5 +1,10 @@
 name: Gemini G1 live File Search compatibility (manual / billable)
 on:
+  # workflow_dispatch generally requires this workflow on the default branch.
+  # The experiment must not modify main, so expose a branch-local opt-in path.
+  push:
+    branches:
+      - experiment/gemini-file-search-poc
   workflow_dispatch:
     inputs:
       model:
@@ -13,11 +18,17 @@ permissions:
 
 jobs:
   g1-live:
+    # Never run a billable test on a normal push. Only a deliberate opt-in
+    # marker on the experiment HEAD (or manual dispatch on that exact branch).
+    if: >-
+      github.ref == 'refs/heads/experiment/gemini-file-search-poc' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'push' && contains(github.event.head_commit.message, '[G1-LIVE-OPT-IN]')))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-      GEMINI_G1_MODEL_ID: ${{ inputs.model }}
+      GEMINI_G1_MODEL_ID: ${{ inputs.model || 'gemini-3.8-flash' }}
       GEMINI_G1_ALLOW_BILLABLE_RUN: "YES"
     steps:
       - uses: actions/checkout@v4
