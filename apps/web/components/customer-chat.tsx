@@ -142,6 +142,18 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   // Changes only when durable SSE events arrive (or a connection is restored).
   // Child action forms refresh from this revision instead of periodic GET polling.
   const [eventRevision, setEventRevision] = useState(0);
+  const panelRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const schedulePanelRefresh = useCallback(() => {
+    // Coalesce the large replay batch on reconnect into one panel refresh.
+    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
+    panelRefreshTimer.current = setTimeout(() => {
+      panelRefreshTimer.current = null;
+      setEventRevision((previous) => previous + 1);
+    }, 150);
+  }, []);
+  useEffect(() => () => {
+    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
+  }, [ticket?.id]);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
   const [showLatest, setShowLatest] = useState(false);
@@ -231,7 +243,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const handleEvent = useCallback(
     (event: TicketEvent) => {
       if (!["assistant.processing", "agent.processing", "agent.response.started"].includes(event.name)) {
-        setEventRevision((previous) => previous + 1);
+        schedulePanelRefresh();
       }
       const incomingMessage = messageFromEvent(event.data);
       const incomingTicket = ticketFromEvent(event.data);
@@ -294,12 +306,12 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           break;
       }
     },
-    [agentKey, ticket?.id, refresh],
+    [agentKey, ticket?.id, refresh, schedulePanelRefresh],
   );
 
   const stream = useTicketEvents(ticket?.id ?? null, handleEvent, () => {
     void refresh();
-    setEventRevision((previous) => previous + 1);
+    schedulePanelRefresh();
   });
 
   const send = useCallback(
