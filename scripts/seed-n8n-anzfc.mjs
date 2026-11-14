@@ -84,7 +84,8 @@ function docker(args, options = {}) {
   return run("docker", args, options);
 }
 function compose(args, options = {}) {
-  return docker(["compose", "--profile", "workflows", ...args], options);
+  // Pin this script to the experiment project; never operate on the Foundry main n8n instance.
+  return docker(["compose", "--project-name", "ai-service-agent-gemini", "--profile", "workflows", ...args], options);
 }
 function isN8nRunning() {
   const id = compose(["ps", "--status", "running", "-q", "n8n"]);
