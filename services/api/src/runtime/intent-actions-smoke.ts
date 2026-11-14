@@ -43,7 +43,7 @@ async function main(){
     const syntheticPdf=Buffer.from("%PDF-1.4\\n"+("A".repeat(256))+"\\n%%EOF\\n");
 
     const candidates=[
-      {intent:"visa_services",action:"create_enquiry"},
+      {intent:"visa_services",action:"create_visa_enquiry"},
       {intent:"license_renewal",action:"create_renewal_request"},
       {intent:"banking_assistance",action:"create_referral"},
     ];
