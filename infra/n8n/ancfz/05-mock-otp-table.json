@@ -1,0 +1,190 @@
+{
+  "name": "ANCFZ | MOCK OTP Data Table Delivery (LOCAL ONLY)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "mock-otp-webhook",
+      "name": "Receive Node OTP",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        320
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/otp-email",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "id": "mock-otp-validate",
+      "name": "Validate Mock OTP",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        320
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const b = $input.first().json.body ?? {};\nif ($env.APP_ENV === 'production' || $env.ANCFZ_OTP_MOCK_ENABLED !== 'true') {\n  throw new Error('Mock OTP disabled: development-only workflow');\n}\nconst uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif (b.agentKey !== 'ancfz' || typeof b.ticketId !== 'string' || !uuid.test(b.ticketId)) throw new Error('Invalid ticket scope');\nif (typeof b.email !== 'string' || b.email.length > 254 || !/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(b.email)) throw new Error('Invalid email');\nif (typeof b.otp !== 'string' || !/^\\d{6}$/.test(b.otp)) throw new Error('Invalid test OTP');\nconst parts = b.email.trim().toLowerCase().split('@');\nconst emailMasked = parts[0].slice(0, 2) + '***@' + parts[1];\nconst now = new Date();\nreturn [{ json: {\n  ticketId: b.ticketId, emailMasked, otp: b.otp,\n  issuedAt: now.toISOString(),\n  expiresAt: new Date(now.getTime() + 5 * 60 * 1000).toISOString(),\n  status: 'mock_issued'\n}}];"
+      }
+    },
+    {
+      "id": "mock-otp-insert",
+      "name": "Record OTP in n8n Data Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        320
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "insert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ANCFZ_POC_OTPS"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "ticketId": "={{ $('Validate Mock OTP').first().json.ticketId }}",
+            "emailMasked": "={{ $('Validate Mock OTP').first().json.emailMasked }}",
+            "otp": "={{ $('Validate Mock OTP').first().json.otp }}",
+            "issuedAt": "={{ $('Validate Mock OTP').first().json.issuedAt }}",
+            "expiresAt": "={{ $('Validate Mock OTP').first().json.expiresAt }}",
+            "status": "={{ $('Validate Mock OTP').first().json.status }}"
+          },
+          "schema": [
+            {
+              "id": "ticketId",
+              "displayName": "ticketId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "emailMasked",
+              "displayName": "emailMasked",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "otp",
+              "displayName": "otp",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "issuedAt",
+              "displayName": "issuedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "expiresAt",
+              "displayName": "expiresAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": false
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "mock-otp-response",
+      "name": "Respond Without OTP",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1030,
+        320
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'mock_recorded', delivered: false, testOnly: true, expiresAt: $('Validate Mock OTP').first().json.expiresAt }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Node OTP": {
+      "main": [
+        [
+          {
+            "node": "Validate Mock OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Mock OTP": {
+      "main": [
+        [
+          {
+            "node": "Record OTP in n8n Data Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record OTP in n8n Data Table": {
+      "main": [
+        [
+          {
+            "node": "Respond Without OTP",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
