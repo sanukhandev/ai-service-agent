@@ -120,6 +120,27 @@ export class ConversationContextRepository {
       );
       const intentId = selected.rows[0]?.id;
       if (!intentId) throw new PersistenceError("NOT_FOUND", "Intent not available in pinned catalog");
+      // Existing documents, service requests, quotations and payment
+      // authorizations are bound to one active goal. A new goal needs a new
+      // ticket so a model cannot accidentally rebind an approved purchase.
+      const prior=await client.query<{intent_id:string}>(
+        "SELECT intent_id FROM ticket_intents WHERE agent_id=$1 AND ticket_id=$2 AND status='active'",
+        [scope.agentId,ticketId],
+      );
+      if(prior.rows[0] && prior.rows[0].intent_id!==intentId){
+        const occupied=await client.query(
+          `SELECT (
+            EXISTS(SELECT 1 FROM ticket_purchase_documents WHERE agent_id=$1 AND ticket_id=$2)
+            OR EXISTS(SELECT 1 FROM ticket_purchase_confirmations WHERE agent_id=$1 AND ticket_id=$2)
+            OR EXISTS(SELECT 1 FROM ticket_payment_attempts WHERE agent_id=$1 AND ticket_id=$2)
+            OR EXISTS(SELECT 1 FROM ticket_service_requests WHERE agent_id=$1 AND ticket_id=$2)
+            OR EXISTS(SELECT 1 FROM ticket_quotations WHERE agent_id=$1 AND ticket_id=$2)
+          ) AS has_actions`,[scope.agentId,ticketId],
+        );
+        if(occupied.rows[0]?.has_actions)
+          throw new PersistenceError("CONFLICT",
+            "This ticket already contains documents or authorized operations; start a new ticket to change business intent");
+      }
       await client.query(
         "UPDATE ticket_intents SET status = 'superseded' WHERE agent_id = $1 AND ticket_id = $2 AND status = 'active' AND intent_id <> $3",
         [scope.agentId, ticketId, intentId],

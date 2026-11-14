@@ -7,6 +7,7 @@ import { createHash } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { assertCatalogActionRequirementsTx } from "./intent-action-operations.js";
 
 export interface LeadFields {
   name: string;
@@ -89,6 +90,7 @@ export class LeadOperations {
         [scope.agentId,ticketId],
       );
       if (!eligible.rows.length) throw new PersistenceError("CONFLICT","Select a supported lead intent before submitting");
+      await assertCatalogActionRequirementsTx(client,scope.agentId,ticketId,"create_lead");
       const existing = await client.query<{
         id:string; state:string; payload_digest:string; provider_reference:string|null; updated_at:Date;
       }>(

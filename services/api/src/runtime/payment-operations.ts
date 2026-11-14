@@ -8,6 +8,10 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { TicketMessageRepository } from "../repositories/messages.js";
+import { createHash } from "node:crypto";
+import { PurchaseOperations } from "./purchase-operations.js";
+import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled,
   verifyPaymentStatus, type PaymentIdentity } from "./payment-evidence.js";
 
@@ -109,6 +113,24 @@ async function requestJson(path:string,payload:Record<string,unknown>,limit:numb
     return JSON.parse(text) as unknown;
   }finally{clearTimeout(timer);}
 }
+/**
+ * A temporary GET outage is not an authoritative reversal of a previously
+ * COMPLETE order. Once REFUNDED is independently observed, a stale COMPLETE
+ * response must not re-activate the invoice.
+ */
+export function reconcileGatewayCheck(
+  previousState:string,previousProviderStatus:string|null,
+  checked:ReturnType<typeof verifyPaymentStatus>,
+):{state:string;providerStatus:string}{
+  if(previousState==="payment_refunded"||previousProviderStatus==="REFUNDED")
+    return {state:"payment_refunded",providerStatus:"REFUNDED"};
+  if(checked?.state==="payment_refunded")
+    return {state:"payment_refunded",providerStatus:"REFUNDED"};
+  if(previousState==="verified_test_payment"||previousProviderStatus==="COMPLETE")
+    return {state:"verified_test_payment",providerStatus:"COMPLETE"};
+  return checked ? {state:checked.state,providerStatus:checked.providerStatus}
+    : {state:"unknown_outcome",providerStatus:"verification_failed"};
+}
 export class PaymentOperations {
   constructor(private readonly db:PersistenceDatabase){}
   private requireEnabled():void {
@@ -125,6 +147,7 @@ export class PaymentOperations {
       await authorizedTicket(client,scope,ticketId,true);
       await requireAncfz(client,scope.agentId);
       const q=await quote(client,scope.agentId,ticketId,input.quotationId);
+      await assertPurchaseReady(client,scope.agentId,ticketId,input.quotationId);
       if(q.amount!==input.amount||q.currency.trim()!==input.currency)
         throw new PersistenceError("CONFLICT","Price or currency changed; request a fresh quote");
       const count=await client.query<{count:string;last:Date|null}>(
@@ -189,6 +212,7 @@ export class PaymentOperations {
       await authorizedTicket(client,scope,ticketId,true);
       await requireAncfz(client,scope.agentId);
       const q=await quote(client,scope.agentId,ticketId,input.quotationId);
+      await assertPurchaseReady(client,scope.agentId,ticketId,input.quotationId);
       const dup=await client.query<PaymentRow>(
         `SELECT id,quotation_id,request_id,external_reference,amount::text,currency,state,
           order_reference,checkout_url,provider_status,verified_at,created_at
@@ -292,9 +316,10 @@ export class PaymentOperations {
       const selected=await client.query<{
         id:string;quotation_id:string;external_reference:string;amount:string;
         currency:string;state:string;order_reference:string|null;verification_started_at:Date|null;
+        provider_status:string|null;
       }>(
         `SELECT id,quotation_id,external_reference,amount::text,currency,state,order_reference,
-          verification_started_at FROM ticket_payment_attempts
+          verification_started_at,provider_status FROM ticket_payment_attempts
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE`,
         [scope.agentId,ticketId,paymentId],
       );
@@ -318,6 +343,7 @@ export class PaymentOperations {
           ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
           amount:p.amount,currency:p.currency.trim(),orderReference:p.order_reference,
         },
+        previousState:p.state,previousProviderStatus:p.provider_status,
       };
     });
     const expected=claim.expected as PaymentIdentity & {orderReference:string};
@@ -326,21 +352,26 @@ export class PaymentOperations {
       const response=await requestJson("ancfz/payment-verify",{agentKey:"ancfz",...expected});
       result=verifyPaymentStatus(response,expected);
     } catch {/* missing/ambiguous provider evidence must never become paid */}
-    await this.db.withAgent(scope.agentId,async client=>{
+    const finalState=await this.db.withAgent(scope.agentId,async client=>{
       const selected=await client.query<{state:string}>(
         `SELECT state FROM ticket_payment_attempts
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE`,
         [scope.agentId,ticketId,paymentId]);
-      if(selected.rows[0]?.state!=="verifying")return;
-      const newState=result?.state??"unknown_outcome";
+      if(selected.rows[0]?.state!=="verifying")return null;
+      const resolved=reconcileGatewayCheck(claim.previousState,claim.previousProviderStatus,result);
+      const newState=resolved.state;
       await client.query(
         `UPDATE ticket_payment_attempts SET state=$4,provider_status=$5,
-          verified_at=CASE WHEN $4='verified_test_payment' THEN now() ELSE verified_at END,
-          verification_started_at=NULL,updated_at=now()
+          verified_at=CASE WHEN $4='verified_test_payment' THEN COALESCE(verified_at,now()) ELSE verified_at END,
+          verification_started_at=NULL,
+          verification_attempts=LEAST(verification_attempts+1,60),
+          next_verification_at=CASE
+             WHEN $4='verified_test_payment' THEN now()+interval '10 minutes'
+             ELSE now()+interval '30 seconds' END,updated_at=now()
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
-        [scope.agentId,ticketId,paymentId,newState,result?.providerStatus??"verification_failed"],
+        [scope.agentId,ticketId,paymentId,newState,resolved.providerStatus],
       );
-      if(result?.verified){
+      if(newState==="verified_test_payment"){
         const existingInvoice=await client.query<{id:string}>(
           "SELECT id FROM ticket_payment_invoices WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
           [scope.agentId,ticketId,paymentId],
@@ -370,7 +401,29 @@ export class PaymentOperations {
           paymentId,providerStatus:result?.providerStatus??"unavailable",verified:false,
         });
       }
+      return newState;
     });
+    if(finalState==="payment_declined"||finalState==="payment_refunded"){
+      // This is a durable assistant ticket message, not a gateway success claim.
+      // A repeated GET for the same terminal state cannot spam the transcript.
+      const brand=await new PurchaseOperations(this.db).read(scope,ticketId);
+      const name=brand.persona.name;
+      const formal=brand.persona.tone==="formal";
+      const copy=finalState==="payment_declined"
+        ? (formal
+          ? "The gateway has declined the test payment. The quotation remains available; no paid invoice has been issued. Please contact the service team to review the next available options."
+          : "The test payment was declined by the gateway. Your quotation is still available, and no invoice has been issued. I can help you review the next steps.")
+        : (formal
+          ? "The gateway now reports this test payment as refunded. The TEST invoice download is no longer available. Please contact the service team for assistance."
+          : "The gateway reports that your test payment was refunded. I've disabled access to the earlier TEST invoice; I can help you with the next steps.");
+      const digest=createHash("sha256").update(paymentId+":"+finalState).digest("hex");
+      const noticeId=digest.slice(0,8)+"-"+digest.slice(8,12)+"-4"+digest.slice(13,16)+
+        "-8"+digest.slice(17,20)+"-"+digest.slice(20,32);
+      try{
+        await new TicketMessageRepository(this.db).createAssistantMessage(
+          scope,ticketId,noticeId,name+": "+copy,[]);
+      }catch{/* Payment evidence remains authoritative even if message delivery fails. */}
+    }
     return this.get(scope,ticketId);
   }
   async invoicePdf(scope:TicketScope,ticketId:string,invoiceId:string){

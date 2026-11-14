@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
+import { PurchaseChecklist } from "./purchase-checklist";
 
 const consentText =
   "I authorize an ANCFZ sandbox payment for the exact quotation amount shown and understand that this is a test transaction.";
@@ -39,6 +40,8 @@ async function jsonRequest(path:string,method:"GET"|"POST",body?:object){
 }
 export function PaymentCheckout({ticketId}:{ticketId:string}) {
   const [summary,setSummary]=useState<Summary|null>(null);
+  const [purchaseReady,setPurchaseReady]=useState(false);
+  const [purchaseSupported,setPurchaseSupported]=useState(false);
   const [quote,setQuote]=useState<Quote|null>(null);
   const [challenge,setChallenge]=useState<Challenge|null>(null);
   const [firstName,setFirstName]=useState("Demo");
@@ -55,13 +58,15 @@ export function PaymentCheckout({ticketId}:{ticketId:string}) {
     let live=true;
     async function load(){
       try {
-        const [payment,quotation]=await Promise.all([
+        const [payment,quotation,purchase]=await Promise.all([
           jsonRequest("/api/v1/tickets/"+encodeURIComponent(ticketId)+"/payments","GET"),
           jsonRequest("/api/v1/tickets/"+encodeURIComponent(ticketId)+"/quotations","GET"),
+          jsonRequest("/api/v1/tickets/"+encodeURIComponent(ticketId)+"/purchase","GET"),
         ]);
         if(!live)return;
         setSummary(payment as Summary);
         setQuote((quotation?.quotation??null) as Quote|null);
+        setPurchaseSupported(purchase?.supported===true);
       }catch{/* Existing chat displays network/owner errors elsewhere. */}
     }
     void load();
@@ -70,8 +75,9 @@ export function PaymentCheckout({ticketId}:{ticketId:string}) {
   },[ticketId]);
 
   const payment=summary?.payments?.[0]??null;
-  const ready=summary?.enabled===true && quote?.state==="verified_completed" && quote.pdfAvailable;
-  if(!ready&&!payment)return null;
+  const quoteReady=quote?.state==="verified_completed" && quote.pdfAvailable;
+  const ready=summary?.enabled===true && quoteReady && purchaseReady;
+  if(!quoteReady&&!payment&&!purchaseSupported)return null;
   async function issueOtp(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     if(!ready||!quote||busy||!consent)return;
@@ -129,13 +135,15 @@ export function PaymentCheckout({ticketId}:{ticketId:string}) {
   const invoice=summary?.invoice;
   return <section className="mb-3 rounded-xl border border-indigo-200 bg-white p-4 text-sm"
     aria-label="ANCFZ sandbox payment">
-    <h2 className="font-semibold text-slate-900">ANCFZ 2Checkout sandbox</h2>
+    <h2 className="font-semibold text-slate-900">ANCFZ identity documents and sandbox checkout</h2>
     <p className="mt-1 text-xs text-amber-800">
       Development simulation only. No real money, card or production customer OTPs.
     </p>
     {quote&&<p className="mt-2 text-xs text-slate-600">
       Approved quote {quote.documentNumber}: {quote.currency} {quote.amount} · {quote.offeringLabel}
     </p>}
+    {!payment && purchaseSupported &&
+      <PurchaseChecklist ticketId={ticketId} quote={quoteReady?quote:null} onReady={setPurchaseReady}/>}
     {error&&<p role="alert" className="mt-2 text-xs text-rose-700">{error}</p>}
     {notice&&<p role="status" className="mt-2 text-xs text-indigo-800">{notice}</p>}
     {!payment && ready && !challenge && <form onSubmit={issueOtp} className="mt-3 space-y-3">

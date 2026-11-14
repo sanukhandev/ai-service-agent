@@ -1,13 +1,13 @@
 {
   "schemaVersion": "poc-1",
-  "description": "Illustrative ANCFZ catalog fixture. Review and publish via Node before production use; not auto-loaded.",
+  "description": "Illustrative ANCFZ revision-2 POC catalog. The actual published SQL seed is infra/bootstrap/seed-sara-purchase.sql; for every supported intent only passport and Emirates ID are accepted as purchase documents. OCR from Azure Document Intelligence supplies the invoice billing name.",
   "agentKey": "ancfz",
-  "revision": 1,
+  "revision": 2,
   "intents": [
     {
       "key": "company_formation",
       "name": "Start a Company",
-      "description": "Help a new business owner choose a company structure, business activity, visa allocation and workspace, and optionally prepare a verified enquiry or quotation.",
+      "description": "Help a new business owner choose a company structure, business activity, visa allocation and workspace, and optionally prepare a verified enquiry or quotation. A sandbox purchase requires a verified quote, configured document receipt, separate explicit consent and independent payment verification.",
       "examplePhrases": [
         "I want to start a company",
         "register my software business",
@@ -16,7 +16,8 @@
       ],
       "allowedActions": [
         "create_lead",
-        "generate_quote"
+        "generate_quote",
+        "purchase_quotation"
       ],
       "requirements": [
         {
@@ -65,6 +66,30 @@
           ],
           "hint": "Only collect as part of a specifically consented lead; OTP identity handled outside model."
         }
+      ],
+      "documentRequirements": [
+        {
+          "key": "passport",
+          "label": "Passport",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic bio-page; extract holder name for the TEST invoice."
+        },
+        {
+          "key": "emirates_id",
+          "label": "Emirates ID",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic ID; extracted name must match passport holder name."
+        }
       ]
     },
     {
@@ -77,7 +102,8 @@
         "what visa services do you offer"
       ],
       "allowedActions": [
-        "create_enquiry"
+        "create_enquiry",
+        "purchase_quotation"
       ],
       "requirements": [
         {
@@ -96,6 +122,30 @@
             "create_enquiry"
           ]
         }
+      ],
+      "documentRequirements": [
+        {
+          "key": "passport",
+          "label": "Passport",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic bio-page; extract holder name for the TEST invoice."
+        },
+        {
+          "key": "emirates_id",
+          "label": "Emirates ID",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic ID; extracted name must match passport holder name."
+        }
       ]
     },
     {
@@ -107,7 +157,8 @@
         "company license renewal"
       ],
       "allowedActions": [
-        "create_renewal_request"
+        "create_renewal_request",
+        "purchase_quotation"
       ],
       "requirements": [
         {
@@ -117,6 +168,30 @@
           "requiredFor": [
             "create_renewal_request"
           ]
+        }
+      ],
+      "documentRequirements": [
+        {
+          "key": "passport",
+          "label": "Passport",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic bio-page; extract holder name for the TEST invoice."
+        },
+        {
+          "key": "emirates_id",
+          "label": "Emirates ID",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic ID; extracted name must match passport holder name."
         }
       ]
     },
@@ -129,7 +204,8 @@
         "corporate banking support"
       ],
       "allowedActions": [
-        "create_referral"
+        "create_referral",
+        "purchase_quotation"
       ],
       "requirements": [
         {
@@ -140,8 +216,32 @@
             "create_referral"
           ]
         }
+      ],
+      "documentRequirements": [
+        {
+          "key": "passport",
+          "label": "Passport",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic bio-page; extract holder name for the TEST invoice."
+        },
+        {
+          "key": "emirates_id",
+          "label": "Emirates ID",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "POC: clear synthetic ID; extracted name must match passport holder name."
+        }
       ]
     }
   ],
-  "note": "No real offering prices or workflow URLs are included; they must be separately authorized and verified in Node."
+  "note": "Document uploads are allowed after selecting any purchase-enabled intent; payment remains restricted to tickets with independently verified quotations, consent and OTP. No synthetic company-application form or document pack is required. Uploaded IDs must be synthetic on localhost HTTP; a parsed name is not identity verification. Existing tickets remain pinned to their old catalog."
 }

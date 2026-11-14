@@ -107,6 +107,7 @@ BEGIN
     AND foundry_project_endpoint = endpoint
     AND foundry_agent_name = foundry_name
     AND foundry_agent_version = foundry_version
+    AND jsonb_typeof(persona_config->'toolNames')='array'
     AND published_at IS NOT NULL
   ORDER BY version_number DESC LIMIT 1;
 
@@ -118,6 +119,12 @@ BEGIN
       foundry_agent_name, foundry_agent_version, persona_config, published_at
     ) VALUES (
       a, next_version, endpoint, foundry_name, foundry_version,
+      COALESCE((SELECT persona_config FROM agent_versions
+        WHERE agent_id=a AND jsonb_typeof(persona_config->'toolNames')='array'
+        ORDER BY version_number DESC LIMIT 1),
+        jsonb_build_object('name','Sara','tone','professional',
+          'toolNames',jsonb_build_array('find_intents','select_ticket_intent',
+            'get_intent_requirements','record_ticket_facts','get_offerings'))) ||
       jsonb_build_object(
         'catalogEnvironment', 'test',
         'sourceReviewStatus', p->>'reviewStatus',
@@ -139,8 +146,24 @@ BEGIN
     ) VALUES (
       a, iv, r->>'key', r->>'name', r->>'description',
       ARRAY(SELECT jsonb_array_elements_text(r->'examplePhrases')),
-      ARRAY(SELECT jsonb_array_elements_text(r->'allowedActions'))
+      CASE WHEN 'generate_quote' IN (
+        SELECT jsonb_array_elements_text(r->'allowedActions')
+      ) THEN ARRAY(SELECT DISTINCT action FROM (
+        SELECT jsonb_array_elements_text(r->'allowedActions') AS action
+        UNION ALL SELECT 'create_lead'
+        UNION ALL SELECT 'purchase_quotation'
+      ) allowed)
+      ELSE ARRAY(SELECT jsonb_array_elements_text(r->'allowedActions')) END
     ) RETURNING id INTO ix;
+    -- Every published ANCFZ intent gets the identical POC-only identity
+    -- checklist. The original seed JSON stays immutable and reusable.
+    INSERT INTO intent_document_requirements(
+      agent_id,intent_id,requirement_key,label,guidance,required,sort_order
+    ) VALUES
+      (a,ix,'passport','Passport',
+       'POC: synthetic passport bio page; extract invoice billing name',true,1),
+      (a,ix,'emirates_id','Emirates ID',
+       'POC: synthetic Emirates ID; cross-check extracted holder name',true,2);
     FOR req IN SELECT value FROM jsonb_array_elements(r->'requirements') LOOP
       INSERT INTO intent_requirements(
         agent_id, intent_id, requirement_key, label, value_type,

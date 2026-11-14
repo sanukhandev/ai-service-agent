@@ -4,14 +4,29 @@
  */
 import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { TicketMessageRepository } from "../repositories/messages.js";
+import { workerTicketScope } from "../repositories/types.js";
 import { paymentEnabled } from "./payment-evidence.js";
 import { boundedJson, verifyInvoicePdf } from "./n8n-quote-worker.js";
+import { invoiceBillingName } from "./purchase-operations.js";
 interface Claim {
   agentId:string;ticketId:string;quotationId:string;paymentId:string;
   invoiceId:string;outboxId:string;documentNumber:string;
   orderReference:string;customerName:string;offeringLabel:string;
   amount:string;currency:string;
 }
+/**
+ * A GET verification in flight is not a refunded or failed payment. Defer
+ * invoice finalization until the independent provider check settles.
+ */
+export function invoiceFinalizationDecision(
+  paymentState:string|null,hasValidPdf:boolean,
+):"verified_completed"|"deferred"|"unknown_outcome" {
+  if(paymentState==="verifying")return "deferred";
+  return paymentState==="verified_test_payment"&&hasValidPdf
+    ?"verified_completed":"unknown_outcome";
+}
+
 export class N8nInvoiceWorker {
   private timer:ReturnType<typeof setInterval>|undefined;
   private stopped=false;
@@ -91,7 +106,8 @@ export class N8nInvoiceWorker {
       return {
         agentId,ticketId:x.ticket_id,quotationId:x.quotation_id,paymentId:x.payment_id,
         invoiceId:x.id,outboxId:x.outbox_id,documentNumber:x.document_number,
-        orderReference:x.order_reference,customerName:x.customer_name,
+        orderReference:x.order_reference,
+        customerName:await invoiceBillingName(client,agentId,x.ticket_id,x.quotation_id),
         offeringLabel:x.offering_label,amount:x.amount,currency:x.currency.trim(),
       };
     });
@@ -124,40 +140,129 @@ export class N8nInvoiceWorker {
       return verifyInvoicePdf(result,c);
     }catch{return null;}finally{clearTimeout(timer);}
   }
-  private async finalize(c:Claim,pdf:ReturnType<typeof verifyInvoicePdf>){
-    await this.db.withAgent(c.agentId,async client=>{
+  private async finalize(c:Claim,pdf:ReturnType<typeof verifyInvoicePdf>):Promise<"verified_completed"|"deferred"|"unknown_outcome">{
+    return this.db.withAgent(c.agentId,async client=>{
       const check=await client.query<{state:string}>(
         "SELECT state FROM ticket_payment_invoices WHERE agent_id=$1 AND id=$2 FOR UPDATE",
         [c.agentId,c.invoiceId],
       );
-      if(check.rows[0]?.state!=="running")return;
+      if(check.rows[0]?.state!=="running")return "unknown_outcome";
+      const pay=await client.query<{state:string}>(
+        "SELECT state FROM ticket_payment_attempts WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE",
+        [c.agentId,c.ticketId,c.paymentId],
+      );
+      // A read-only gateway GET temporarily puts the payment into "verifying".
+      // Retain the invoice as queued instead of permanently dropping the PDF
+      // while that check is in progress. The next claim re-renders the same
+      // TEST invoice reference only if payment is independently confirmed.
+      // The claim requires payment.state='verified_test_payment', so no timer
+      // backoff or event_outbox.available_at privilege change is needed.
+      const decision=invoiceFinalizationDecision(pay.rows[0]?.state??null,Boolean(pdf));
+      if(decision==="deferred"){
+        await client.query(
+          "UPDATE ticket_payment_invoices SET state='queued',updated_at=now() WHERE agent_id=$1 AND id=$2",
+          [c.agentId,c.invoiceId],
+        );
+        await client.query(
+          `UPDATE event_outbox
+             SET status='pending',lease_until=NULL
+           WHERE agent_id=$1 AND id=$2`,
+          [c.agentId,c.outboxId],
+        );
+        await appendEventTx(client,c.agentId,c.ticketId,"invoice.deferred",{
+          invoiceId:c.invoiceId,paymentId:c.paymentId,reason:"payment_verification_in_progress",
+        });
+        return "deferred";
+      }
+      // Reject a verified refund (and any other non-paid state) before
+      // committing PDF bytes or exposing a chat download link.
+      const publish=decision==="verified_completed";
       await client.query(
         `UPDATE ticket_payment_invoices SET state=$3,bytes=$4,sha256=$5,updated_at=now()
           WHERE agent_id=$1 AND id=$2`,
-        [c.agentId,c.invoiceId,pdf?"verified_completed":"unknown_outcome",
-          pdf?.bytes??null,pdf?.sha256??null],
+        [c.agentId,c.invoiceId,publish?"verified_completed":"unknown_outcome",
+          publish?pdf?.bytes??null:null,publish?pdf?.sha256??null:null],
       );
       await client.query(
         "UPDATE event_outbox SET status=$3,lease_until=NULL WHERE agent_id=$1 AND id=$2",
-        [c.agentId,c.outboxId,pdf?"completed":"dead"],
+        [c.agentId,c.outboxId,publish?"completed":"dead"],
       );
       await appendEventTx(client,c.agentId,c.ticketId,
-        pdf?"invoice.generated":"invoice.unknown_outcome",{
+        publish?"invoice.generated":"invoice.unknown_outcome",{
           invoiceId:c.invoiceId,paymentId:c.paymentId,testOnly:true,
-          pdfVerified:Boolean(pdf),
+          pdfVerified:publish,
         });
+      return decision;
     });
   }
+  private async notifyInvoice(
+    claim:Pick<Claim,"agentId"|"ticketId"|"invoiceId">,
+  ):Promise<void>{
+    const link="/api/v1/tickets/"+claim.ticketId+"/invoices/"+claim.invoiceId+"/pdf";
+    await new TicketMessageRepository(this.db).createAssistantMessage(
+      workerTicketScope(claim.agentId,claim.ticketId),claim.ticketId,claim.invoiceId,
+      "Your sandbox payment has been independently verified and your TEST invoice is ready. "+
+      "[Download your TEST invoice]("+link+").",[],
+    );
+  }
+
+  /**
+   * Persisted PDF and the chat message are deliberately separate operations.
+   * If the process dies between the two, reconcile the missing message
+   * without regenerating the PDF or submitting a second payment.
+   */
+  private async recoverInvoiceNotification(agentId:string):Promise<void>{
+    const pending=await this.db.withAgent(agentId,async client=>{
+      const r=await client.query<{id:string;ticket_id:string}>(
+        `SELECT i.id,i.ticket_id FROM ticket_payment_invoices i
+         JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id AND p.ticket_id=i.ticket_id
+           AND p.id=i.payment_id AND p.state='verified_test_payment'
+         JOIN tickets t ON t.agent_id=i.agent_id AND t.id=i.ticket_id
+           AND t.status<>'closed'
+         WHERE i.agent_id=$1 AND i.state='verified_completed' AND i.bytes IS NOT NULL
+           AND NOT EXISTS(
+             SELECT 1 FROM ticket_messages m
+             WHERE m.agent_id=i.agent_id AND m.ticket_id=i.ticket_id
+               AND m.role='assistant' AND m.request_id=i.id
+           )
+         ORDER BY i.created_at LIMIT 1`,[agentId],
+      );
+      return r.rows[0]??null;
+    });
+    if(pending){
+      await this.notifyInvoice({agentId,ticketId:pending.ticket_id,invoiceId:pending.id});
+      this.log({invoiceId:pending.id},"Recovered missing TEST invoice chat link");
+    }
+  }
+
   private async tick(){
     if(this.stopped||this.busy||!paymentEnabled())return;
     this.busy=true;
     try{
       const agent=await this.agentId();if(!agent)return;
-      if(Date.now()-this.lastSweep>30000){await this.quarantine(agent);this.lastSweep=Date.now();}
+      if(Date.now()-this.lastSweep>30000){
+        await this.quarantine(agent);
+        try{
+          await this.recoverInvoiceNotification(agent);
+        }catch{
+          // A chat-notification outage must never stop independent invoice
+          // rendering for a different customer ticket.
+          this.log({agentId:agent},"Invoice chat recovery will retry");
+        }
+        this.lastSweep=Date.now();
+      }
       const claim=await this.claim(agent);if(!claim)return;
       const pdf=await this.dispatch(claim);
-      await this.finalize(claim,pdf);
-      this.log({invoiceId:claim.invoiceId,status:pdf?"verified_completed":"unknown_outcome"},
+      const finalized=await this.finalize(claim,pdf);
+      if(finalized==="verified_completed"){
+        try{
+          await this.notifyInvoice(claim);
+        }catch{
+          this.log({invoiceId:claim.invoiceId},
+            "Invoice PDF saved; durable chat-link recovery will retry");
+        }
+      }
+      this.log({invoiceId:claim.invoiceId,status:finalized},
         "ANCFZ TEST invoice recorded");
     }catch(e){
       this.log({errorCode:(e as Error).name},"ANCFZ invoice worker failed");

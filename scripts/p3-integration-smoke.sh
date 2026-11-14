@@ -12,7 +12,7 @@ ticket_json=$(curl --fail --silent --show-error -c "$jar" \
 ticket_id=$(printf '%s' "$ticket_json" | python3 -c 'import json,sys; d=json.load(sys.stdin);assert d["agentKey"]=="ancfz";print(d["id"])')
 request_id=$(python3 -c 'import uuid; print(uuid.uuid4())')
 
-body=$(printf '{"requestId":"%s","text":"I want to start an IT services company with one visa and shared office."}' "$request_id")
+body=$(printf '{"requestId":"%s","text":"I want to start an IT services company with one visa and shared office. My contact email is demo@example.invalid."}' "$request_id")
 first=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
   -d "$body" "http://localhost/api/v1/tickets/$ticket_id/messages")
 again=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
@@ -45,7 +45,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 7
+test "$migrations" = 11
 # New OTP/payment/invoice tables must enforce agent-scoped row-level security.
 payment_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname IN ('ticket_payment_otps','ticket_payment_attempts','ticket_payment_invoices') AND relrowsecurity AND relforcerowsecurity")
@@ -58,7 +58,7 @@ test "$count" = 1
 # Both source message IDs are persisted through the public API first.
 first_id=$(printf '%s' "$first" | python3 -c 'import json,sys;print(json.load(sys.stdin)["messageId"])')
 correction_request=$(python3 -c 'import uuid;print(uuid.uuid4())')
-correction_body=$(printf '{"requestId":"%s","text":"Correction: I need two visas, not one."}' "$correction_request")
+correction_body=$(printf '{"requestId":"%s","text":"Correction: I need two visas, not one, and there will be two shareholders."}' "$correction_request")
 correction=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' \
   -d "$correction_body" "http://localhost/api/v1/tickets/$ticket_id/messages")
 correction_id=$(printf '%s' "$correction" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["status"]=="accepted";print(d["messageId"])')
@@ -114,6 +114,34 @@ test "$private_pdf" = 404
 quoted=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/quotations")
 printf '%s' "$quoted" | python3 -c 'import sys,json;d=json.load(sys.stdin);assert d["quotation"]["state"]=="queued";assert d["quotation"]["pdfAvailable"] is False'
 printf '%s\n' 'P4 quotation offline DB smoke PASS'
+# Confirm v2 intent purchase requirements, owner isolation and document/consent gates.
+purchase_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname IN ('intent_document_requirements','ticket_purchase_documents','ticket_purchase_confirmations') AND relrowsecurity AND relforcerowsecurity")
+test "$purchase_rls" = 3
+published=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM agents a JOIN intent_catalog_versions v ON v.agent_id=a.id JOIN intents i ON i.agent_id=a.id AND i.catalog_version_id=v.id WHERE a.agent_key='ancfz' AND v.revision=2 AND v.status='published' AND i.intent_key='company_formation' AND 'purchase_quotation'=ANY(i.allowed_actions)")
+test "$published" = 1
+# Every published ANCFZ intent must have exactly the same 2 required files.
+universal_docs=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM agents a JOIN intent_catalog_versions v ON v.agent_id=a.id AND v.status='published' JOIN intents i ON i.agent_id=a.id AND i.catalog_version_id=v.id WHERE a.agent_key='ancfz' AND (SELECT count(*) FROM intent_document_requirements r WHERE r.agent_id=i.agent_id AND r.intent_id=i.id AND r.required AND r.requirement_key IN ('passport','emirates_id'))=2 AND (SELECT count(*) FROM intent_document_requirements r WHERE r.agent_id=i.agent_id AND r.intent_id=i.id)=2")
+if [ "$universal_docs" != 4 ]; then
+  echo "Universal identity-document policy expected 4 intents, got $universal_docs" >&2
+  exit 1
+fi
+unauthorized_purchase=$(curl --silent -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$ticket_id/purchase")
+test "$unauthorized_purchase" = 404
+docker compose exec -T -e P5_PURCHASE_OFFLINE_SMOKE=1 -e P3_TEST_TICKET="$ticket_id" \
+  api node dist/runtime/purchase-smoke.js
+purchase_status=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/purchase")
+printf '%s' "$purchase_status" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["supported"];assert d["readyForOtp"];assert d["confirmed"];assert len(d["requirements"])==2'
+# Contract-level DB execution of every non-provider action in the bootstrap
+# catalog, including authorization, fact provenance and durable chat notice.
+service_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname='ticket_service_requests' AND relrowsecurity AND relforcerowsecurity")
+test "$service_rls" = 1
+docker compose exec -T -e P5_INTENT_ACTION_SMOKE=1 api node dist/runtime/intent-actions-smoke.js
+
+
 # P5 customer payment routes are still disabled without explicit test-mode flags.
 unauthorized_payment=$(curl --silent -o /dev/null -w '%{http_code}' \
   "http://localhost/api/v1/tickets/$ticket_id/payments")

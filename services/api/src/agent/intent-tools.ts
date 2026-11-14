@@ -86,6 +86,8 @@ export function registerIntentTools(
   catalog: CatalogRepository,
   facts: TicketFactRepository,
   ticketIntents: TicketIntentRepository,
+  purchaseReadiness?: () => Promise<unknown>,
+  actionReadiness?: () => Promise<unknown>,
 ): void {
   const handlers: ToolHandler[] = [
     {
@@ -132,7 +134,7 @@ export function registerIntentTools(
     },
     {
       name: "get_intent_requirements",
-      description: "Retrieve the selected goal's requirements and current ticket facts. Ask the most useful missing question, not a complete questionnaire. Requirements may differ for each action.",
+      description: "Retrieve a supported goal\'s requirements, current facts and (for purchase_quotation) private purchase checklist readiness. Ask only the next missing question. File uploads, purchase confirmation and payments are performed only by the authenticated customer through Node endpoints; never claim them completed from chat text.",
       parameters: schema({
         intentKey: { type: "string", maxLength: 128 },
         operationKey: { type: "string", maxLength: 128 },
@@ -153,6 +155,18 @@ export function registerIntentTools(
           catalogVersion: ctx.intentCatalogRevision,
           intentKey,
           allowedActions: intent.allowedActions,
+          ...(operationKey==="purchase_quotation" && purchaseReadiness
+            ? {purchase: await purchaseReadiness()} : {}),
+          // The readiness callback refers only to the actual selected intent.
+          // Never attach one ticket goal's action status to a different
+          // catalog candidate queried before selection.
+          ...(actionReadiness ? {actionExecution: await (async()=>{
+            const observed=await actionReadiness();
+            const state=observed&&typeof observed==="object"
+              ? observed as Record<string,unknown>:null;
+            return state?.intentKey===intentKey ? observed
+              : {selectedIntentRequired:true};
+          })()} : {}),
           requirements: intent.requirements
             .filter((req) => !operationKey || req.requiredFor.includes(operationKey))
             .map((req) => ({

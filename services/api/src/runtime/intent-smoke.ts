@@ -4,7 +4,8 @@
  * Requires two distinct persisted customer messages created through the API.
  */
 import assert from "node:assert/strict";
-import { PersistenceDatabase } from "../database/pool.js";
+import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
+import { assertCatalogActionRequirementsTx } from "./intent-action-operations.js";
 import { AgentRepository } from "../repositories/agent.js";
 import { ConversationContextRepository } from "../repositories/context.js";
 import { scopedIntentToolRepositories } from "../repositories/intent-adapter.js";
@@ -58,6 +59,7 @@ async function main() {
       intentKey:"company_formation",
       facts:[
         {key:"business_activity",value:"IT services"},
+        {key:"customer_email",value:"demo@example.invalid"},
         {key:"visa_count",value:1},
         {key:"office_preference",value:"shared office"},
       ],
@@ -66,18 +68,27 @@ async function main() {
     const items=requirements.requirements as Array<{key:string;value:unknown}>;
     assert.equal(items.find(x=>x.key==="visa_count")?.value,1);
     assert.ok(items.some(x=>x.key==="shareholder_count"&&x.value===null));
+    await assert.rejects(()=>db.withAgent(identity.id,client=>
+      assertCatalogActionRequirementsTx(client,identity.id,ticketId,"generate_quote")),
+      err=>err instanceof PersistenceError&&err.code==="CONFLICT");
+
     const offers=await invoke("get_offerings",{intentKey:"company_formation"});
     assert.ok(Array.isArray(offers.offerings));
     assert.ok((offers.offerings as Array<{key:string}>).some(x=>x.key==="company_setup_consultation"));
     assert.ok((offers.offerings as Array<{price?:unknown}>).every(x=>!x.price),"Do not synthesize pricing");
     const correctionContext:TrustedToolContext={...context,sourceCustomerMessageId:correctionMessageId};
     await invoke("record_ticket_facts",{
-      intentKey:"company_formation",facts:[{key:"visa_count",value:2}],
+      intentKey:"company_formation",facts:[{key:"visa_count",value:2},{key:"shareholder_count",value:2}],
     },correctionContext);
     const stored=await new ConversationContextRepository(db).read(scope,ticketId);
     assert.equal(stored.activeIntent,"company_formation");
     assert.equal(stored.knownFacts.visa_count,2);
     assert.equal(stored.knownFacts.office_preference,"shared office");
+    await db.withAgent(identity.id,async client=>{
+      await assertCatalogActionRequirementsTx(client,identity.id,ticketId,"create_lead");
+      await assertCatalogActionRequirementsTx(client,identity.id,ticketId,"generate_quote");
+    });
+
     const events=await db.withAgent(identity.id,async client=>{
       const result=await client.query<{ count:string }>(
         "SELECT count(*) FROM ticket_fact_events WHERE agent_id=$1 AND ticket_id=$2 AND source_message_id=$3",
@@ -85,7 +96,7 @@ async function main() {
       );
       return Number(result.rows[0]?.count??0);
     });
-    assert.equal(events,1,"Customer correction must retain provenance");
+    assert.equal(events,2,"Customer correction must retain provenance");
     const denied=await registry.execute({
       name:"execute_workflow",callId:"forbidden",argumentsJson:"{}",
     },context);
