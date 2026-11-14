@@ -4,7 +4,7 @@ Status: **implemented in Node, behind an opt-in flag; live Gotenberg/n8n certifi
 
 This slice is the next stage after the ANCFZ Salesforce Lead integration.
 It adds no model function for external operations and does not change the
-conversation engine or the existing Foundry IQ knowledge binding.
+conversation engine or the published Gemini File Search knowledge binding.
 
 ## Execution
 
@@ -16,7 +16,7 @@ conversation engine or the existing Foundry IQ knowledge binding.
 3. The customer requests a quotation with a separate, explicit acknowledgment,
    selecting an **effective published offering** shown from their ticket's
    **pinned offering catalog version**. Neither a customer parameter nor a
-   Foundry model response supplies the amount.
+   Gemini model response supplies the amount.
 4. Node requires the verified Lead, active eligible intent, ownership and
    exact acknowledgment text. A quote cannot exist for the ticket before the
    verified Lead. One quote per ticket is supported in this POC.
@@ -48,9 +48,9 @@ conversation engine or the existing Foundry IQ knowledge binding.
 
 ## Operator setup — local Docker
 
-- Pull the merged PR and run migration 008 through the existing
+- Apply migration 008 through the existing
   `migrate` service. **Never reset the existing PGDATA volume.**
-- Ensure Sara's published Foundry version 6 and the active PostgreSQL agent
+- Ensure Sara's published Gemini version and the active PostgreSQL agent
   binding match. Existing tickets remain pinned to their creation version.
 - Follow `docs/p4-node-n8n-lead-integration.md` to configure the private
   n8n instance and *real* Salesforce sandbox OAuth credential. Test one
