@@ -8,7 +8,7 @@ export POSTGRES_DB=ai_service_agent_gemini_p2_test
 export POSTGRES_PASSWORD="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))')"
 export POSTGRES_APP_PASSWORD="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))')"
 export ANCFZ_CATALOG_ENV=test
-export GEMINI_MODEL_ID=gemini-2.5-flash
+export GEMINI_MODEL_ID=gemini-3.8-flash
 # Environment must not supply usable Foundry bindings to this Gemini bootstrap.
 export FOUNDRY_PROJECT_ENDPOINT='' FOUNDRY_AGENT_NAME='' FOUNDRY_AGENT_VERSION=''
 # The base compose has fixed named volumes, independent of the project name.
