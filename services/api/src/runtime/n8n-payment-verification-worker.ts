@@ -38,7 +38,8 @@ export class N8nPaymentVerificationWorker {
          JOIN tickets t ON t.agent_id=p.agent_id AND t.id=p.ticket_id
          WHERE p.agent_id=$1 AND p.order_reference IS NOT NULL
            AND p.state IN ('checkout_available','order_created_checkout_unavailable',
-             'payment_pending','unknown_outcome')
+             'payment_pending','unknown_outcome','verifying')
+           AND (p.state<>'verifying' OR p.verification_started_at<now()-interval '2 minutes')
            AND p.verification_attempts<60
            AND p.next_verification_at<=now()
            AND p.created_at>now()-interval '24 hours'
