@@ -112,18 +112,18 @@ export function dockerConfigurationCheck(env, scope) {
 }
 export function checkPublishedSara(env, scope) {
   const sql = [
-    'SELECT CASE WHEN a.status = ''active'' AND v.provider = ''gemini''',
-    ' AND v.publication_state = ''published'' THEN ''yes'' ELSE ''no'' END,',
-    '(SELECT count(*) FROM intents i JOIN intent_catalog_versions ic',
-    ' ON ic.id=i.catalog_version_id AND ic.agent_id=i.agent_id',
-    ' WHERE i.agent_id=a.id AND ic.status=''published''),',
-    'CASE WHEN v.knowledge_version_id IS NOT NULL AND v.knowledge_status=''bound''',
-    ' AND EXISTS (SELECT 1 FROM gemini_knowledge_versions k',
-    ' WHERE k.id=v.knowledge_version_id AND k.agent_id=a.id AND k.state=''published'')',
-    ' THEN ''yes'' ELSE ''no'' END',
-    'FROM agents a JOIN agent_versions v ON v.id=a.active_version_id',
-    ' AND v.agent_id=a.id WHERE a.agent_key=''ancfz'' LIMIT 1;',
-  ].join(' ').replaceAll("''", "'");
+    "SELECT CASE WHEN a.status = 'active' AND v.provider = 'gemini'",
+    " AND v.publication_state = 'published' THEN 'yes' ELSE 'no' END,",
+    "(SELECT count(*) FROM intents i JOIN intent_catalog_versions ic",
+    " ON ic.id=i.catalog_version_id AND ic.agent_id=i.agent_id",
+    " WHERE i.agent_id=a.id AND ic.status='published'),",
+    "CASE WHEN v.knowledge_version_id IS NOT NULL AND v.knowledge_status='bound'",
+    " AND EXISTS (SELECT 1 FROM gemini_knowledge_versions k",
+    " WHERE k.id=v.knowledge_version_id AND k.agent_id=a.id AND k.state='published')",
+    " THEN 'yes' ELSE 'no' END",
+    "FROM agents a JOIN agent_versions v ON v.id=a.active_version_id",
+    " AND v.agent_id=a.id WHERE a.agent_key='ancfz' LIMIT 1;",
+  ].join(' ');
   const out = externalCommand('docker', ['compose', 'exec', '-T', 'postgres',
     'psql', '-X', '-q', '-A', '-t', '-F', '|', '-U', 'postgres', '-d',
     String(env.POSTGRES_DB || 'ai_service_agent_gemini'), '-c', sql], env);
