@@ -12,6 +12,7 @@ import {
 import {
   verifyQuotationPdf,verifyInvoicePdf,
 } from "../services/api/dist/runtime/n8n-quote-worker.js";
+import { invoiceFinalizationDecision } from "../services/api/dist/runtime/n8n-invoice-worker.js";
 
 const conf={
   APP_ENV:"development",ANCFZ_PAYMENT_DISPATCH_ENABLED:"true",
@@ -98,6 +99,13 @@ assert.deepEqual(reconcileGatewayCheck("payment_refunded","REFUNDED",completed),
   {state:"payment_refunded",providerStatus:"REFUNDED"});
 assert.deepEqual(reconcileGatewayCheck("payment_pending","PENDING",null),
   {state:"unknown_outcome",providerStatus:"verification_failed"});
+
+// The invoice must be RETRYABLE while the payment check is in-flight.
+assert.equal(invoiceFinalizationDecision("verifying",true),"deferred");
+assert.equal(invoiceFinalizationDecision("verified_test_payment",true),"verified_completed");
+assert.equal(invoiceFinalizationDecision("verified_test_payment",false),"unknown_outcome");
+assert.equal(invoiceFinalizationDecision("payment_refunded",true),"unknown_outcome");
+assert.equal(invoiceFinalizationDecision("unknown_outcome",true),"unknown_outcome");
 
 const bytes=Buffer.from("%PDF-1.4\n"+("x".repeat(200))+"\n%%EOF");
 const data={status:"generated",ticketId,documentNumber:"ANCFZ-TEST-INV-123",
