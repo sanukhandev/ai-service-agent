@@ -62,7 +62,7 @@ SQL
   esac
 }
 
-for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_2checkout_test_payments.sql /migrations/010_intent_purchase_documents.sql; do
+for file in /migrations/003_conversation_persistence.sql /migrations/004_runtime_role.sql /migrations/005_model_conversation_continuity.sql /migrations/006_runtime_turns.sql /migrations/007_authorized_lead_operations.sql /migrations/008_authorized_quotations.sql /migrations/009_2checkout_test_payments.sql /migrations/010_intent_purchase_documents.sql /migrations/011_payment_auto_verification.sql; do
   name=$(basename "$file")
   checksum=$(sha256sum "$file" | cut -d ' ' -f 1)
   current=$(psql -At -v ON_ERROR_STOP=1 -v file_name="$name" <<'SQL'
