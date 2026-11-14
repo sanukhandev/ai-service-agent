@@ -192,6 +192,20 @@ export class GeminiSessionRepository {
     });
   }
 
+  /** Authorize ticket ownership before finding its sole AI session. Expiry is evaluated by recover(). */
+  async forTicket(scope: TicketScope, ticketId: string) {
+    requireUuid(ticketId, "ticketId");
+    const id = await this.db.withAgent(scope.agentId, async client => {
+      await authorizedTicket(client, scope, ticketId);
+      const found = await client.query<{id:string}>(
+        "SELECT id FROM ai_conversation_sessions WHERE agent_id=$1 AND ticket_id=$2",
+        [scope.agentId,ticketId],
+      );
+      return found.rows[0]?.id ?? null;
+    });
+    return id ? this.recover(scope,id) : null;
+  }
+
   /** Browser refresh, Redis loss and model cursor recovery all use this path. */
   async recover(scope: TicketScope, sessionId: string, afterSequence = "0", limit = 500) {
     if(!/^(0|[1-9][0-9]{0,18})$/.test(afterSequence) || !Number.isSafeInteger(limit)
