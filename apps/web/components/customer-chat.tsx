@@ -218,13 +218,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       if (history.ticket.agentKey !== agentKey)
         throw new ChatApiError("Ticket agent mismatch.", 404, "NOT_FOUND");
       setTicket(history.ticket);
-      const sawNewReply = history.messages.some(
-        (message) =>
-          message.role === "assistant" &&
-          !knownMessages.current.some((old) => old.id === message.id),
-      );
       setMessages((current) => mergeMessages(current, history.messages));
-      if (sawNewReply) setTurnState("idle");
+      // A lifecycle assistant notice can arrive during an active Foundry turn.
+      // Only the authoritative ticket state decides whether processing finished.
+      if (history.ticket.status !== "processing") setTurnState("idle");
     } catch (error) {
       if (error instanceof ChatApiError && error.status === 404) {
         rememberTicket(agentKey, null);
@@ -258,7 +255,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       if (incomingMessage) {
         setMessages((existing) => mergeMessages(existing, [incomingMessage]));
         if (incomingMessage.role === "assistant") {
-          setTurnState("idle");
+          // Do not clear a running Foundry turn for an unsolicited workflow notice.
           setSendError(null);
         }
       }
