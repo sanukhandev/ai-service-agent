@@ -1,7 +1,6 @@
 # Frozen P0 customer ticket / SSE wire contract
 
-Status: **integration contract** for parallel Tracks B (repositories) and C (Next.js).
-The runtime routes are not implemented in P0. The reference HTTP endpoints
+Status: **implemented browser/Node event boundary** on the Gemini experiment, subject to exact-head tests. The reference HTTP endpoints
 and message schemas are in [openapi.yaml](openapi.yaml).
 
 ## Browser session and ownership
@@ -19,7 +18,7 @@ and message schemas are in [openapi.yaml](openapi.yaml).
   unknown ticket IDs return indistinguishable 404 errors.
 - Frontend may remember an authorized ticket UUID locally to reopen after
   refresh, but the cookie remains the only guest bearer credential.
-- Node pins the Foundry agent version and published catalog versions when
+- Node pins the Gemini agent/model, approved File Search and published catalog versions when
   creating a ticket, not on each new message.
 
 ## Message submission
@@ -75,7 +74,7 @@ Supported **initial** event names and payloads:
 | `operation.status` | `operationId, status` | Reserved for P4 approved operations |
 
 `message` fields follow OpenAPI `ChatMessage`. `sourceReferences` are only
-real, authorized citations; Node must withhold private Azure Search URLs or
+real, authorized citations; Node must withhold private File Search document URLs or
 non-public storage SAS links from customer-visible links. Unsupported/invalid
 references may be displayed as plain source titles without clickable URLs.
 
@@ -106,7 +105,7 @@ Heartbeat comments are not durable events and have no IDs.
 Track B owns repository transactions, sequences and guest session persistence.
 Track C owns client rendering, EventSource reconnection and local deduplication.
 The integration owner maps repository events to the SSE frame and HTTP routes.
-Track A owns Foundry invocations, not ticket storage or SSE transport.
+The Gemini turn worker owns model invocation; Node repositories and Fastify own ticket storage and SSE transport.
 
 Changes to this contract require coordinated updates to both backend integration
 and UI; do not introduce an incompatible event naming scheme in a parallel track.
