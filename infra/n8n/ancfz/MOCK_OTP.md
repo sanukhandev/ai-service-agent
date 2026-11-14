@@ -43,7 +43,13 @@ Open http://localhost/n8n/ and check the following state:
 
 Before activation configure the existing ANCFZ - Node to n8n Webhook Header credential with a strong secret matching Node private webhook authentication. Never use the placeholder credential as a real authorization secret. The mocked delivery is protected by Header Auth and a runtime local-only environment gate; the cleanup workflow has no public webhook.
 
-For a manual synthetic test, use a fake UUID (11111111-1111-4111-8111-111111111111), fake email (tester@example.invalid) and a six-digit test code. Confirm the table receives a row, the webhook response does not include the code, and the cleanup deletes the expired row. A disabled cleanup workflow leaves expired rows stored; date expiry is not automatic deletion.
+For a synthetic local smoke test without Node P5, set ANCFZ_N8N_WEBHOOK_SECRET privately in the PowerShell session to the same secret stored in the Header Auth credential. Then run:
+
+    node scripts/test-n8n-mock-otp.mjs
+
+The command generates a random synthetic ticket ID and a six-digit test code internally, submits it only to the private n8n webhook, and prints the ticket ID and expiration time **without printing the code**. Open the ANCFZ_POC_OTPS Data Table to view the test code. The workflow must already be active and correctly configured. Confirm the cleanup deletes the expired row. A disabled cleanup workflow leaves expired rows stored; date expiry is not automatic deletion.
+
+If you prefer a manual n8n test, use a fake UUID (11111111-1111-4111-8111-111111111111), fake email (tester@example.invalid) and a six-digit test code. Never use real recipient identities or any production challenge.
 
 ## Security and limitations
 
