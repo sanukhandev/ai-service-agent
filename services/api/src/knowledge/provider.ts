@@ -112,12 +112,49 @@ export class GoogleFileSearchProvider implements FileSearchProvider {
     const candidate=reply.candidates?.[0];const annotations=candidate?.groundingMetadata?.groundingChunks??[];
     if(!Array.isArray(annotations))throw new FileSearchError('provider',false);
     const resourceNames:string[]=[];
+    let providerDocs:ProviderDocument[]|null=null;
     for(const chunk of annotations) {
-      // Only an exact Google document resource in provider annotation qualifies.
-      const candidates=[chunk.retrievedContext?.uri,chunk.retrievedContext?.sourceUri,chunk.retrievedContext?.documentName];
-      for(const raw of candidates) if(typeof raw==='string' && raw.startsWith(store+'/documents/')) {
-        assertDocumentName(store,raw);resourceNames.push(raw);
+      const context=chunk?.retrievedContext;
+      if(!context)continue;
+      const candidates=[context.uri,context.sourceUri,context.documentName];
+      let resolved=false;
+      for(const raw of candidates) {
+        if(typeof raw==='string' && raw.startsWith(store+'/documents/')) {
+          assertDocumentName(store,raw);
+          resourceNames.push(raw);
+          resolved=true;
+          break;
+        }
       }
+      if(resolved)continue;
+      // Google's generateContent File Search citations may expose the store
+      // plus customMetadata, without an exact document resource name.
+      // Resolve ONLY an exact metadata tuple against a provider-listed ACTIVE
+      // document. The caller independently confirms this ID in PostgreSQL.
+      const rawMetadata=Array.isArray(context.customMetadata)?context.customMetadata:[];
+      const wanted:Record<string,string>={};
+      for(const item of rawMetadata) {
+        if(typeof item?.key==='string'&&typeof item?.stringValue==='string' &&
+           !Object.hasOwn(wanted,item.key))wanted[item.key]=item.stringValue;
+      }
+      const keys=['agentId','knowledgeVersionId','documentId','documentVersionId','sha256'];
+      if(!keys.every(k=>wanted[k] && wanted[k].length<128))continue;
+      providerDocs??=await this.listDocuments(store);
+      const matches=providerDocs.filter(doc=>{
+        if(!['STATE_ACTIVE','ACTIVE'].includes(doc.state))return false;
+        if(typeof doc.name!=='string'||!doc.name.startsWith(store+'/documents/'))return false;
+        const actual:Record<string,string>={};
+        for(const md of doc.customMetadata??[]) {
+          if(md.key&&typeof md.stringValue==='string' && !Object.hasOwn(actual,md.key))
+            actual[md.key]=md.stringValue;
+        }
+        return keys.every(k=>actual[k]===wanted[k]);
+      });
+      if(matches.length===1) {
+        assertDocumentName(store,matches[0].name);
+        resourceNames.push(matches[0].name);
+      }
+      else if(matches.length>1)throw new FileSearchError('provider',false);
     }
     return {text:(candidate?.content?.parts??[]).map((x:{text?:string})=>x.text??'').join(''),documentResources:[...new Set(resourceNames)],rawAnnotations:annotations};
   }
