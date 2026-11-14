@@ -4,8 +4,10 @@
 
 The Sara/ANCFZ POC uses a ticket-pinned, versioned intent catalog. Revision 1
 only permitted `create_lead` and `generate_quote` for `company_formation`.
-Revision 2 enables `purchase_quotation` on every seeded intent and requires
-exactly **passport** and **Emirates ID** for the POC. Other identity or application documents are rejected. This is *not* a verified
+The currently published intent catalog is cloned into an immutable revision
+that requires exactly **passport** and **Emirates ID** for every intent.
+The `purchase_quotation` action is published only for quote-enabled intents,
+with a separately authorized `create_lead` prerequisite. Other identity or application documents are rejected. This is *not* a verified
 list of all documents required by ANCFZ authorities. Obtain and publish an
 approved checklist before using real identity information or customer funds.
 
@@ -68,11 +70,12 @@ enqueue an order and independently verify provider evidence.
 
 ## Versioning and deployment
 
-- Migrations `010` and `011` are forward-only. Database and workflows
-  are never reset.
-- `seed-sara-purchase.sql` is idempotent, publishes intent revision 2
-  and retires revision 1. Existing tickets retain their pinned old catalog;
-  open a **new ticket** to exercise the v2 purchase journey.
+- Migrations `010`–`013` are forward-only. Database and workflows are
+  never reset.
+- `seed-sara-purchase.sql` is idempotent, clones the currently published
+  4- or 21-intent catalog into a new revision when policy changes and retires
+  the prior published revision. Existing tickets retain their pinned old
+  catalog; open a **new ticket** to exercise the updated purchase journey.
 - Existing offering revisions, knowledge and Foundry agent are untouched.
   The trusted turn context instructs Sara to retrieve the catalog's purchase
   requirements without asking for OTP, identity files or card details in chat.
