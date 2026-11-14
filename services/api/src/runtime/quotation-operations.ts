@@ -6,6 +6,7 @@
 import { createHash, randomUUID } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { assertCatalogActionRequirementsTx } from "./intent-action-operations.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 
 export const QUOTATION_ACKNOWLEDGMENT =
@@ -205,6 +206,7 @@ export class QuotationOperations {
           throw new PersistenceError("CONFLICT","Quotation already exists; changing the package needs a new authorization");
         return {quotation:toView(stored),duplicated:true};
       }
+      await assertCatalogActionRequirementsTx(client,scope.agentId,ticketId,"generate_quote");
       const leadId=await requireEligibleTicket(client,scope.agentId,ticketId);
       const options=await pricedOptions(client,scope.agentId,ticketId,input.offeringKey);
       const chosen=options[0];
