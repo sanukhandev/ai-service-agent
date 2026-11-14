@@ -210,7 +210,9 @@ fi
 echo 'Sara persona publication, idempotency, pin preservation and immutability PASS'
 echo 'TEST 6: Node repositories against actual PostgreSQL'
 compose build api
-compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini.integration.test.js dist/runtime/gemini-api.integration.test.js dist/runtime/gemini-worker.integration.test.js dist/repositories/gemini-continuity.integration.test.js
+compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini.integration.test.js dist/runtime/gemini-api.integration.test.js dist/runtime/gemini-worker.integration.test.js
+echo 'TEST 6A: Isolated 56-message Gemini continuity and correction scenarios'
+compose run --rm -e P2_TEST_DB_ONLY=1 api node --test dist/repositories/gemini-continuity.integration.test.js
 echo 'TEST 7: Real PostgreSQL catalog-action and synthetic document authorization'
 compose run --rm -e P5_INTENT_ACTION_SMOKE=1 api node dist/runtime/intent-actions-smoke.js
 echo 'P2 disposable database checks passed'
