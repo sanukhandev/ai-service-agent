@@ -26,6 +26,17 @@ if `/api/v1/workflows` works.
 The script does **not** update internal n8n SQLite tables, reset users, delete
 volumes or overwrite credentials/workflows that already exist.
 
+**Safe command behavior:** With no arguments the script only inspects an existing
+instance. Run `--stage=owner` only for an entirely fresh instance, then create
+the owner's API key and separately run `--stage=import`. The previous implicit
+`--stage=all` operation has been removed because owner bootstrap must never
+happen as a side effect of importing workflows.
+
+A complete, unchanged import is repeat-safe: `--stage=import` detects all four
+matching credentials and all five inactive workflows, reports success, and
+does not import or overwrite them again. Partial imports, conflicting names/IDs,
+or unexpectedly active workflows remain **blocked**, pending operator review.
+
 ## 1. Start n8n and reach the editor
 
 From the repository root:
@@ -75,7 +86,29 @@ docker compose --profile workflows up -d --force-recreate n8n
 This preserves the `n8n-data` volume. Rotate the initial owner password
 through the n8n editor and enable MFA.
 
-## 2. Review the dry run
+## 2. Inspect and review the dry run
+
+The offline dry run requires no API key:
+
+```powershell
+node scripts/seed-n8n-anzfc.mjs --dry-run
+```
+
+For a **live read-only inventory**, first provide the owner's n8n API key
+privately (as shown in step 3). Then run:
+
+```powershell
+node scripts/seed-n8n-anzfc.mjs
+# equivalent to --stage=inspect --workspace=personal
+```
+
+It reports `status=empty`, `ready`, `partial`, or `conflict`, together
+with matching credential/workflow counts. Inspection never imports anything,
+creates a project, changes the owner, or activates a workflow. If a partial
+import is detected, back up the n8n data volume and inspect the missing
+resources before taking action.
+
+## 3. Review the dry run for import
 
 ```powershell
 node scripts/seed-n8n-anzfc.mjs --stage=import --workspace=personal --dry-run
@@ -86,7 +119,7 @@ Expected dry run reports `workspace=personal`, `project=none`,
 four placeholder credentials and five inactive workflows. No Docker,
 database, provider or network calls occur in dry-run mode.
 
-## 3. Import to the default personal workspace
+## 4. Import to the default personal workspace
 
 Generate an **owner** API key in **Settings → n8n API**, then:
 
@@ -185,8 +218,10 @@ SMTP, payment or Gotenberg acceptance tests.
   an owner key with sufficient permissions.
 - **HTTP 403 on projects:** only relevant when using
   `--workspace=project`; personal mode does not call the endpoint.
-- **Existing resources detected:** imports are not idempotent overwrites.
-  Inspect personal workspace and make a backup before any reconciliation.
+- **Already seeded:** all four matching credentials and five inactive workflows
+  are present. Re-running import is safe and makes no changes.
+- **Existing partial/conflicting resources:** imports do not overwrite them.
+  Inspect the personal workspace and make a backup before reconciliation.
 - **Partial import:** the helper aborts before reimport; check n8n credentials
   and workflows manually. Do not reset user management or volumes.
 - **No owner exists:** complete first-time owner creation before importing;
