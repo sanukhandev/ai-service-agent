@@ -8,6 +8,7 @@ import { AgentToolRegistry } from "../agent/tool-registry.js";
 import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations } from "./quotation-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
+import { PurchaseOperations } from "./purchase-operations.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -130,6 +131,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const leads=new LeadOperations(db);
   const quotes=new QuotationOperations(db);
   const payments=new PaymentOperations(db);
+  const purchases=new PurchaseOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -331,6 +333,41 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       .header("Content-Security-Policy","sandbox")
       .header("Content-Length",String(doc.bytes.length))
       .send(doc.bytes);
+  });
+
+  // Customer-owned document intake and explicit purchase authorization.
+  // No AI tool can bypass these routes or their PostgreSQL ownership checks.
+  app.get("/api/v1/tickets/:ticketId/purchase",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return purchases.read(scope,idParam(request));
+  });
+
+  app.post("/api/v1/tickets/:ticketId/purchase/documents",{
+    bodyLimit:1500000,
+  },async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await purchases.upload(scope,idParam(request),request.body);
+    return reply.code(result.duplicated?200:201).send(result);
+  });
+
+  app.get<{Params:{ticketId:string;documentId:string}}>(
+    "/api/v1/tickets/:ticketId/purchase/documents/:documentId",async(request,reply)=>{
+      const scope=await scopeFromCookie(db,request);
+      const doc=await purchases.download(scope,idParam(request),request.params.documentId);
+      return reply.header("Content-Type",doc.content_type)
+        .header("Content-Disposition",'attachment; filename="'+encodeURIComponent(doc.file_name)+'"')
+        .header("Cache-Control","private, no-store")
+        .header("X-Content-Type-Options","nosniff")
+        .header("Content-Security-Policy","sandbox")
+        .header("Content-Length",String(doc.bytes.length)).send(doc.bytes);
+    });
+
+  app.post("/api/v1/tickets/:ticketId/purchase/confirm",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await purchases.confirm(scope,idParam(request),request.body);
+    return reply.code(result.duplicated?200:201).send(result);
   });
 
   // Test-only payment endpoints. Each requires the same authenticated ticket
