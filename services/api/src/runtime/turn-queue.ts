@@ -135,7 +135,7 @@ export class TurnQueue {
 
   /**
    * Gemini: one transaction creates the independently verified evidence audit,
-   * assistant message, and SSE event. No Foundry resp_ cursor is fabricated.
+   * assistant message, and SSE event. No unverified external provider cursor is fabricated.
    * Unverified model output cannot enter the message stream.
    */
   async completeGemini(turn: PendingTurn, sessionId: string, text: string,
