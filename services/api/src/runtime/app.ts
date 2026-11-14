@@ -9,6 +9,7 @@ import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations } from "./quotation-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
 import { PurchaseOperations } from "./purchase-operations.js";
+import { IntentActionOperations } from "./intent-action-operations.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -132,6 +133,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const quotes=new QuotationOperations(db);
   const payments=new PaymentOperations(db);
   const purchases=new PurchaseOperations(db);
+  const intentActions=new IntentActionOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -334,6 +336,22 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       .header("Content-Length",String(doc.bytes.length))
       .send(doc.bytes);
   });
+
+  // Every declared catalog action is either routed to a dedicated Node
+  // authorization API or recorded as a customer-approved ticket request.
+  app.get("/api/v1/tickets/:ticketId/intent-actions",async(request)=>{
+    const scope=await scopeFromCookie(db,request);
+    return intentActions.catalog(scope,idParam(request));
+  });
+
+  app.post<{Params:{ticketId:string;actionKey:string}}>(
+    "/api/v1/tickets/:ticketId/intent-actions/:actionKey",async(request,reply)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      const result=await intentActions.submit(scope,idParam(request),
+        request.params.actionKey,request.body);
+      return reply.code(result.duplicated?200:201).send(result);
+    });
 
   // Customer-owned document intake and explicit purchase authorization.
   // No AI tool can bypass these routes or their PostgreSQL ownership checks.
