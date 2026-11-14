@@ -1,0 +1,66 @@
+# This workflow is deliberately present on the Gemini experimental branch only.
+# WARNING: A failing check is not a hard merge block until GitHub rules on main
+# require a trusted status check. Do not merge this workflow to main as an
+# accidental workaround; admins should install repository-level protection.
+name: Reject Gemini experimental code targeting main
+
+on:
+  pull_request:
+    branches:
+      - main
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - ready_for_review
+
+permissions:
+  contents: read
+
+jobs:
+  reject-gemini-ancestry:
+    name: reject-gemini-ancestry
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out proposed source history (read-only)
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Reject Gemini experiment or its descendants
+        shell: bash
+        env:
+          PR_BASE: ${{ github.base_ref }}
+          PR_HEAD: ${{ github.head_ref }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+
+          if [[ "$PR_BASE" != "main" ]]; then
+            exit 0
+          fi
+
+          deny() {
+            echo "::error title=Forbidden branch direction::Gemini experimental changes must never be merged into main. Allowed direction: main -> experiment/gemini-file-search-poc only."
+            exit 1
+          }
+
+          # Reject known experiment branch names even if rebased.
+          case "$PR_HEAD" in
+            experiment/gemini-file-search-poc|experiment/gemini-*)
+              deny
+              ;;
+          esac
+
+          # The first unique Gemini-only documentation commit is a stable
+          # ancestry marker. This also rejects renamed descendant branches.
+          EXPERIMENT_MARKER=f3d9ae1b15bcddd17abe6c038d50a7434ea2ebd6
+          if git cat-file -e "${EXPERIMENT_MARKER}^{commit}" 2>/dev/null; then
+            if git merge-base --is-ancestor "$EXPERIMENT_MARKER" "$PR_HEAD_SHA"; then
+              deny
+            fi
+          fi
+
+          echo "No known Gemini experiment branch name or ancestry detected."
