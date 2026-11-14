@@ -9,6 +9,9 @@ import { TurnQueue } from "./turn-queue.js";
 import { GeminiSessionRepository, GeminiBindingRepository } from "../repositories/gemini.js";
 import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations } from "./quotation-operations.js";
+import { PaymentOperations } from "./payment-operations.js";
+import { PurchaseOperations } from "./purchase-operations.js";
+import { IntentActionOperations } from "./intent-action-operations.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -118,7 +121,7 @@ function frame(event:EventRecord):string {
 
 export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const app=Fastify({
-    logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","req.body.phone","req.body.name","req.body.company","req.body.description","res.headers.set-cookie"]},
+    logger:{redact:["req.headers.cookie","req.headers.authorization","req.body.email","req.body.phone","req.body.name","req.body.company","req.body.description","req.body.code","req.body.otp","req.body.merchantSecret","res.headers.set-cookie"]},
     trustProxy:false,
     bodyLimit:32768,
     maxParamLength:2048,
@@ -132,6 +135,9 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const events=new TicketEventRepository(db);
   const leads=new LeadOperations(db);
   const quotes=new QuotationOperations(db);
+  const payments=new PaymentOperations(db);
+  const purchases=new PurchaseOperations(db);
+  const intentActions=new IntentActionOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -379,6 +385,99 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       .header("Content-Length",String(doc.bytes.length))
       .send(doc.bytes);
   });
+
+  // Every declared catalog action is either routed to a dedicated Node
+  // authorization API or recorded as a customer-approved ticket request.
+  app.get("/api/v1/tickets/:ticketId/intent-actions",async(request)=>{
+    const scope=await scopeFromCookie(db,request);
+    return intentActions.catalog(scope,idParam(request));
+  });
+
+  app.post<{Params:{ticketId:string;actionKey:string}}>(
+    "/api/v1/tickets/:ticketId/intent-actions/:actionKey",async(request,reply)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      const result=await intentActions.submit(scope,idParam(request),
+        request.params.actionKey,request.body);
+      return reply.code(result.duplicated?200:201).send(result);
+    });
+
+  // Customer-owned document intake and explicit purchase authorization.
+  // No AI tool can bypass these routes or their PostgreSQL ownership checks.
+  app.get("/api/v1/tickets/:ticketId/purchase",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return purchases.read(scope,idParam(request));
+  });
+
+  app.post("/api/v1/tickets/:ticketId/purchase/documents",{
+    bodyLimit:1500000,
+  },async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await purchases.upload(scope,idParam(request),request.body);
+    return reply.code(result.duplicated?200:201).send(result);
+  });
+
+  app.get<{Params:{ticketId:string;documentId:string}}>(
+    "/api/v1/tickets/:ticketId/purchase/documents/:documentId",async(request,reply)=>{
+      const scope=await scopeFromCookie(db,request);
+      const doc=await purchases.download(scope,idParam(request),request.params.documentId);
+      return reply.header("Content-Type",doc.content_type)
+        .header("Content-Disposition",'attachment; filename="'+encodeURIComponent(doc.file_name)+'"')
+        .header("Cache-Control","private, no-store")
+        .header("X-Content-Type-Options","nosniff")
+        .header("Content-Security-Policy","sandbox")
+        .header("Content-Length",String(doc.bytes.length)).send(doc.bytes);
+    });
+
+  app.post("/api/v1/tickets/:ticketId/purchase/confirm",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await purchases.confirm(scope,idParam(request),request.body);
+    return reply.code(result.duplicated?200:201).send(result);
+  });
+
+  // Test-only payment endpoints. Each requires the same authenticated ticket
+  // ownership as lead/quotation requests. No model-executed payment functions.
+  app.post("/api/v1/tickets/:ticketId/payments/otp",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const response=await payments.issueOtp(scope,idParam(request),request.body);
+    return reply.code(202).send(response);
+  });
+
+  app.post("/api/v1/tickets/:ticketId/payments/authorize",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const response=await payments.authorize(scope,idParam(request),request.body);
+    return reply.code(202).send(response);
+  });
+
+  app.get("/api/v1/tickets/:ticketId/payments",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return payments.get(scope,idParam(request));
+  });
+
+  app.post<{Params:{ticketId:string;paymentId:string}}>(
+    "/api/v1/tickets/:ticketId/payments/:paymentId/verify",async(request)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      return payments.verify(scope,idParam(request),request.params.paymentId);
+    });
+
+  app.get<{Params:{ticketId:string;invoiceId:string}}>(
+    "/api/v1/tickets/:ticketId/invoices/:invoiceId/pdf",async(request,reply)=>{
+      const scope=await scopeFromCookie(db,request);
+      const doc=await payments.invoicePdf(scope,idParam(request),request.params.invoiceId);
+      return reply.code(200)
+        .header("Content-Type","application/pdf")
+        .header("Content-Disposition",'attachment; filename="'+doc.documentNumber+'.pdf"')
+        .header("Cache-Control","private, no-store")
+        .header("X-Content-Type-Options","nosniff")
+        .header("Content-Security-Policy","sandbox")
+        .header("Content-Length",String(doc.bytes.length))
+        .send(doc.bytes);
+    });
 
   app.get("/api/events/tickets/:ticketId",async(request,reply)=>{
     const scope=await scopeFromCookie(db,request);
