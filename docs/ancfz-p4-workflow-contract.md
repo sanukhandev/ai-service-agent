@@ -1,151 +1,68 @@
-# ANCFZ P4 — Approved customer workflows
+> **Gemini experiment adaptation:** This ANCFZ sandbox contract is imported from `main`. The active AI runtime is Gemini/File Search with independent Node grounding. Checkout, OTP, OCR and external provider effects are **disabled by default** and are not live-certified. Never use actual passports, Emirates IDs or payment credentials over localhost HTTP.
 
-Status: ANCFZ-specific integration contract; **not** live-certified. This does not change the generic core's agent isolation model.
+# ANCFZ P4/P5 — Authenticated business operations and 2Checkout mock billing
 
-## Scope and authority
+**Status:** Implementation exists on this feature branch; external Salesforce/2Checkout authorization, AED support, credential setup and live end-to-end acceptance remain unverified.
 
-The four ANCFZ external business workflows are:
+## Ownership matrix
 
-1. `ancfz_salesforce_lead`: submit an authorized ANCFZ lead to the Salesforce **AIChatbotLead Apex REST** endpoint using approved customer details.
-2. `ancfz_render_pdf`: render either an ANCFZ **quotation** or **invoice** with Gotenberg.
-3. `ancfz_payment_link`: create a **demo Orders** request against the ANCFZ-specific MockGateway API after explicit customer agreement and **Node-verified email OTP**; return a checkout link only if present in the actual response.
-4. `ancfz_payment_verify`: **not configured yet** for this demo Orders API. It must independently verify the provider transaction when a documented status endpoint is available. Only a real matched success authorizes `ancfz_render_pdf` with `documentType=invoice`.
+| Component | Authority |
+|---|---|
+| Sara + Gemini IQ | Natural response, read-only business knowledge, optional function suggestions; never grants payment permission |
+| Node Fastify | Verified guest/ticket scope, published catalog price, explicit customer consent, OTP challenge, durable payment attempt, independent gateway status evidence, invoice authorization |
+| PostgreSQL | Agent-scoped durable quote/OTP/payment/invoice state, outbox idempotency, RLS and document bytes |
+| n8n | Fixed private Header Auth webhooks to Salesforce, Gotenberg and 2Checkout mock provider |
+| 2Checkout mock | Synthetic order creation, checkout and independent payment status; not evidence of real funds |
 
-**Ticket creation is a direct Node/PostgreSQL operation only.** No n8n workflow or Gemini model function may create tickets.
+## Customer journey
 
-Gemini Sara may conversationally discover an intent, collect customer-stated details and explain options. The model never owns the operation state, grants permission, mints an OTP, executes n8n directly or declares money received.
+1. Ticket and qualifying intent collected by Sara; Node persists the history.
+2. Explicit consent for Salesforce Lead submission; Node dispatches and requires a verified 00Q... Lead reference.
+3. Node selects a pinned, approved offering and exact price revision; n8n/Gotenberg renders a quotation PDF; Node validates magic/EOF, bounds, document number and ticket ID before saving privately.
+4. Customer accepts the exact quotation amount and currency. Node issues a six-digit test OTP, stores only a keyed HMAC and requests synthetic delivery into n8n Data Table. Real mail delivery is NOT configured.
+5. Customer enters the code in the customer-authenticated request. Node verifies a five-minute lifetime, one-time consumption, five-attempt limit and one-per-minute/five-per-hour rate limits. It stores a single payment attempt for the quotation and queues the order-create outbox record.
+6. Node's outbox worker calls the private 2Checkout POST workflow exactly once, with a unique stable ExternalReference, immutable amount and billing details. A timeout becomes unknown_outcome, **not** a blind retry.
+7. The provider returns RefNo/OrderNo plus optional redirect URL. Node parses but does **not** accept an order POST as payment proof.
+8. A customer-owned payment verify endpoint calls n8n's authenticated GET /rest/6.0/orders/{id}/. Node accepts verified_test_payment **only** when fresh provider status COMPLETE and ID, external reference, currency, gross amount and quotation all match the authoritative payment record.
+9. A verified test payment atomically queues a ticket-scoped invoice; the invoice worker requires the still-verified payment and renders a TEST invoice via the private Gotenberg workflow.
+10. Node validates the invoice PDF, stores it under RLS and exposes only a ticket-owner-authorized PDF download.
 
-Node owns all ticket/action state, customer scope, consent, idempotency, signed workflow dispatch, OTP challenges, provider correlation and authoritative completion statuses. n8n owns Salesforce/MockGateway HTTP calls and PDF rendering as an unprivileged integration worker.
+## Gateway contract
 
-All workflow bindings are **ANCFZ-only** (`agent_key=ancfz`) and must not become globally available model tools. Keep ANCFZ workflow data under `infra/n8n/ancfz/`.
+The user-provided 2Checkout mock documentation specifies:
 
-## Correct order
+- POST https://mockgateway.com/api/base/2checkout-fzucuq/rest/6.0/orders/
+- GET https://mockgateway.com/api/base/2checkout-fzucuq/rest/6.0/orders/{id}/
+- Header **X-Avangate-Authentication** (merchant secret in private n8n credential, never Git).
+- Request: Currency; Items[0].Price.UnitNetPrice; ExternalReference; BillingDetails.FirstName/Email/CountryCode; PaymentDetails.Type=CC.
+- Create result: RefNo, OrderNo, ExternalReference, Currency, GrossPrice and redirect_url or PaymentDetails.PaymentMethod.RedirectURL.
+- Verified status: Status COMPLETE, PENDING, DECLINED, REFUNDED; RefNo, ExternalReference, Currency, GrossPrice.
 
-```mermaid
-flowchart TD
-    A["Customer chats with Sara"] --> B["Node creates durable ticket"]
-    B --> C["Collect ANCFZ qualification details"]
-    C --> D{"Customer agrees to lead submission?"}
-    D -->|No| C
-    D -->|Yes| E["Node authorizes n8n Salesforce Apex lead request"]
-    E --> F{"Verified Salesforce Lead ID?"}
-    F -->|No| X["Block downstream operations; reconcile"]
-    F -->|Yes| G["Node resolves approved offering price"]
-    G --> H["n8n renders quotation PDF"]
-    H --> I{"Customer wants to proceed?"}
-    I -->|No| C
-    I -->|Yes| J["Node sends email OTP to customer"]
-    J --> K{"OTP valid and explicit amount consent?"}
-    K -->|No| I
-    K -->|Yes| L["n8n creates MockGateway hosted link"]
-    L --> M["Sara shares sandbox checkout link"]
-    M --> N["Customer says paid OR webhook notification"]
-    N --> O["n8n calls MockGateway verify"]
-    O --> P{"Verified success, ID, amount and currency match?"}
-    P -->|No| M
-    P -->|Yes| Q["Node records confirmed TEST payment"]
-    Q --> R["n8n renders invoice PDF"]
-    R --> S["Node persists invoice; customer downloads PDF"]
-```
+**Unknowns to verify live:** Does the GET endpoint accept the returned RefNo/OrderNo versus a different payment_id? Does the mock merchant support AED rather than the documented USD example? What exactly is signed to produce X-Mock-Signature? Until tested, do not claim paid orders or webhook authenticity.
 
-## API/operation contracts (planned)
+The existing n8n credential ID is retained, but its old visible name is legacy. The operator must change the Header Auth name/value in the editor, and run the guarded updater for the two already-seeded payment workflows. Existing credentials and the persistent n8n encryption key must not be overwritten.
 
-Node public endpoints must use the existing session cookie, server-resolved ticket agent ID and `authorizedTicket`. Cross-site POSTs are denied; requests use independently generated UUID idempotency keys and strict schemas.
+## Security and failure transitions
 
-| Node operation | Required condition | n8n binding | Success evidence |
-|---|---|---|---|
-| Create ticket | Verified guest/customer session | **none** | PostgreSQL ticket ID |
-| Authorize lead | Explicit contact-data sharing consent and required contact fields | `ancfz_salesforce_lead` | Salesforce record ID confirmed by provider |
-| Request quotation | Lead success + published offering with price revision | `ancfz_render_pdf` with `quotation` | Stored PDF/document ID and checksum |
-| Start payment OTP | Customer requests payment and accepts exact quotation amount | email delivery binding, **not** model tool | Challenge sent; no OTP in chat/logs |
-| Authorize payment | Unexpired, unused email OTP + consent tied to exact quote revision/amount | `ancfz_payment_link` | Unique MockGateway payment ID and HTTPS checkout URL |
-| Verify payment | Existing unique payment ID; customer reports paid or trusted callback | `ancfz_payment_verify` | Fresh gateway-side verify response matching amount/currency |
-| Issue invoice | Verified test payment for matching quotation | `ancfz_render_pdf` with `invoice` | Stored invoice PDF/document ID and SHA-256 |
+- All external actions are separate customer POST requests scoped by the secure guest session, not model tools.
+- The Node payment/OTP route is explicitly development-only with opt-in environment flags and synthetic @example.invalid identities. Private/test values are not placed in chat messages or LLM context.
+- Duplicate payment authorizations for a quote are rejected; a reused request ID returns the same attempt. OTPs are consumed once; unsuccessful guesses persist attempt counts.
+- n8n HTTP 200, redirects, order_created, checkout_available and a customer's 'paid' statement never imply a paid invoice.
+- A provider GET timeout, invalid JSON or correlation mismatch results in unknown_outcome; future GETs can be retried, while unconfirmed POSTs cannot be replayed automatically.
+- Only verified COMPLETE generates an invoice. Pending, declined and refunded states block issuance. Existing verified invoices are labelled TEST and are not legal receipts.
+- Native webhook signing is not enabled because the documented SHA-256 signing expression is missing. Customer redirects or webhook notifications may prompt a fresh server-side GET but are never authorization.
+- Nginx publishes only 127.0.0.1:80; n8n, Gotenberg and PostgreSQL remain private Docker services.
 
-A quote is not an invoice. Do **not** generate an invoice before payment verification.
+## Acceptance tests
 
-Suggested operation state: `proposed → authorized → queued → running → verified_completed`, with `rejected`, `failed` and `unknown_outcome` terminal/hold states. Keep `unknown_outcome` non-retryable until independently reconciled to avoid duplicate Leads/payment links/invoices. Persist every correlated provider ID and request ID before accepting a downstream step.
+- Verified Salesforce Lead required for quotation; matching immutable catalog price required for every payment.
+- Invalid, expired, reused OTP, duplicate authorization and altered amount/currency do not create a payment order.
+- Unknown order POST outcome is quarantined; no blind duplicate order POST.
+- Gateway returns real order ID and strictly trusted mockgateway.com HTTPS checkout URL.
+- GET paid/declined/pending/refunded and mismatched RefNo/amount/currency/reference are tested.
+- Exactly one verified sandbox invoice is stored; duplicate GET and customer refreshes do not produce duplicates.
+- Cross-agent/cross-ticket read and invoice downloads fail under RLS and ticket ownership.
+- Browser redirect/webhook spoofing does not create paid state.
+- Live credentials and actual n8n/merchant execution remain separate acceptance gates from offline CI.
 
-## Salesforce lead
-
-Required ANCFZ data for the custom Apex endpoint: `Name` (full customer name), `Company`, `Phone`, `Email`, and `Description` (enquiry summary). The Node-authorized lead submission must be routed to n8n through the private Header Auth webhook and be limited to those fields. The n8n HTTP Request node uses the generic OAuth2 `oAuth2Api` credential with `grantType=clientCredentials`, `authentication=body`, and `accessTokenUrl=https://techcarrot4--realforce.sandbox.my.salesforce.com/services/oauth2/token`. Its `clientId` and `clientSecret` are **`xxxx` placeholders** for the operator to replace in n8n; they are not read from environment variables. It calls `POST https://techcarrot4--realforce.sandbox.my.salesforce.com/services/apexrest/AIChatbotLead/` (not Salesforce standard `/sobjects/Lead`), supplying the bearer token through the OAuth2 credential.
-
-**Provider response unknown:** The supplied curl showed request examples only, not the actual Apex REST response contract. The template accepts a Salesforce Lead ID starting `00Q` if actually returned, otherwise reports `provider_acknowledged_unverified`; it must not invent a Lead ID. There is no demonstrated duplicate-safe idempotency field in the provided Apex request. A network timeout must become `unknown_outcome`, and a retry must not occur without reconciliation. Require a documented stable correlation/idempotency contract in the Apex class before claiming exactly-once Salesforce creation.
-
-## Quotation and invoice PDF
-
-Use n8n + an internal-only **Gotenberg** PDF conversion container. Generate HTML from server-authoritative fields and HTML-escape customer-provided text. Supply ANCFZ brand, document number, currency, line items, taxes/terms/total, issue date and versioned price revision. The n8n workflow returns a PDF binary plus metadata to Node; Node validates MIME/size and stores the file privately with a digest and ticket-scoped access. Never share a public Gotenberg or n8n URL.
-
-Only use real, configured tax figures. The seed catalog has no validated ANCFZ package pricing, so quotation/payment must **fail closed** until prices are published.
-
-## Customer consent and OTP
-
-Node generates a cryptographically random six-digit OTP, stores **only** a keyed digest, associates it with ticket, verified contact email, quotation fingerprint and approved amount, and expires it after 5 minutes. Limit failed attempts, throttle resends, invalidate prior challenges and forbid reuse. OTP submission occurs in a **separate authenticated HTTPS UI form**, not in conversation or a Gemini prompt. Use a configured email delivery provider; when mail cannot be sent, reject the authorization rather than returning the OTP.
-
-The payment operation requires both OTP verification and a separate affirmative acceptance of the precise amount/currency and quotation. On local HTTP, use only non-sensitive disposable test identities; real OTP/contact information needs TLS.
-
-## MockGateway sandbox
-
-Use the ANCFZ-specific endpoint supplied for this project:
-
-```text
-POST https://mockgateway.com/api/v1/public/demo/base/ancfz-f6i0ry/rest/6.0/orders/
-X-API-Key: <private n8n HTTP Header Auth credential>
-X-Guest-ID: <configured demo guest UUID>
-Content-Type: application/json
-
-{
-  "Currency": "AED",
-  "Items": [{"Price": {"UnitNetPrice": "<approved decimal price>"}}],
-  "ExternalReference": "<stable Node-generated ANCFZ reference>",
-  "BillingDetails": {
-    "FirstName": "<authorized customer name>",
-    "Email": "<authorized email>",
-    "CountryCode": "<ISO-3166 alpha-2>"
-  },
-  "PaymentDetails": {"Type": "CC"}
-}
-```
-
-Keep the user-supplied key out of Git and logs. `X-Guest-ID` is provider metadata, **not customer authentication**. The actual response contract, any hosted checkout URL and the documented order-status retrieval endpoint still require a live sandbox trace. The generic `/api/pg/{slug}/init` and `/api/pg/{slug}/verify` paths are a **different** MockGateway integration and must not be used here. The fail-closed verifier always returns `verified:false` until updated and tested against this same Orders API.
-
-After the customer says **"I've paid"**, do not set `paid=true` on customer statement or redirect query parameters. Ask n8n to perform an independent server-to-server **verify** with the stored gateway payment ID. Compare confirmed success code, ID, amount and currency against the authorized quotation. A trusted webhook should trigger the same verification, not bypass it.
-
-MockGateway is a **test-only payment simulator**. Display **"Test payment confirmed"** in this POC. It cannot establish that real funds have been received; a real gateway is required before production invoices are considered proof of paid orders.
-
-## Integration security and deployment
-
-- n8n private on Docker backend; only Nginx host port 80 published for isolated development.
-- Node invokes only allowlisted, fixed webhook paths over Docker DNS and requires webhook Header Auth credentials; the browser/model cannot supply arbitrary n8n URLs.
-- n8n credentials hold Salesforce OAuth, MockGateway API key and SMTP/email configuration; no secrets in exported workflow JSON, Git or logged payloads.
-- Disallow unverified n8n callbacks from directly writing DB state. Node must enforce input validation, correlation and evidence matching before advancing.
-- Use per-operation idempotency keys and immutable snapshots of approved quote/pricing.
-- Failure/timeout remains `unknown_outcome` until reconciliation. Never mark HTTP 200 or a generated PDF as proof a Salesforce lead or payment succeeded.
-- For future public deployments use HTTPS, CSRF protection, signed callback / restricted network access, audit logging, private documents and robust PII policy.
-
-## Acceptance scenarios
-
-1. Node creates a ticket; Salesforce and n8n are not invoked on ticket creation.
-2. Consent denied: no Salesforce lead or contact-data transfer.
-3. Consent accepted twice: Node schedules one submission per authorized ticket, but exactly-one Salesforce Lead creation requires Apex-side idempotency support and proof; never assume duplicate suppression from HTTP POST.
-4. Invalid/expired/reused OTP: no payment link is issued.
-5. Valid OTP but price changed: authorization rejected; request new agreement.
-6. MockGateway link generated once; message includes exact quote and **test** label.
-7. Customer says "paid" while gateway says pending/failed: **no invoice** and no paid claim.
-8. Verified success with mismatched payment ID/amount/currency: **no invoice**.
-9. Verified matched success: one stored invoice and ticket event; reconnecting SSE recovers it.
-10. Out-of-order/duplicate webhook, network timeout, declined checkout and restart produce no duplicate side effects.
-11. Cross-ticket/other-agent reads/actions are denied via Node owner checks and PostgreSQL RLS.
-12. Real Gemini File Search, Salesforce OAuth, MockGateway live sandbox and actual n8n imports are independently smoke-verified before declaring P4 complete.
-
-## Required live configuration before enabling operations
-
-- Salesforce sandbox OAuth client-credentials integration user, Apex REST permissions, real response schema and deduplication/correlation contract.
-- ANCFZ-specific approved offerings and current prices, including applicable tax rules.
-- n8n imported active workflows and credentials; internal Gotenberg.
-- A MockGateway **account-created** gateway slug, API key, sample init and verify payloads.
-- Secure email delivery and OTP UI.
-- Signed dispatch/callback configuration and private document storage.
-- Live test evidence for success/failure/timeout scenarios.
-
-Documentation is not a production implementation and is not live validation.
+See [the operator runbook](../infra/n8n/ancfz/BILLING.md) for commands and configuration. No real-world financial settlement is proven by the mock gateway.
