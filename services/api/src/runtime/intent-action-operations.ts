@@ -10,6 +10,7 @@ import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/
 import { authorizedTicket, workerTicketScope, type TicketScope } from "../repositories/types.js";
 import { TicketMessageRepository } from "../repositories/messages.js";
 import { appendEventTx } from "../repositories/events.js";
+import { identityDocumentReadinessTx, assertIdentityDocumentsReadyTx } from "./purchase-operations.js";
 
 export const SERVICE_REQUEST_CONSENT =
   "I ask ANCFZ to record this POC service request using the information I provided in this ticket. I understand this does not submit an application to a bank, government body or external partner.";
@@ -100,15 +101,18 @@ export class IntentActionOperations {
         [scope.agentId,ticketId,intent.id],
       );
       const byAction=new Map(requests.rows.map(x=>[x.action_key,x]));
+      const identity=await identityDocumentReadinessTx(client,scope.agentId,ticketId,intent.id);
       const result=[];
       for(const action of intent.allowed_actions){
         const kind=classifyAction(action);
         if(!kind)continue;
         const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action);
+        const missing=isServiceAction(action)
+          ? [...facts.missing,...identity.missing]:facts.missing;
         result.push({actionKey:action,label:isServiceAction(action)?
           SERVICE_ACTION_LABELS[action]:action.replaceAll("_"," "),
-          kind,requirements:facts.requirements,missing:facts.missing,
-          ready:!facts.missing.length,
+          kind,requirements:facts.requirements,missing,
+          ready:missing.length===0,
           request:byAction.has(action)?toView(byAction.get(action) as RequestRow):null});
       }
       return {intentKey:intent.intent_key,intentName:intent.name,
@@ -133,6 +137,7 @@ export class IntentActionOperations {
       const intent=await activeIntent(client,scope.agentId,ticketId);
       if(!intent||!intent.allowed_actions.includes(action))
         throw new PersistenceError("CONFLICT","The selected intent does not allow this request");
+      await assertIdentityDocumentsReadyTx(client,scope.agentId,ticketId,intent.id);
       const {requirements,missing,sourceFacts}=await actionRequirements(
         client,scope.agentId,ticketId,intent.id,action);
       if(missing.length)
