@@ -1,13 +1,13 @@
 {
   "schemaVersion": "poc-1",
-  "description": "Illustrative ANCFZ catalog fixture. Review and publish via Node before production use; not auto-loaded.",
+  "description": "Illustrative ANCFZ revision-2 POC catalog fixture. Actual SQL seed is infra/bootstrap/seed-sara-purchase.sql; document requirements below are provisional sandbox examples, not official ANCFZ requirements.",
   "agentKey": "ancfz",
-  "revision": 1,
+  "revision": 2,
   "intents": [
     {
       "key": "company_formation",
       "name": "Start a Company",
-      "description": "Help a new business owner choose a company structure, business activity, visa allocation and workspace, and optionally prepare a verified enquiry or quotation.",
+      "description": "Help a new business owner choose a company structure, business activity, visa allocation and workspace, and optionally prepare a verified enquiry or quotation. A sandbox purchase requires a verified quote, configured document receipt, separate explicit consent and independent payment verification.",
       "examplePhrases": [
         "I want to start a company",
         "register my software business",
@@ -16,7 +16,8 @@
       ],
       "allowedActions": [
         "create_lead",
-        "generate_quote"
+        "generate_quote",
+        "purchase_quotation"
       ],
       "requirements": [
         {
@@ -64,6 +65,30 @@
             "create_lead"
           ],
           "hint": "Only collect as part of a specifically consented lead; OTP identity handled outside model."
+        }
+      ],
+      "documentRequirements": [
+        {
+          "key": "shareholder_identity_pack",
+          "label": "Shareholder identity documents (sandbox checklist)",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "Single synthetic PDF containing proposed shareholder identity pages; do not upload real identity files to localhost HTTP."
+        },
+        {
+          "key": "registration_application",
+          "label": "Company formation application (sandbox checklist)",
+          "required": true,
+          "acceptedTypes": [
+            "application/pdf",
+            "image/png",
+            "image/jpeg"
+          ],
+          "guidance": "Synthetic application form; validate the official requirements separately before enabling for real customers."
         }
       ]
     },
@@ -143,5 +168,5 @@
       ]
     }
   ],
-  "note": "No real offering prices or workflow URLs are included; they must be separately authorized and verified in Node."
+  "note": "Purchase is supported only for company_formation in this POC. The SQL bootstrap publishes a versioned revision 2 for new tickets; existing revision-1 tickets keep their previous catalog. Only Node can accept purchase confirmation/document uploads and authorize OTP/payment. This checklist has not been certified against official ANCFZ document requirements."
 }
