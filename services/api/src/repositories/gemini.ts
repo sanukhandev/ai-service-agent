@@ -7,6 +7,7 @@
  * The caller must not construct TicketScope from Gemini or browser arguments.
  */
 import type { PoolClient } from "pg";
+import type { NodeBusinessToolName } from "@ai-service-agent/contracts/gemini-v1";
 import { PersistenceDatabase, PersistenceError, requireBounded, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "./events.js";
 import { authorizedTicket, assertAgentActive, asIso, ownerParameters, type TicketScope } from "./types.js";
@@ -303,7 +304,7 @@ export class GeminiBindingRepository {
       return {
         agentId,agentVersionId:v.id,provider:"gemini" as const,
         modelId:v.model_id,personaVersion:v.persona_version,
-        systemInstructions:v.system_instructions,authorizedToolNames:v.allowed_node_tools,
+        systemInstructions:v.system_instructions,authorizedToolNames:v.allowed_node_tools as NodeBusinessToolName[],
         knowledge:v.knowledge_version_id ? {
           agentId,knowledgeVersionId:v.knowledge_version_id,
           provider:"gemini_file_search" as const,
@@ -350,7 +351,7 @@ export class GeminiBindingRepository {
       return {
         agentId:scope.agentId,agentVersionId:s.agent_version_id,provider:"gemini" as const,
         modelId:v.model_id,personaVersion:v.persona_version,
-        systemInstructions:v.system_instructions,authorizedToolNames:v.allowed_node_tools,
+        systemInstructions:v.system_instructions,authorizedToolNames:v.allowed_node_tools as NodeBusinessToolName[],
         intentCatalogVersionId:s.intent_catalog_version_id,
         offeringCatalogVersionId:s.offering_catalog_version_id,
         knowledge:s.knowledge_version_id ? {
