@@ -1,7 +1,7 @@
 import { PersistenceDatabase } from "./database/pool.js";
 import { createApi } from "./runtime/app.js";
 import { TurnQueue } from "./runtime/turn-queue.js";
-import { TurnWorker } from "./runtime/turn-worker.js";
+import { GeminiTurnWorker } from "./runtime/gemini-worker.js";
 import { N8nLeadWorker } from "./runtime/n8n-lead-worker.js";
 import { N8nQuoteWorker } from "./runtime/n8n-quote-worker.js";
 
@@ -12,7 +12,8 @@ if(!Number.isSafeInteger(port)||port<1||port>65535) throw new Error("Invalid API
 const db=new PersistenceDatabase(process.env.DATABASE_URL);
 const queue=new TurnQueue(db);
 const app=createApi(db,queue);
-const worker=new TurnWorker(db,queue,(data,message)=>app.log.info(data,message));
+const worker=new GeminiTurnWorker(db,queue,(data,message)=>app.log.info(data,message),
+  process.env.GEMINI_API_KEY??"",process.env.GEMINI_STATE_ENCRYPTION_KEY??"");
 const leadWorker=new N8nLeadWorker(db,(data,message)=>app.log.info(data,message));
 const quoteWorker=new N8nQuoteWorker(db,(data,message)=>app.log.info(data,message));
 app.addHook("onClose",async()=>{
