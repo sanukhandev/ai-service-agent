@@ -1,6 +1,6 @@
 # Gemini Experimental Implementation Plan — Isolated Branch
 
-**Status:** Planned only; this document does not represent implemented or tested functionality.
+**Status:** Experimental infrastructure isolation is configured in Compose (dedicated project `ai-service-agent-gemini`, port `127.0.0.1:2000:80`, unique volumes/networks and n8n editor URL). **Docker startup and live runtime have not been tested; Gemini model and File Search integration are still planned.** This document is not evidence of a working Gemini agent.
 
 **Repository:** `sanukhandev/ai-service-agent`  
 **Branch:** `experiment/gemini-file-search-poc`  
@@ -144,4 +144,4 @@ Source-download handling must use exact authorized source mappings. Do not trans
 
 A customer can chat naturally with Sara, retrieve genuinely cited ANCFZ knowledge, use authorized intent/offerings tools and trigger separately approved n8n workflows. Within an active AI session, context survives browser refresh, Node restart, Redis eviction and provider cursor failure. After **60 minutes without an accepted customer message**, the next message begins a **fresh AI conversation** with no inherited facts or summaries. Historical tickets remain safely persisted and accessible through normal ticket authorization. Independent environments and branch separation are verified.
 
-**Documentation-only status on creation:** No Gemini runtime, schema, session timer, Docker isolation or live integration has been implemented by creating this plan.
+**Current execution boundary:** Docker Compose resource and port separation, environment examples, Nginx forwarded-host handling, smoke-script target and seeding-script project pinning are committed to the experimental branch. The Docker engine was unavailable for a live launch, so container startup, migration, n8n provisioning and end-to-end behavior are unverified. Gemini runtime, knowledge ingestion, session timer and live integrations remain unimplemented.
