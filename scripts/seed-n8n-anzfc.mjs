@@ -16,6 +16,7 @@
  * Project imports require the n8n Projects entitlement; no personal-space fallback.
  */
 import { spawnSync } from "node:child_process";
+import { setTimeout as sleep } from "node:timers/promises";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { resolve } from "node:path";
@@ -34,7 +35,7 @@ const repoRoot = resolve(fileURLToPath(new URL("../", import.meta.url)));
 const MIN_ENCRYPTION_LENGTH = 32;
 
 export function parseArgs(args) {
-  const phases = ["inspect", "owner", "import"];
+  const phases = ["inspect", "owner", "import", "setup"];
   const workspaces = ["personal", "project"];
   let workspace = "personal";
   let stage = "inspect";
@@ -42,7 +43,7 @@ export function parseArgs(args) {
   for (const arg of args) {
     if (arg.startsWith("--stage=")) {
       stage = arg.slice(8);
-      if (!phases.includes(stage)) throw new Error("Invalid --stage; choose inspect, owner or import (owner and import are separate)");
+      if (!phases.includes(stage)) throw new Error("Invalid --stage; choose inspect, owner, import or setup (owner is always separate)");
     } else if (arg.startsWith("--workspace=")) {
       workspace = arg.slice("--workspace=".length);
       if (!workspaces.includes(workspace)) throw new Error("Invalid --workspace; choose personal or project");
@@ -229,7 +230,44 @@ function workflowNames() {
     return w.name;
   });
 }
-export function main(args = process.argv.slice(2)) {
+/**
+ * One-command setup for an ALREADY OWNED local instance. Never provisions or
+ * updates an owner; never activates workflows or replaces saved credentials.
+ * Waiting is limited to a read-only API inspection. Imports are never retried.
+ */
+export async function setupWorkspace({ workspace = "personal" } = {}) {
+  if (!["personal", "project"].includes(workspace)) throw new Error("Unknown n8n workspace mode");
+  const apiKey = process.env.N8N_API_KEY;
+  if (typeof apiKey !== "string" || apiKey.trim().length < 16) {
+    throw new Error("N8N_API_KEY is required for setup. Create an owner API key in n8n first; owner provisioning is a separate --stage=owner operation.");
+  }
+  validateExistingConfig(compose(["config", "--format", "json"]));
+  compose(["up", "-d", "n8n", "gotenberg"], { silent: true, timeout: 240_000 });
+  const inspect = {
+    action: "inspect", workspace, apiKey: apiKey.trim(), projectName: PROJECT_NAME,
+    credentialIds: credentialIds(), workflowNames: workflowNames(),
+  };
+  let ready = false;
+  for (let attempt = 0; attempt < 20; attempt++) {
+    try {
+      privateApiRequest(inspect);
+      ready = true;
+      break;
+    } catch (error) {
+      const message = String(error?.message || "");
+      if (/API key is invalid|API key is missing permission|Projects API is not available/.test(message)) {
+        throw error;
+      }
+      if (attempt === 19) throw new Error("n8n API did not become ready; inspect Docker logs and run --stage=inspect");
+      await sleep(1000);
+    }
+  }
+  if (!ready) throw new Error("n8n API unavailable");
+  // Import is deliberately invoked only once after readiness, not inside a retry loop.
+  seedWorkspace({ workspace });
+}
+
+export async function main(args = process.argv.slice(2)) {
   const opts = parseArgs(args);
   if (opts.dryRun) {
     console.log("Dry run: owner=" + OWNER_EMAIL + ", workspace=" + opts.workspace +
@@ -239,9 +277,12 @@ export function main(args = process.argv.slice(2)) {
     return;
   }
   if (opts.stage === "owner") seedOwner();
+  else if (opts.stage === "setup") await setupWorkspace({ workspace: opts.workspace });
   else seedWorkspace({ workspace: opts.workspace, inspectOnly: opts.stage === "inspect" });
 }
 if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
-  try { main(); }
-  catch (err) { console.error("ANZFC n8n seed stopped: " + err.message); process.exitCode = 1; }
+  void main().catch(err => {
+    console.error("ANZFC n8n seed stopped: " + err.message);
+    process.exitCode = 1;
+  });
 }
