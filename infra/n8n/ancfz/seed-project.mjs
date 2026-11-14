@@ -29,7 +29,7 @@ async function main() {
     action, workspace = "personal", apiKey, projectName, projectId,
     credentialIds, workflowNames,
   } = await readInput();
-  if (!["prepare", "verify"].includes(action) ||
+  if (!["prepare", "verify", "inspect"].includes(action) ||
       !["personal", "project"].includes(workspace) ||
       (workspace === "project" && !validName(projectName)) ||
       typeof apiKey !== "string" || apiKey.trim().length < 16 ||
@@ -104,21 +104,45 @@ async function main() {
     credentials.some(c => c.id === expected.id && c.name === expected.name));
   const exactInactiveWorkflows = workflowNames.filter(name =>
     workflows.some(w => w.name === name && w.active === false));
+  const conflictingCredentials = credentialIds.some(expected =>
+    credentials.some(c =>
+      (c.id === expected.id || c.name === expected.name) &&
+      (c.id !== expected.id || c.name !== expected.name)));
+  const conflictingWorkflows = workflowNames.some(name => {
+    const sameName = workflows.filter(w => w.name === name);
+    return sameName.some(w => w.active !== false) || sameName.length > 1;
+  });
+  const allPresent = exactCredentials.length === credentialIds.length &&
+    exactInactiveWorkflows.length === workflowNames.length;
+  const hasAny = credentialIds.some(expected =>
+    credentials.some(c => c.id === expected.id || c.name === expected.name)) ||
+    workflowNames.some(name => workflows.some(w => w.name === name));
+  const status = conflictingCredentials || conflictingWorkflows ? "conflict" :
+    allPresent ? "ready" : hasAny ? "partial" : "empty";
+
+  if (action === "inspect") {
+    return {
+      ok: true, workspace, status,
+      matchingCredentials: exactCredentials.length,
+      matchingInactiveWorkflows: exactInactiveWorkflows.length,
+      ...(project ? { projectId: project.id } : {}),
+    };
+  }
   if (action === "verify") {
     return {
       ok: true,
       workspace,
       ...(project ? { projectId: project.id } : {}),
-      alreadySeeded: exactCredentials.length === credentialIds.length &&
-        exactInactiveWorkflows.length === workflowNames.length,
+      alreadySeeded: status === "ready",
     };
   }
 
-  const conflictingCredentials = credentialIds.some(expected =>
-    credentials.some(c => c.id === expected.id || c.name === expected.name));
-  const conflictingWorkflows = workflowNames.some(name =>
-    workflows.some(w => w.name === name));
-  if (conflictingCredentials || conflictingWorkflows) {
+  // A completed personal import is repeat-safe. Never reimport credentials:
+  // n8n CLI imports can overwrite secrets when an ID already exists.
+  if (status === "ready" && workspace === "personal") {
+    return { ok: true, workspace, alreadySeeded: true };
+  }
+  if (status !== "empty") {
     throw new Error("Existing ANCFZ credentials/workflows detected. Refusing duplicate or partial reseed to protect secrets and existing workflows; inspect and back up before making changes.");
   }
 
