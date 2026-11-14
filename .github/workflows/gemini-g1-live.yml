@@ -1,0 +1,38 @@
+name: Gemini G1 live File Search compatibility (manual / billable)
+on:
+  workflow_dispatch:
+    inputs:
+      model:
+        description: "Available Gemini File Search model ID"
+        required: true
+        default: "gemini-3.8-flash"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  g1-live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_G1_MODEL_ID: ${{ inputs.model }}
+      GEMINI_G1_ALLOW_BILLABLE_RUN: "YES"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: experiment/gemini-file-search-poc
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Require configured Gemini API key
+        shell: bash
+        run: test -n "$GEMINI_API_KEY" || { echo 'G1_BLOCKED: configure GEMINI_API_KEY secret'; exit 1; }
+      - name: Install isolated experimental dependencies
+        run: npm install --ignore-scripts --no-audit --no-fund
+      - name: Build Gemini adapter and provider modules
+        run: npm run build --workspace @ai-service-agent/api
+      - name: Run real synthetic File Search indexing, citation and function test
+        run: node scripts/gemini-g1-live.mjs
