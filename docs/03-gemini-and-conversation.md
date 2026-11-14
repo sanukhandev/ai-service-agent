@@ -4,7 +4,7 @@
 
 `Next.js → Fastify ticket admission → PostgreSQL accepted customer message → TurnQueue → GeminiTurnWorker → GeminiModelAdapter → Node grounding verifier → durable response/event → SSE`.
 
-The one active worker is `services/api/src/runtime/gemini-worker.ts`; it does not invoke a secondary model gateway. The adapter in `services/api/src/gemini/adapter.ts` uses the Gemini Developer API via `@google/genai`. Runtime model, persona, permissions and File Search store are selected from Node-published agent/session bindings, not from customer content.
+The one active worker is `services/api/src/runtime/gemini-worker.ts`; it does not invoke a secondary model gateway. The adapter in `services/api/src/gemini/adapter.ts` uses the Gemini Developer API via `@google/genai`. Runtime model, persona, permissions and File Search store are selected from Node-published agent/session bindings, not from customer content. Sara's versioned persona text is defined in `infra/bootstrap/sara-persona.sql`; it is published to PostgreSQL on fresh bootstrap. Existing deployed Sara versions can be explicitly upgraded with `GEMINI_SARA_PUBLISH_PERSONA=YES` on the isolated migration job, which creates a new immutable version for future tickets while active sessions stay pinned.
 
 The existing Sara example is pinned in PostgreSQL by operator-controlled publication. Local `.env` must supply `GEMINI_API_KEY` and a private 32-byte hex `GEMINI_STATE_ENCRYPTION_KEY` before the worker can start. Never log either secret.
 
@@ -12,7 +12,7 @@ The existing Sara example is pinned in PostgreSQL by operator-controlled publica
 
 **Knowledge:** the only model builtin is `file_search`, using the precisely published and authorized store for the active agent/session. No Google Search, URL Context, browser tool or arbitrary web fallback. Indexing, revocation, approval metadata and retained source text belong to `services/api/src/knowledge/` and `services/api/src/repositories/gemini-knowledge.ts`.
 
-**Business tools:** Node publishes a bounded allowlist from the registry (`find_intents`, `select_ticket_intent`, `get_intent_requirements`, `record_ticket_facts`, `get_offerings`). Each request carries a trusted server-derived agent/ticket/message/catalog scope. The model cannot select another agent, invoke a webhook, write to CRM or grant its own tool permissions.
+**Business tools:** Node publishes a bounded allowlist from the registry (`find_intents`, `select_ticket_intent`, `get_intent_requirements`, `record_ticket_facts`, `get_offerings`, `preflight_operation`, `propose_operation`). Each request carries a trusted server-derived agent/ticket/message/catalog scope. The model cannot select another agent, invoke a webhook, write to CRM or grant its own tool permissions.
 
 The worker currently separates function passes and knowledge-only File Search passes. Do not assume combined File Search and function declarations are compatible until G1 live evidence confirms this provider capability.
 

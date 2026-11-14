@@ -80,6 +80,9 @@ services:
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
       GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-3.8-flash}
+      # Explicit operator action: publish an immutable Sara persona revision
+      # on an existing database. Default NO; fresh DB receives v2 automatically.
+      GEMINI_SARA_PUBLISH_PERSONA: ${GEMINI_SARA_PUBLISH_PERSONA:-NO}
     volumes:
       - ./infra/postgres:/migrations:ro
       - ./infra/bootstrap:/scripts:ro

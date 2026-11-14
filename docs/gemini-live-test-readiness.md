@@ -21,6 +21,10 @@ Set these locally in your untracked `.env`:
 - Keep `APP_ENV=development`, `COMPOSE_PROJECT_NAME=ai-service-agent-gemini`,
   and `PUBLIC_BASE_URL=http://localhost:2000`.
 - Keep `ANCFZ_PAYMENT_DISPATCH_ENABLED=false` until independently approved.
+- Sara persona and system instructions come from published, version-pinned PostgreSQL
+  configuration, **not** a model-prompt environment variable. The editable source is
+  `infra/bootstrap/sara-persona.sql`. On a fresh database it publishes v2.
+  For an existing active Sara v1 database, use the explicit version publication below.
 
 Do not upload real customer records, identity documents, or business knowledge during the initial G1 probe.
 The initial Sara seed **does not create a File Search knowledge store**.
@@ -33,6 +37,20 @@ docker compose ps
 # Read-only runtime checks (do NOT call Gemini)
 node --env-file=.env scripts/check-gemini-live-readiness.mjs --scope=chat --docker --db --health
 ```
+
+If upgrading an existing Sara v1 installation, explicitly activate the
+reviewed v2 instructions for **new tickets only**, then disable the opt-in:
+
+```powershell
+# Change GEMINI_SARA_PUBLISH_PERSONA=YES in your private .env for this run.
+docker compose run --rm migrate
+# Restore GEMINI_SARA_PUBLISH_PERSONA=NO in .env immediately afterward.
+```
+
+The publication is idempotent and preserves the existing model, catalog,
+knowledge binding and tool allowlist. Existing tickets remain pinned to
+their original persona/version. Do not run a public or customer PII session
+on this local HTTP POC.
 
 Visit `http://localhost:2000`. A PASS here means configuration and local
 health only, **not** that the model, retrieval, or workflows are live-certified.

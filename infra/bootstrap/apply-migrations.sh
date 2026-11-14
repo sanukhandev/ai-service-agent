@@ -6,6 +6,11 @@ set -eu
 : "${PGUSER:?}"
 : "${PGPASSWORD:?}"
 : "${GEMINI_MODEL_ID:=gemini-3.8-flash}"
+: "${GEMINI_SARA_PUBLISH_PERSONA:=NO}"
+case "$GEMINI_SARA_PUBLISH_PERSONA" in
+  YES|NO) ;;
+  *) echo "Invalid GEMINI_SARA_PUBLISH_PERSONA: expected YES or NO" >&2; exit 2 ;;
+esac
 case "$GEMINI_MODEL_ID" in
   *[!a-zA-Z0-9._-]*|'') echo "Invalid Gemini model identifier" >&2; exit 2 ;;
 esac
@@ -112,5 +117,8 @@ psql -v ON_ERROR_STOP=1 \
 # It does not activate payments, invoice dispatch or an OCR provider.
 psql -v ON_ERROR_STOP=1 -f /scripts/seed-sara-purchase.sql
 psql -v ON_ERROR_STOP=1 -f /scripts/seed-agent-action-bindings.sql
+if [ "$GEMINI_SARA_PUBLISH_PERSONA" = "YES" ]; then
+  psql -v ON_ERROR_STOP=1 -f /scripts/publish-sara-persona.sql
+fi
 
 echo "Gemini migrations (003-022), Sara bootstrap, action bindings and ANCFZ purchase policy validated"
