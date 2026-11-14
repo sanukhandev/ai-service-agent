@@ -1,4 +1,4 @@
-name: ai-service-agent
+name: ai-service-agent-gemini
 
 services:
   nginx:
@@ -6,8 +6,9 @@ services:
       context: .
       dockerfile: infra/nginx/Dockerfile
     ports:
-      # Local POC only: editor and customer portal must not bind the LAN interface.
-      - "127.0.0.1:80:80"
+      # Gemini experiment only. Host port 2000; Nginx still listens on container port 80.
+      # The Foundry main stack continues to own localhost:80.
+      - "127.0.0.1:2000:80"
     depends_on:
       - web
       - api
@@ -31,7 +32,7 @@ services:
       API_PORT: "4000"
       AZURE_CONFIG_DIR: /home/app/.azure
       APP_ENV: ${APP_ENV:-development}
-      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:2000}
       FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
       FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
       FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
@@ -42,7 +43,7 @@ services:
       REDIS_URL: redis://redis:6379
       PGHOST: postgres
       PGPORT: "5432"
-      PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent_gemini}
       PGUSER: agent_runtime
       PGPASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in your local .env file}
     volumes:
@@ -62,7 +63,7 @@ services:
     environment:
       PGHOST: postgres
       PGPORT: "5432"
-      PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent_gemini}
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
       FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
@@ -80,7 +81,7 @@ services:
   postgres:
     image: postgres:16-alpine
     environment:
-      POSTGRES_DB: ${POSTGRES_DB:-ai_service_agent}
+      POSTGRES_DB: ${POSTGRES_DB:-ai_service_agent_gemini}
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
       POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in a local .env file}
@@ -90,7 +91,7 @@ services:
       - ./infra/postgres/002_intents_and_ticket_facts.sql:/docker-entrypoint-initdb.d/002_intents_and_ticket_facts.sql:ro
       - ./infra/bootstrap/003-app-runtime-role.sh:/docker-entrypoint-initdb.d/003-app-runtime-role.sh:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-ai_service_agent}"]
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-ai_service_agent_gemini}"]
       interval: 5s
       timeout: 3s
       retries: 12
@@ -117,7 +118,7 @@ services:
       N8N_HOST: localhost
       # Public editor is /n8n/ behind Nginx; private webhooks retain root paths.
       N8N_PATH: /n8n/
-      N8N_EDITOR_BASE_URL: http://localhost/n8n/
+      N8N_EDITOR_BASE_URL: http://localhost:2000/n8n/
       N8N_WEBHOOK_URL: http://n8n:5678/
       N8N_PROXY_HOPS: "1"
       N8N_PORT: "5678"
@@ -155,12 +156,20 @@ services:
 
 networks:
   frontend:
+    name: ai-service-agent-gemini-frontend
     driver: bridge
   backend:
+    name: ai-service-agent-gemini-backend
     driver: bridge
 
+# Explicit names keep storage separate even when other Compose projects run locally.
+# Never mount or rename these to the Foundry main volumes.
 volumes:
   postgres-data:
+    name: ai-service-agent-gemini-postgres-data
   redis-data:
+    name: ai-service-agent-gemini-redis-data
   n8n-data:
+    name: ai-service-agent-gemini-n8n-data
   azure-cli-auth:
+    name: ai-service-agent-gemini-azure-cli-auth
