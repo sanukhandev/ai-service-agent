@@ -27,16 +27,17 @@ Keep the existing shared private webhook Header Auth (X-ANCFZ-Workflow-Key) alig
 
 ## Upgrade the three already-seeded workflows
 
-The new 03 and 04 JSON files are not automatically installed by a Git pull. Update ONLY those three existing workflows through the guarded script; do not rerun the original owner seed.
+The updated 02, 03 and 04 JSON files are not automatically installed by a Git pull. Update ONLY these three existing invoice/payment workflows through the guarded script; do not rerun the original owner seed.
 
 1. Back up/export the existing workflow definitions in your private n8n editor (not into Git). Verify the three billing workflows are inactive.
 2. Pull the reviewed branch/main and restart n8n to refresh the read-only mounted workflow files.
-3. Supply N8N_API_KEY privately in the PowerShell session, then run:
+3. Run the Windows operator script (prompts privately for the owner API key):
 
-    node scripts/upgrade-n8n-2checkout.mjs --dry-run
-    node scripts/upgrade-n8n-2checkout.mjs --inspect
-    node scripts/upgrade-n8n-2checkout.mjs --apply
-    node scripts/upgrade-n8n-2checkout.mjs --inspect
+    .\scripts\update-n8n-2checkout.ps1
+    .\scripts\update-n8n-2checkout.ps1 -BackupOnly
+    .\scripts\update-n8n-2checkout.ps1 -Apply
+
+The default mode inspects without writes. -BackupOnly saves the three existing definitions outside the repository under the current user's home directory. -Apply re-inspects, creates an additional timestamped private backup, and updates all three workflows using snapshot hashes. It refuses a changed workflow, unexpected credential binding or unknown invoice-template customization. The owner must confirm with UPDATE 2CHECKOUT. All workflows remain inactive. This does not touch any saved n8n credential or the encryption key.
 
 The upgrader refuses active/duplicated or unexpectedly modified workflow topology; it calls n8n public GET/PUT workflow endpoints, keeps workflow IDs and inactive states, and does not touch stored credentials, owner users or Docker volumes. A partial upgrade may be inspected and resumed after resolving the cause.
 
