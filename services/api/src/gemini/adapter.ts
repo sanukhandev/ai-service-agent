@@ -175,7 +175,7 @@ function assertBinding(req: ModelTurnRequest): void {
   const knowledge = req.agent.knowledge;
   if (knowledge) {
     if (knowledge.agentId !== req.agent.agentId || knowledge.provider !== "gemini_file_search" ||
-      knowledge.state !== "published" || !knowledge.publishedAt || !knowledge.approvalReference ||
+      (knowledge.state !== "published" && knowledge.state !== "retired") || !knowledge.publishedAt || !knowledge.approvalReference ||
       !validStore(knowledge.storeResourceName) ||
       req.session.knowledgeVersionId !== knowledge.knowledgeVersionId) {
       throw new AdapterFailure("TOOL_NOT_AUTHORIZED", false);
@@ -259,8 +259,17 @@ function annotations(candidate: ObjectValue, expectedStore: string | null): Prov
     const store = str(context.fileSearchStore);
     if (store && store !== expectedStore) throw new AdapterFailure("TOOL_NOT_AUTHORIZED", false);
     // Missing store is not filled in: independent P4 verifier must resolve ownership.
+    // fileSearchStore is a STORE identifier, never an individual document.
+    // Only an exact Google document resource can be used for source attribution.
+    // Some Gemini API surfaces expose no such ID; in that case return null
+    // and let P4 reject document-based factual claims rather than guess.
+    const documentCandidates = [context.documentName, context.sourceUri, context.uri]
+      .filter((x):x is string=>typeof x==="string");
+    const documentName = documentCandidates.find(value =>
+      expectedStore !== null && /^fileSearchStores\\/[A-Za-z0-9_-]+\\/documents\\/[A-Za-z0-9_-]+$/.test(value)
+      && value.startsWith(expectedStore+"/documents/")) ?? null;
     const source: ProviderSourceAnnotation = {
-      providerResourceName: store,
+      providerResourceName: documentName,
       sourceTitle: str(context.title),
       sourceUri: str(context.uri),
       excerpt: str(context.text),
