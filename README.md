@@ -42,7 +42,7 @@ docker compose ps
 
 Host ingress is restricted to `127.0.0.1:2000`; the optional n8n editor uses `http://localhost:2000/n8n/` with the Compose `workflows` profile. Never reuse `main`'s volumes, state, n8n credentials or network. Local HTTP is **not** safe for public handling of customer PII or documents.
 
-The migration entrypoint installs numbered SQL migrations `003`–`015` with checksum verification and seeds the pinned Sara Gemini agent. Migrations `001`/`002` and restricted runtime-role bootstrap initialize fresh PostgreSQL volumes. Never reset a real database simply to re-run init scripts.
+The migration entrypoint installs numbered SQL migrations `003`–`020` with checksum verification and seeds the pinned Sara Gemini agent. Migrations `001`/`002` and restricted runtime-role bootstrap initialize fresh PostgreSQL volumes. Never reset a real database simply to re-run init scripts.
 
 ## Repo layout
 
@@ -58,5 +58,7 @@ The migration entrypoint installs numbered SQL migrations `003`–`015` with che
 - `docs/` — architecture, requirements, operating rules and status
 
 An administrative GUI is deferred. Only scoped operator scripts and publication flows may manage knowledge or agent configuration.
+
+The ANCFZ business-flow update from `main` adds an optional source-derived intent-action matrix, isolated n8n/2Checkout mock workflows, synthetic purchase/OTP/invoice APIs, and forward-only SQL `016`–`020`. All payment dispatch and identity OCR remain disabled unless configured; see [main integration record](docs/gemini-main-sync.md).
 
 Start with [AGENTS.md](AGENTS.md), [documentation index](docs/README.md), [Gemini implementation plan](docs/gemini-experiment-implementation-plan.md) and [P7 status](docs/gemini-p7-status.md). No experiment code may be merged into or committed on `main`.
