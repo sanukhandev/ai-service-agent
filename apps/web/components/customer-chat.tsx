@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { ChatComposer } from "./chat-composer";
 import { LeadSubmission } from "./lead-submission";
 import { QuotationRequest } from "./quotation-request";
+import { PaymentCheckout } from "./payment-checkout";
 import { MessageBubble } from "./chat-message";
 import {
   AlertCircleIcon,
@@ -686,6 +687,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {/* Customer authorized lead operations and quotations */}
           {ticket && <LeadSubmission key={ticket.id} ticketId={ticket.id} />}
           {ticket && <QuotationRequest key={ticket.id} ticketId={ticket.id} />}
+          {ticket && <PaymentCheckout key={"payment-"+ticket.id} ticketId={ticket.id} />}
 
           <ChatComposer
             onSend={send}
