@@ -1,3 +1,5 @@
+**Historical pre-integration snapshot (G0).** The blocking findings below describe the original workstream heads **before** P7 integration. They are retained for audit history, not as the current runtime status. See [P7 status](gemini-p7-status.md) for implemented fixes and remaining live-provider certification.
+
 # P7 preflight — Gemini experiment integration audit
 
 **Status:** P7 preflight started; feature-code integration **BLOCKED** pending objective branch and provider-contract checks. This is not a certification claim.
