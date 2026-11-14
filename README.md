@@ -42,7 +42,11 @@ docker compose ps
 
 Host ingress is restricted to `127.0.0.1:2000`; the optional n8n editor uses `http://localhost:2000/n8n/` with the Compose `workflows` profile. Never reuse `main`'s volumes, state, n8n credentials or network. Local HTTP is **not** safe for public handling of customer PII or documents.
 
-The migration entrypoint installs numbered SQL migrations `003`–`020` with checksum verification and seeds the pinned Sara Gemini agent. Migrations `001`/`002` and restricted runtime-role bootstrap initialize fresh PostgreSQL volumes. Never reset a real database simply to re-run init scripts.
+The migration entrypoint installs numbered SQL migrations `003`–`022` with checksum verification, seeds the pinned Sara Gemini agent and its approved action bindings. Migrations `001`/`002` and restricted runtime-role bootstrap initialize fresh PostgreSQL volumes. Never reset a real database simply to re-run init scripts.
+
+## First real-time test readiness
+
+Run the [non-billable local preflight](docs/gemini-live-test-readiness.md) before starting a live session. It checks configuration and, optionally, published Sara state and local API health, without sending any Google or n8n requests. A separate explicitly billable G1 probe verifies live Gemini and File Search compatibility. Do not enable financial dispatch for the initial conversation test.
 
 ## Repo layout
 
