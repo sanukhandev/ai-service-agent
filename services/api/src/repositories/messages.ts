@@ -90,6 +90,28 @@ export class TicketMessageRepository {
     return this.writeInTx(client, scope, ticketId, "assistant", requestId, text, [...sourceReferences]);
   }
 
+  /**
+   * Best-effort notification in a trusted provider-finalization transaction.
+   * A failed notification insert must never roll back an independently verified
+   * payment/lead result or its durable operation event. The operation event
+   * remains available to SSE even if the optional chat notice fails.
+   */
+  async tryAssistantLifecycleNoticeTx(
+    client: PoolClient, scope: TicketScope, ticketId: string, requestId: string,
+    text: string,
+  ): Promise<boolean> {
+    await client.query("SAVEPOINT service_agent_optional_notice");
+    try {
+      await this.createAssistantMessageTx(client,scope,ticketId,requestId,text);
+      await client.query("RELEASE SAVEPOINT service_agent_optional_notice");
+      return true;
+    } catch {
+      await client.query("ROLLBACK TO SAVEPOINT service_agent_optional_notice");
+      await client.query("RELEASE SAVEPOINT service_agent_optional_notice");
+      return false;
+    }
+  }
+
   private async write(
     scope: TicketScope, ticketId: string, role: MessageRow["role"],
     requestId: string, text: string, refs: SourceReference[],
