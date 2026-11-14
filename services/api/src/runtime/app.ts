@@ -179,7 +179,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const agent=await agents.resolvePublicKey(request.params.agentKey);
     if(!agent || agent.status!=="active") throw new PersistenceError("NOT_FOUND","Agent not found");
     // GeminiSessionRepository.startNew independently verifies the active
-    // published Gemini binding. Do not resolve a Foundry-only configuration here.
+    // published Gemini binding. Do not resolve an unpinned or non-Gemini configuration here.
     let token=cookieToken(request);
     if(!token || !(await sessions.isValid(agent.id,token))) {
       token=(await sessions.create(agent.id)).token;
