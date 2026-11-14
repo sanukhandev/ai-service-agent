@@ -1,10 +1,10 @@
 # Customer chat (Track C)
 
-Next.js 16, TypeScript, Tailwind v4, bundled/self-hosted Inter. This is a customer-only UI for **Sara · ANCFZ**. No Foundry SDK, model logic, business actions, or fabricated production fallback lives in the browser.
+Next.js 16, TypeScript, Tailwind v4, bundled/self-hosted Inter. This is a customer-only UI for **Sara · ANCFZ**. No Gemini SDK, File Search key, model logic, business execution or fabricated production fallback lives in the browser.
 
 ## Environment and run
 
-In the repository root, install npm workspace dependencies and run `npm run dev -w @ai-service-agent/web` or `npm run build -w @ai-service-agent/web`. Through Nginx the app is on `/` and calls Node through same-origin `/api/` routes. The public `NEXT_PUBLIC_AGENT_KEY` build setting defaults to `ancfz`; configure it to the actual Node-published agent key if different. This key is public, not a credential. No API base URL or browser Foundry secret is used.
+In the repository root, install npm workspace dependencies and run `npm run dev -w @ai-service-agent/web` or `npm run build -w @ai-service-agent/web`. Through Nginx the app is on `/` and calls Node through same-origin `/api/` routes. The public `NEXT_PUBLIC_AGENT_KEY` build setting defaults to `ancfz`; configure it to the actual Node-published agent key if different. This key is public, not a credential. No API base URL or browser Gemini secret is used.
 
 ## Ticket session and delivery semantics
 
