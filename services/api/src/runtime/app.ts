@@ -1,4 +1,7 @@
 import Fastify, { type FastifyReply, type FastifyRequest } from "fastify";
+import { createHash } from "node:crypto";
+import { readFile,realpath,stat } from "node:fs/promises";
+import { isAbsolute,relative,resolve,sep } from "node:path";
 import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository, GuestSessionRepository, TicketRepository, TicketMessageRepository, TicketEventRepository } from "../repositories/index.js";
 import { hashGuestToken, type TicketRecord, type TicketScope, type MessageRecord, type EventRecord, type SourceReference } from "../repositories/types.js";
@@ -280,12 +283,45 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     }
     const binding=await geminiBindings.forSession(scope,ai.session.sessionId);
     if(!binding.knowledge) throw new PersistenceError("NOT_FOUND","Approved source document unavailable");
-    await geminiBindings.approvedDocument(scope,ai.session.sessionId,
+    const approved=await geminiBindings.approvedDocument(scope,ai.session.sessionId,
       binding.knowledge.storeResourceName,sourceId);
-    // Private originals are not yet provisioned as an audited backend vault.
-    // Returning 404 is mandatory until the trusted original-storage resolver
-    // and digest verification are integrated; no Foundry/URL fallback.
-    throw new PersistenceError("NOT_FOUND","Original document download not available");
+    const original=await db.withAgent(scope.agentId,async client=>{
+      const result=await client.query<{original_storage_ref:string;source_name:string;source_mime:string}>(
+        `SELECT r.original_storage_ref,d.source_name,d.source_mime
+         FROM gemini_source_revisions r JOIN gemini_knowledge_documents d
+         ON d.agent_id=r.agent_id AND d.document_version_id=r.id
+         WHERE r.agent_id=$1 AND r.id=$2 AND d.knowledge_version_id=$3
+           AND d.index_status='active' AND r.approval_status='approved'`,
+        [scope.agentId,approved.documentVersionId,ai.session.knowledgeVersionId]);
+      return result.rows[0]??null;
+    });
+    const rootName=process.env.GEMINI_APPROVED_TEXT_ROOT;
+    if(!original || !rootName || !isAbsolute(rootName))
+      throw new PersistenceError("NOT_FOUND","Source document not available");
+    const root=await realpath(rootName).catch(()=>null);
+    const file=await realpath(resolve(original.original_storage_ref)).catch(()=>null);
+    if(!root||!file) throw new PersistenceError("NOT_FOUND","Source document not available");
+    const relativeFile=relative(root,file);
+    if(!relativeFile || relativeFile===".." || relativeFile.startsWith(".."+sep) ||
+       isAbsolute(relativeFile))throw new PersistenceError("NOT_FOUND","Source document not available");
+    const details=await stat(file).catch(()=>null);
+    if(!details?.isFile() || details.size<1 || details.size>25_000_000)
+      throw new PersistenceError("NOT_FOUND","Source document not available");
+    const bytes=await readFile(file);
+    const digest=createHash("sha256").update(bytes).digest("hex");
+    if(digest!==approved.sourceSha256)throw new PersistenceError("NOT_FOUND","Source document not available");
+    const mime=original.source_mime;
+    const permittedMime=new Set(["application/pdf","text/plain","text/markdown",
+      "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]);
+    const safeName=original.source_name.replace(/[^A-Za-z0-9._ -]/g,"_").slice(0,128)||"document";
+    return reply.code(200)
+      .header("Content-Type",permittedMime.has(mime)?mime:"application/octet-stream")
+      .header("Content-Disposition",`attachment; filename="${safeName.replace(/"/g,"_")}"`)
+      .header("Content-Length",String(bytes.length))
+      .header("Cache-Control","private, no-store")
+      .header("X-Content-Type-Options","nosniff")
+      .header("Content-Security-Policy","sandbox")
+      .send(bytes);
   };
 
   app.get<{Params:{ticketId:string;sourceId:string}}>("/api/v1/tickets/:ticketId/sources/:sourceId/download", downloadSourceHandler);
