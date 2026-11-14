@@ -157,7 +157,16 @@ export function registerIntentTools(
           allowedActions: intent.allowedActions,
           ...(operationKey==="purchase_quotation" && purchaseReadiness
             ? {purchase: await purchaseReadiness()} : {}),
-          ...(actionReadiness ? {actionExecution: await actionReadiness()} : {}),
+          // The readiness callback refers only to the actual selected intent.
+          // Never attach one ticket goal's action status to a different
+          // catalog candidate queried before selection.
+          ...(actionReadiness ? {actionExecution: await (async()=>{
+            const observed=await actionReadiness();
+            const state=observed&&typeof observed==="object"
+              ? observed as Record<string,unknown>:null;
+            return state?.intentKey===intentKey ? observed
+              : {selectedIntentRequired:true};
+          })()} : {}),
           requirements: intent.requirements
             .filter((req) => !operationKey || req.requiredFor.includes(operationKey))
             .map((req) => ({
