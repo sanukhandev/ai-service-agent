@@ -5,6 +5,7 @@
  * Requires the two payment workflows to be inactive.
  */
 import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
 const DEFINITIONS=[
   {
     file:"03-mockgateway-payment-link.json",
@@ -27,7 +28,7 @@ async function inputJson(){
     s+=c.toString("utf8");if(s.length>8192)fail("INVALID_INPUT","Input too large");
   }
   const v=JSON.parse(s);
-  if(!v||!["inspect","apply"].includes(v.action) ||
+  if(!v||!["inspect","snapshot","apply"].includes(v.action) ||
     typeof v.apiKey!=="string"||v.apiKey.length<16)
     fail("INVALID_INPUT","Private API key and action required");
   return v;
@@ -83,6 +84,46 @@ function bodyFor(template){
     connections:template.connections,settings:template.settings,
   };
 }
+function fingerprint(wf){
+  return createHash("sha256").update(JSON.stringify({
+    name:wf.name,active:wf.active,nodes:wf.nodes,
+    connections:wf.connections,settings:wf.settings,
+  })).digest("hex");
+}
+function credentialId(node){
+  return node?.credentials?.httpHeaderAuth?.id;
+}
+function confirmExpectedBindings(detail,source,d){
+  const expectedWeb="feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1";
+  const expectedMerchant="4d9487aa-e07b-4bfd-92b9-a9699ffb5e45";
+  const web=detail.nodes.find(n=>n.type==="n8n-nodes-base.webhook");
+  const sourceWeb=source.nodes.find(n=>n.type==="n8n-nodes-base.webhook");
+  if(credentialId(web)!==expectedWeb || credentialId(sourceWeb)!==expectedWeb)
+    fail("CREDENTIAL_CONFLICT","Existing webhook credential binding differs: "+d.path);
+  const merchant=detail.nodes.find(n=>n.name===d.oldNode||n.name===d.newNode);
+  const sourceMerchant=source.nodes.find(n=>n.name===d.newNode);
+  if(credentialId(merchant)!==expectedMerchant || credentialId(sourceMerchant)!==expectedMerchant)
+    fail("CREDENTIAL_CONFLICT","Merchant credential binding differs: "+d.path);
+}
+function assertUpgradedMatches(detail,source,d){
+  const byName=new Map((detail.nodes||[]).map(n=>[n.name,n]));
+  for(const expected of source.nodes){
+    const actual=byName.get(expected.name);
+    if(!actual||actual.type!==expected.type)
+      fail("SOURCE_DRIFT","n8n workflow nodes differ from reviewed source: "+d.path);
+    if(expected.type==="n8n-nodes-base.code" &&
+       actual.parameters?.jsCode!==expected.parameters?.jsCode)
+      fail("SOURCE_DRIFT","n8n Code node differs from reviewed source: "+d.path);
+    if(expected.type==="n8n-nodes-base.httpRequest" &&
+       JSON.stringify(actual.parameters)!==JSON.stringify(expected.parameters))
+      fail("SOURCE_DRIFT","n8n gateway HTTP node differs from reviewed source: "+d.path);
+  }
+  if(byName.size!==source.nodes.length||
+     JSON.stringify(detail.connections)!==JSON.stringify(source.connections)||
+     detail.settings?.saveDataSuccessExecution!=="none"||
+     detail.settings?.saveDataErrorExecution!=="none")
+    fail("SOURCE_DRIFT","n8n payment graph/settings differ from reviewed source: "+d.path);
+}
 function webhookPath(wf){
   const triggers=(wf.nodes||[]).filter(n=>n.type==="n8n-nodes-base.webhook");
   return triggers.length===1?triggers[0].parameters?.path:null;
@@ -112,11 +153,23 @@ async function main(){
     const binding=(source.nodes||[]).flatMap(n=>Object.values(n.credentials||{}))
       .find(c=>c?.id==="4d9487aa-e07b-4bfd-92b9-a9699ffb5e45");
     if(!binding)fail("SOURCE_INVALID","Source workflow lost 2Checkout credential reference");
-    plan.push({d,id:summary.id,update:before,template:source});
+    confirmExpectedBindings(detail,source,d);
+    if(!before)assertUpgradedMatches(detail,source,d);
+    plan.push({d,id:summary.id,update:before,template:source,detail,hash:fingerprint(detail)});
+
   }
   const result={ok:true,workflows:plan.map(p=>({path:p.d.path,
     state:p.update?"legacy_needs_upgrade":"already_upgraded",active:false}))};
   if(v.action==="inspect")return result;
+  if(v.action==="snapshot")return {...result,
+    snapshot:plan.map(p=>({id:p.id,path:p.d.path,hash:p.hash,document:p.detail}))};
+  if(!Array.isArray(v.expected)||v.expected.length!==plan.length)
+    fail("BACKUP_REQUIRED","A verified local backup and matching snapshot are required before apply");
+  for(const step of plan){
+    const match=v.expected.find(x=>x?.id===step.id);
+    if(!match||match.hash!==step.hash)
+      fail("SNAPSHOT_CHANGED","Workflow changed since local backup; inspect and back up again");
+  }
   for(const step of plan){
     if(!step.update)continue;
     const updated=await api("PUT","/workflows/"+encodeURIComponent(step.id),bodyFor(step.template));
@@ -126,6 +179,8 @@ async function main(){
     if(checked.active!==false || checked.name!==step.d.newName ||
       webhookPath(checked)!==step.d.path)
       fail("UPDATE_UNCERTAIN","Workflow update not verified: "+step.d.path);
+    confirmExpectedBindings(checked,step.template,step.d);
+    assertUpgradedMatches(checked,step.template,step.d);
   }
   return {...result,applied:true};
 }
