@@ -24,7 +24,7 @@ The new 2Checkout files intentionally retain the original file paths and fixed w
 
 ## Existing owner installation
 
-The baseline n8n seed has already been imported into the owner's personal workspace. **A Git pull alone does not update the live 03 and 04 payment workflows**. Use the guarded two-workflow updater from [BILLING.md](BILLING.md), after privately backing up and deactivating both payment workflows:
+The baseline n8n seed has already been imported into the owner's personal workspace. **A Git pull alone does not update the live 03 and 04 payment workflows**. Use the guarded three-workflow updater from [BILLING.md](BILLING.md), after privately backing up and deactivating both payment workflows:
 
     node scripts/upgrade-n8n-2checkout.mjs --inspect
     node scripts/upgrade-n8n-2checkout.mjs --apply
