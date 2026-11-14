@@ -12,7 +12,7 @@ type Requirement={
 type Purchase={
   supported:boolean;intentKey:string|null;quotationId:string|null;amount:string|null;
   currency:string|null;requirements:Requirement[];confirmed:boolean;readyForOtp:boolean;
-  missing:string[];persona:{name:string;tone:string};
+  missing:string[];billingName:string|null;persona:{name:string;tone:string};
 };
 async function json(path:string,method:"GET"|"POST"="GET",body?:object){
   const res=await fetch(path,{
@@ -61,7 +61,7 @@ export function PurchaseChecklist({
         const result=await json(url) as Purchase;
         if(active){
           setData(result);
-          onReady(result.readyForOtp===true && result.quotationId===quote.id);
+          onReady(result.readyForOtp===true && result.quotationId===quote?.id);
         }
       }catch{if(active)onReady(false);}
     }
@@ -104,8 +104,7 @@ export function PurchaseChecklist({
   }
   if(!data)return <p className="mt-2 text-xs text-slate-500">Loading purchase checklist…</p>;
   if(!data.supported)return <p className="mt-2 text-xs text-amber-800">
-    This ticket does not have a purchase-enabled intent catalog. Start a new
-    company-formation ticket after the new catalog is published.
+    This ticket is not using the purchase-enabled intent catalog. Start a new ticket to upload the two identity documents.
   </p>;
   if(data.confirmed)return <p role="status" className="mt-2 text-xs text-emerald-800">
     Purchase confirmed and documents recorded for this quotation. Proceed with test OTP verification.
@@ -133,6 +132,8 @@ export function PurchaseChecklist({
           onChange={e=>{void upload(item.key,e.target.files?.[0]);e.target.value="";}}/>
       </label>}
     </div>)}
+    {data.billingName&&<p className="text-xs font-medium text-slate-700">Document-derived billing name: {data.billingName}</p>}
+    {data.missing.includes("identity_name_mismatch")&&<p role="alert" className="text-xs text-rose-700">The passport and Emirates ID holder names disagree. Invoice creation is blocked until resolved.</p>}
     {error&&<p role="alert" className="text-xs text-rose-700">{error}</p>}
     {notice&&<p role="status" className="text-xs text-indigo-800">{notice}</p>}
     {quote&&data.quotationId===quote.id&&<form className="space-y-2" onSubmit={confirm}>
