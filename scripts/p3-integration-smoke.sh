@@ -123,8 +123,11 @@ published=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_D
 test "$published" = 1
 # Every published ANCFZ intent must have exactly the same 2 required files.
 universal_docs=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
-  -c "SELECT count(*) FROM agents a JOIN intent_catalog_versions v ON v.agent_id=a.id AND v.status='published' JOIN intents i ON i.agent_id=a.id AND i.catalog_version_id=v.id WHERE a.agent_key='ancfz' AND 'purchase_quotation'=ANY(i.allowed_actions) AND (SELECT count(*) FROM intent_document_requirements r WHERE r.agent_id=i.agent_id AND r.intent_id=i.id AND r.required AND r.requirement_key IN ('passport','emirates_id'))=2 AND (SELECT count(*) FROM intent_document_requirements r WHERE r.agent_id=i.agent_id AND r.intent_id=i.id)=2")
-test "$universal_docs" = 4
+  -c "SELECT count(*) FROM agents a JOIN intent_catalog_versions v ON v.agent_id=a.id AND v.status='published' JOIN intents i ON i.agent_id=a.id AND i.catalog_version_id=v.id WHERE a.agent_key='ancfz' AND (SELECT count(*) FROM intent_document_requirements r WHERE r.agent_id=i.agent_id AND r.intent_id=i.id AND r.required AND r.requirement_key IN ('passport','emirates_id'))=2 AND (SELECT count(*) FROM intent_document_requirements r WHERE r.agent_id=i.agent_id AND r.intent_id=i.id)=2")
+if [ "$universal_docs" != 4 ]; then
+  echo "Universal identity-document policy expected 4 intents, got $universal_docs" >&2
+  exit 1
+fi
 unauthorized_purchase=$(curl --silent -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$ticket_id/purchase")
 test "$unauthorized_purchase" = 404
 docker compose exec -T -e P5_PURCHASE_OFFLINE_SMOKE=1 -e P3_TEST_TICKET="$ticket_id" \
