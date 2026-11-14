@@ -45,6 +45,7 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
   },[ticketId]);
   useEffect(()=>{
     setSelected(null);setAccepted(false);setNotice(null);setError(null);
+    requestIds.current={};
   },[catalog?.intentKey]);
   async function submit(action:Action){
     if(sending||!accepted||!action.ready||action.kind!=="ticket_request")return;
@@ -75,9 +76,9 @@ export function IntentActionPanel({ticketId}:{ticketId:string}){
       Available actions for {catalog.intentName??catalog.intentKey.replaceAll("_"," ")}
     </p>
     {actions.map(action=>{
-      if(action.kind==="salesforce_lead")return <LeadSubmission key={action.actionKey} ticketId={ticketId}/>;
-      if(action.kind==="quotation")return <QuotationRequest key={action.actionKey} ticketId={ticketId}/>;
-      if(action.kind==="purchase")return <PaymentCheckout key={action.actionKey} ticketId={ticketId}/>;
+      if(action.kind==="salesforce_lead")return <LeadSubmission key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
+      if(action.kind==="quotation")return <QuotationRequest key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
+      if(action.kind==="purchase")return <PaymentCheckout key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId}/>;
       return <div key={action.actionKey} className="rounded-lg border border-slate-200 p-3 text-xs">
         <p className="font-semibold">{action.label}</p>
         {action.request?<p className="mt-1 text-blue-800">
