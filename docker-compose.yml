@@ -36,7 +36,7 @@ services:
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       GEMINI_STATE_ENCRYPTION_KEY: ${GEMINI_STATE_ENCRYPTION_KEY:-}
       GEMINI_APPROVED_TEXT_ROOT: /app/approved-text
-      GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-2.5-flash}
+      GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-3.8-flash}
       # P4 ANCFZ Salesforce lead worker is opt-in and disabled by default.
       ANCFZ_LEAD_DISPATCH_ENABLED: ${ANCFZ_LEAD_DISPATCH_ENABLED:-false}
       ANCFZ_QUOTE_DISPATCH_ENABLED: ${ANCFZ_QUOTE_DISPATCH_ENABLED:-false}
@@ -67,7 +67,7 @@ services:
       PGDATABASE: ${POSTGRES_DB:-ai_service_agent_gemini}
       PGUSER: postgres
       PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
-      GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-2.5-flash}
+      GEMINI_MODEL_ID: ${GEMINI_MODEL_ID:-gemini-3.8-flash}
     volumes:
       - ./infra/postgres:/migrations:ro
       - ./infra/bootstrap:/scripts:ro
