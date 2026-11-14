@@ -2,7 +2,8 @@
  * Operator-only PostgreSQL implementation of P3 KnowledgeRepository.
  * Import from the ingestion CLI, never from a customer/API handler.
  */
-import { readFile } from "node:fs/promises";
+import { readFile,realpath } from "node:fs/promises";
+import { isAbsolute,relative,resolve,sep,join } from "node:path";
 import { createHash } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import type { KnowledgeRepository,DocumentRecord,VersionRecord,DocumentStatus,VersionStatus } from "../knowledge/publisher.js";
@@ -24,6 +25,24 @@ function mapDoc(x:any):DocumentRecord {
     providerDocumentName:x.provider_document_resource_name};
 }
 function valid(uuid:string,field:string):string{return requireUuid(uuid,field);}
+function safeRelative(root:string,target:string):string{
+  const path=relative(root,target);
+  if(!path || path===".." || path.startsWith(".."+sep) || isAbsolute(path))
+    throw new PersistenceError("INVALID_INPUT","Source outside the approved vault");
+  return path;
+}
+function vaultHostRoot():string{
+  const root=process.env.AGENT_KNOWLEDGE_ORIGINALS_ROOT;
+  if(!root || !isAbsolute(root))throw new PersistenceError("NOT_CONFIGURED","Approved host source root required");
+  return resolve(root);
+}
+const CONTAINER_ROOT="/app/approved-text";
+function toHostPath(ref:string):string{
+  if(!ref.startsWith(CONTAINER_ROOT+"/"))throw new PersistenceError("INVALID_INPUT","Untrusted normalized source path");
+  const root=vaultHostRoot();
+  return join(root,safeRelative(CONTAINER_ROOT,ref));
+}
+
 
 export class PgGeminiKnowledgeRepository implements KnowledgeRepository {
   constructor(private readonly db:PersistenceDatabase){}
@@ -64,7 +83,10 @@ export class PgGeminiKnowledgeRepository implements KnowledgeRepository {
          ON r.agent_id=d.agent_id AND r.id=d.document_version_id
          WHERE d.agent_id=$1 AND d.knowledge_version_id=$2 ORDER BY d.document_version_id`,
         [agentId,versionId]);
-      return r.rows.map(mapDoc);
+      return r.rows.map(row=>{
+        const record=mapDoc(row);
+        return {...record,originalPath:toHostPath(record.originalPath)};
+      });
     });
   }
   async findByHash(agentId:string,versionId:string,sha256:string):Promise<DocumentRecord|null>{
@@ -76,6 +98,10 @@ export class PgGeminiKnowledgeRepository implements KnowledgeRepository {
     valid(d.documentId,"documentId");valid(d.documentVersionId,"documentVersionId");
     if(!/^[a-f0-9]{64}$/.test(d.sha256)||!d.originalPath.startsWith("/")||!d.name)
       throw new PersistenceError("INVALID_INPUT","Source metadata invalid");
+    const realRoot=await realpath(vaultHostRoot());
+    const original=await realpath(d.originalPath);
+    const subpath=safeRelative(realRoot,original);
+    const storedPath=join(CONTAINER_ROOT,subpath);
     const isText=["text/plain","text/markdown"].includes(d.mime);
     let normalizedDigest:string|null=null;
     if(isText){
@@ -96,7 +122,7 @@ export class PgGeminiKnowledgeRepository implements KnowledgeRepository {
         `INSERT INTO gemini_source_revisions(agent_id,id,document_id,revision,source_sha256,
            original_storage_ref,normalized_text_ref,normalized_text_sha256)
          VALUES($1,$2,$3,1,$4,$5,$6,$7)`,
-        [d.agentId,d.documentVersionId,d.documentId,d.sha256,d.originalPath,d.originalPath,normalizedDigest],
+        [d.agentId,d.documentVersionId,d.documentId,d.sha256,storedPath,storedPath,normalizedDigest],
       );
       await c.query(
         `INSERT INTO gemini_knowledge_documents(agent_id,knowledge_version_id,document_id,document_version_id,
