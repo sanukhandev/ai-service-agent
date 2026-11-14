@@ -66,8 +66,11 @@ export function PurchaseChecklist({
       }catch{if(active)onReady(false);}
     }
     void refresh();
-    return ()=>{active=false;onReady(false);};
+    // A routine SSE refresh must not reset readiness or unmount an in-progress OTP form.
+    return ()=>{active=false;};
   },[url,quote?.id,onReady,revision]);
+
+  useEffect(()=>()=>{onReady(false);},[ticketId,onReady]);
 
   async function upload(key:string,file:File|undefined){
     if(!file || busy)return;
