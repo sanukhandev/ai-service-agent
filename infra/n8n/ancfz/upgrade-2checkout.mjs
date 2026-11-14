@@ -78,9 +78,15 @@ async function listWorkflows(api){
   }
   fail("API_INVALID_RESPONSE","Workflow pagination limit exceeded");
 }
-function bodyFor(template){
+function bodyFor(template,existing){
+  // Replacing a Webhook node with a new webhookId can break n8n registration.
+  // Carry forward the n8n-assigned webhookId from the existing workflow.
+  const prior=(existing.nodes||[]).find(n=>n.type==="n8n-nodes-base.webhook");
+  const nodes=structuredClone(template.nodes);
+  const trigger=nodes.find(n=>n.type==="n8n-nodes-base.webhook");
+  if(prior?.webhookId && trigger)trigger.webhookId=prior.webhookId;
   return {
-    name:template.name,nodes:template.nodes,
+    name:template.name,nodes,
     connections:template.connections,settings:template.settings,
   };
 }
@@ -177,7 +183,7 @@ async function main(){
   }
   for(const step of plan){
     if(!step.update)continue;
-    const updated=await api("PUT","/workflows/"+encodeURIComponent(step.id),bodyFor(step.template));
+    const updated=await api("PUT","/workflows/"+encodeURIComponent(step.id),bodyFor(step.template,step.detail));
     if(updated?.id!==step.id || updated?.name!==step.d.newName)
       fail("UPDATE_UNCERTAIN","Workflow update result uncertain; inspect before retrying: "+step.d.path);
     const checked=await api("GET","/workflows/"+encodeURIComponent(step.id));
@@ -185,6 +191,10 @@ async function main(){
       webhookPath(checked)!==step.d.path)
       fail("UPDATE_UNCERTAIN","Workflow update not verified: "+step.d.path);
     confirmExpectedBindings(checked,step.template,step.d);
+    const oldWebhook=step.detail.nodes.find(n=>n.type==="n8n-nodes-base.webhook")?.webhookId;
+    const newWebhook=checked.nodes.find(n=>n.type==="n8n-nodes-base.webhook")?.webhookId;
+    if(oldWebhook && newWebhook!==oldWebhook)
+      fail("UPDATE_UNCERTAIN","n8n webhook ID was not preserved: "+step.d.path);
     assertUpgradedMatches(checked,step.template,step.d);
   }
   return {...result,applied:true};
