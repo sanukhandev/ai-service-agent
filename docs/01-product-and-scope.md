@@ -22,7 +22,7 @@ The platform must support a second unrelated business by creating a new **Agent 
 5. **Offerings:** list relevant services, packages, eligibility and approved prices from a structured offerings catalog when available. RAG-only descriptions are informational, not formal quotes.
 6. **Ticket persistence:** store transcript, authenticated/guest ownership, subject, status, facts, action history, source references and events. Ticket numbers come from Node, never the model.
 7. **Customer identity:** optional email OTP flow in secure HTTP UI. The same email may map to distinct agent-scoped accounts. No OTP or credentials in chat.
-8. **Private documents:** securely upload to agent/ticket-scoped storage; OCR/extract via Azure Document Intelligence when implemented; do not publish customer uploads to agent-wide File Search.
+8. **Private documents:** securely upload to agent/ticket-scoped storage; OCR/extract through a separately approved processor when implemented; do not publish customer uploads to agent-wide File Search.
 9. **Operations:** propose and explicitly authorize business actions (e.g. `create_lead`, `generate_quote`). Node verifies prerequisites/consent and dispatches n8n with idempotency.
 10. **Configuration:** controlled local scripts/seed data for agent, catalog and action bindings. Visual Admin UI is deferred until after the POC.
 
