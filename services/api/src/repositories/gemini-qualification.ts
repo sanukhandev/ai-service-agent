@@ -126,22 +126,19 @@ export class GeminiQualificationRepository {
     requireUuid(assistantMessageId,"assistantMessageId");
     return this.db.withAgent(scope.agentId,async client=>{
       const audit=await client.query<{ticket_id:string}>(
-        "SELECT ticket_id FROM gemini_response_qualifications WHERE agent_id=
-} AND id=$2 AND session_id=$3",
+        "SELECT ticket_id FROM gemini_response_qualifications WHERE agent_id=$1 AND id=$2 AND session_id=$3",
         [scope.agentId,qualificationId,sessionId],
       );
       const ticketId=audit.rows[0]?.ticket_id;
       if(!ticketId) throw new PersistenceError("NOT_FOUND","Qualification not found");
       await authorizedTicket(client,scope,ticketId,true);
       const current=await client.query<{id:string}>(
-        "SELECT q.id FROM gemini_response_qualifications q JOIN ai_conversation_sessions s ON s.agent_id=q.agent_id AND s.id=q.session_id WHERE q.agent_id=
-} AND q.id=$2 AND q.session_id=$3 AND s.status='active' AND s.expires_at>clock_timestamp() FOR UPDATE OF q",
+        "SELECT q.id FROM gemini_response_qualifications q JOIN ai_conversation_sessions s ON s.agent_id=q.agent_id AND s.id=q.session_id WHERE q.agent_id=$1 AND q.id=$2 AND q.session_id=$3 AND s.status='active' AND s.expires_at>clock_timestamp() FOR UPDATE OF q",
         [scope.agentId,qualificationId,sessionId],
       );
       if(!current.rows[0]) throw new PersistenceError("CONFLICT","Session expired before assistant publication");
       const attached=await client.query<{id:string}>(
-        "UPDATE gemini_response_qualifications SET assistant_message_id=$4 WHERE agent_id=
-} AND id=$2 AND session_id=$3 AND assistant_message_id IS NULL RETURNING id",
+        "UPDATE gemini_response_qualifications SET assistant_message_id=$4 WHERE agent_id=$1 AND id=$2 AND session_id=$3 AND assistant_message_id IS NULL RETURNING id",
         [scope.agentId,qualificationId,sessionId,assistantMessageId],
       );
       if(!attached.rows[0]) throw new PersistenceError("CONFLICT","Assistant qualification already linked");
