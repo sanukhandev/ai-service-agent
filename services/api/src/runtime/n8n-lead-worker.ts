@@ -162,7 +162,10 @@ export class N8nLeadWorker {
           "SELECT status FROM tickets WHERE agent_id=$1 AND id=$2",
           [op.agentId,op.ticketId],
         );
-        if(ticket.rows[0]?.status!=="closed") {
+        const agent=await client.query<{status:string}>(
+          "SELECT status FROM agents WHERE id=$1",[op.agentId],
+        );
+        if(ticket.rows[0]?.status!=="closed" && agent.rows[0]?.status==="active") {
           await new TicketMessageRepository(this.db).createAssistantMessageTx(
             client,workerTicketScope(op.agentId,op.ticketId),op.ticketId,
             lifecycleNoticeId("lead.verified",op.operationId),
