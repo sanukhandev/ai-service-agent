@@ -5,8 +5,9 @@
 ## Schema and startup
 
 - Fresh volumes initialize `001_core.sql`, `002_intents_and_ticket_facts.sql` and the restricted application role bootstrap.
-- The one-off `migrate` service applies `003` through `015` in sequence, verifies hashes, then runs `infra/bootstrap/seed-sara.sql` to establish the version-pinned Sara Gemini example.
-- Migrations `009`–`015` add Gemini model/source/session/evidence authority, immutable provenance, encrypted pending-function state and ingestion metadata. Earlier migrations include durable tickets, catalog and event/outbox structures still needed by Gemini.
+- The one-off `migrate` service applies `003` through `020` in sequence, verifies hashes, then runs `infra/bootstrap/seed-sara.sql` to establish the version-pinned Sara Gemini example.
+- Migrations `009`–`015` add Gemini model/source/session/evidence authority, immutable provenance, encrypted pending-function state and ingestion metadata. Migrations `016`–`020` add the optional ANCFZ synthetic purchase, OTP, payment/invoice, ID-document and service-request schema; their numbering avoids conflict with existing Gemini migrations.
+- Earlier migrations include durable tickets, catalog and event/outbox structures still needed by Gemini.
 - Existing columns with provider-neutral/historical names are not an active model integration. **Never edit or remove applied migration files**; use a reviewed new forward migration if actual schema retirement is required.
 
 ## Authorization and runtime credentials
