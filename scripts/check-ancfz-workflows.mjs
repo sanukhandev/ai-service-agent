@@ -53,27 +53,36 @@ for (const [filename, path] of Object.entries(expected)) {
   if (s.includes("sk_test_stripe_demo_public") || /demo_[A-Za-z0-9]{24,}/.test(s)) errors.push(filename+": embedded payment key forbidden");
   console.log(filename+": "+workflow.nodes.length+" nodes, disabled, webhook="+path);
 }
-// Verify the supplied ANCFZ demo Orders contract, not the unrelated generic
-// /api/pg/{slug}/init interface.
+// Verify the documented 2Checkout Mock REST/6.0 endpoints, not the old ANCFZ demo API.
 const create=JSON.parse(readFileSync(new URL("03-mockgateway-payment-link.json",root),"utf8"));
-const order=create.nodes.find(n=>n.name==="MockGateway Demo Orders POST");
-const suppliedUrl="https://mockgateway.com/api/v1/public/demo/base/ancfz-f6i0ry/rest/6.0/orders/";
-if(order?.parameters?.url!==suppliedUrl || order.parameters.method!=="POST")errors.push("ANCFZ Orders endpoint/method mismatch");
-if(order?.parameters?.genericAuthType!=="httpHeaderAuth")errors.push("ANCFZ payment key must be private HTTP Header Auth credential");
-if(!order?.parameters?.headerParameters?.parameters?.some(p=>p.name==="X-Guest-ID"&&p.value.includes("MOCKGATEWAY_GUEST_ID")))errors.push("X-Guest-ID header missing");
+const order=create.nodes.find(n=>n.name==="2Checkout Mock Orders POST");
+const endpoint="https://mockgateway.com/api/base/2checkout-fzucuq/rest/6.0/orders/";
+if(order?.parameters?.url!==endpoint||order.parameters.method!=="POST") errors.push("2Checkout order endpoint mismatch");
+if(order?.parameters?.genericAuthType!=="httpHeaderAuth") errors.push("2Checkout merchant secret must be credential-bound");
+if(order?.parameters?.headerParameters?.parameters?.some(p=>p.name==="X-Guest-ID")) errors.push("Legacy MockGateway X-Guest-ID must be removed");
 const orderJson=order?.parameters?.jsonBody??"";
 for(const name of ["Currency","Items","UnitNetPrice","ExternalReference","BillingDetails","FirstName","Email","CountryCode","PaymentDetails","Type"]) {
-  if(!orderJson.includes(name))errors.push("Demo Orders payload missing "+name);
+  if(!orderJson.includes(name)) errors.push("2Checkout order payload missing "+name);
 }
-if(orderJson.includes("10.00")||orderJson.includes("customer@example.com"))errors.push("Do not hardcode demo amount/customer");
+if(orderJson.includes("10.00")||orderJson.includes("customer@example.com")) errors.push("Do not hardcode demo amount/customer");
+const inspect=create.nodes.find(n=>n.name==="Inspect Demo Order Response")?.parameters?.jsCode??"";
+for(const name of ["RefNo","GrossPrice","ExternalReference","redirect_url","verified:false"]) {
+  if(!inspect.includes(name))errors.push("2Checkout create response missing validation for "+name);
+}
 const verify=JSON.parse(readFileSync(new URL("04-mockgateway-payment-verify.json",root),"utf8"));
-if(verify.nodes.some(n=>n.type==="n8n-nodes-base.httpRequest"))errors.push("Unverified payment-status API must not be guessed");
-if(!verify.nodes.some(n=>n.type==="n8n-nodes-base.code" && n.parameters.jsCode.includes("verified:false")))errors.push("Payment check must fail closed");
+const get=verify.nodes.find(n=>n.name==="2Checkout Mock GET Order");
+if(get?.parameters?.method!=="GET" || !get?.parameters?.url?.includes(endpoint) ||
+   get?.parameters?.genericAuthType!=="httpHeaderAuth")
+  errors.push("2Checkout authenticated GET status check missing");
+const code=verify.nodes.find(n=>n.name==="Validate Gateway Status")?.parameters?.jsCode??"";
+for(const term of ["Status","COMPLETE","GrossPrice","Currency","ExternalReference","orderReference"]) {
+  if(!code.includes(term))errors.push("2Checkout verification missing "+term);
+}
 const compose=readFileSync(new URL("../docker-compose.yml",import.meta.url),"utf8");
 const n8nBlock=compose.match(/\n  n8n:\n([\s\S]*?)(?=\n  [\w-]+:\n|\nnetworks:)/)?.[1] ?? "";
 const pdfBlock=compose.match(/\n  gotenberg:\n([\s\S]*?)(?=\n  [\w-]+:\n|\nnetworks:)/)?.[1] ?? "";
 if (!n8nBlock || !pdfBlock) errors.push("Compose missing private n8n or Gotenberg");
-if(!n8nBlock.includes("N8N_ENCRYPTION_KEY:")||!n8nBlock.includes("MOCKGATEWAY_GUEST_ID:"))errors.push("n8n encryption or demo guest header configuration missing");
+if(!n8nBlock.includes("N8N_ENCRYPTION_KEY:"))errors.push("n8n encryption configuration missing");
 if(!n8nBlock.includes(":/workflows/ancfz:ro"))errors.push("n8n workflow imports must be read-only");
 if (/^    ports:/m.test(n8nBlock)||/^    ports:/m.test(pdfBlock)) errors.push("n8n/Gotenberg unexpectedly publishes ports");
 if (errors.length) {console.error("\n"+errors.join("\n"));process.exitCode=1;}
