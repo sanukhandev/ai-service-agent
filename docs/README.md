@@ -1,35 +1,34 @@
-# AI Service Agent — POC documentation
+# Gemini experiment documentation
 
-> **Experimental Gemini branch:** For `experiment/gemini-file-search-poc`, use the [Gemini experimental implementation plan](gemini-experiment-implementation-plan.md), which supersedes the Foundry-only baseline below. Conversation memory is limited to the active AI session with a **60-minute inactivity timeout**; expired sessions start fresh, while tickets and messages remain durable in PostgreSQL. Gemini changes must never merge into `main`.
+The only active AI runtime on `experiment/gemini-file-search-poc` is the Node-owned Gemini model adapter with Gemini File Search, scoped PostgreSQL persistence, independent Node grounding verification and optional authorized n8n workflows. The separate `main` branch is not modified.
 
-**Current design:** Next.js customer UI -> Nginx (public port 80 only) -> **Node Fastify API -> published Microsoft Foundry GPT-5.4 Sara Agent -> native Foundry IQ**. Node owns intent catalog, function registry/loop, ticket facts, approvals and n8n dispatch. PostgreSQL is durable; Redis is ephemeral.
+## Source of truth
 
-**Out of scope for this POC:** Angular admin portal, Python Model Gateway, Python Presidio runtime, pgvector, LangGraph, hand-built RAG, full automated testing/hardening. Admin UI can return after POC as a separate phase.
+- [Development contract](../AGENTS.md) — authoritative implementation, isolation and security rules
+- [Gemini implementation plan](gemini-experiment-implementation-plan.md) — original G0–P7 requirements, ownership and gates
+- [Frozen G0 contracts](gemini-g0-contracts.md) — versioned session, evidence, policy and tool definitions
+- [P7 implementation and certification status](gemini-p7-status.md) — verified tests, outstanding provider/UAT requirements
+- [P7 integration preflight](gemini-p7-preflight.md) — branch/source integration evidence
 
-| Document | Purpose |
-|---|---|
-| [Product and scope](01-product-and-scope.md) | Goals, capabilities and exclusions |
-| [Architecture](02-architecture.md) | Node ownership and request flow |
-| [Foundry and conversation](03-foundry-and-conversation.md) | Direct JavaScript SDK, function loops and RAG |
-| [Data model](04-data-model.md) | PostgreSQL and agent-scoped isolation |
-| [Tools and workflows](05-tools-actions-workflows.md) | Read functions, proposals and n8n |
-| [Security and privacy](06-security-and-privacy.md) | Identity, PII, consent and credentials |
-| [Docker and Nginx](07-docker-and-deployment.md) | One public port, local Azure CLI volume |
-| [Customer UI](08-ui-guidelines.md) | Minimal Next.js, Tailwind and self-hosted Inter |
-| [Testing and acceptance](09-testing-and-acceptance.md) | Smoke vs deferred H1 hardening |
-| [POC phases](10-implementation-plan.md) | P0–P7 delivery plan |
-| [Intent-driven employee conversation](11-intent-conversation-and-node-ownership.md) | How Node catalog, ticket facts and Foundry tools work |
-| [Service employee instructions](../services/api/prompts/sara-service-employee.md) | Sara's natural, non-robotic prompt |
+## Architecture and engineering guides
 
-[AGENTS.md](../AGENTS.md) is the engineering contract. Current P0 files are scaffolds, not proof of a working Foundry or n8n integration.
+- [Product scope](01-product-and-scope.md)
+- [Node / Gemini / knowledge architecture](02-architecture.md)
+- [Gemini conversation and function continuation](03-gemini-and-conversation.md)
+- [PostgreSQL data model](04-data-model.md)
+- [Intent, tools and approved n8n workflows](05-tools-actions-workflows.md)
+- [Security and privacy](06-security-and-privacy.md)
+- [Isolated Docker deployment](07-docker-and-deployment.md)
+- [Customer chat UI](08-ui-guidelines.md)
+- [Testing and acceptance](09-testing-and-acceptance.md)
+- [Delivery phases and certification dependencies](10-implementation-plan.md)
+- [Node-owned intent conversation](11-intent-conversation-and-node-ownership.md)
+- [ANCFZ workflow contracts](ancfz-p4-workflow-contract.md)
 
-## Implementation invariants
+## Non-negotiable behavior
 
-- Foundry picks questions and calls model-visible functions; **Node handles every application function**.
-- Only native Foundry IQ handles RAG. Do not duplicate knowledge search in Node.
-- Node persists selected intents, facts, customer corrections and events, not just unbounded model conversation history.
-- Model functions never trigger n8n directly; explicit customer authorization is required for consequential operations.
-- Admin UI is deferred. During POC, controlled configuration/seed scripts handle catalogs and agent bindings.
-- All non-Nginx containers have no host \`ports:\`.
+Node owns authorization, agent/ticket scope, business catalogs, durable messages, consent and external effects. Gemini can request allowlisted functions, but cannot authorize itself or call arbitrary workflows. The only built-in knowledge tool is approved agent-scoped Gemini File Search. Node verifies material factual claims independently **before** persisting or streaming an assistant answer.
 
-- [P3 Foundry integration, runtime persistence and controlled Sara publication](p3-foundry-runtime-and-publication.md)
+The AI context has a 60-minute inactivity timeout; persisted historical tickets are not AI memory after expiry. Published source documents and pricing must be explicitly approved. Green offline CI does **not** establish live model/retrieval, financial/provider outcomes or production security readiness.
+
+There is no active Foundry/SDK agent publication path on this experiment branch. Historical numbered SQL migrations are immutable for database compatibility; any cleanup of obsolete DB columns requires a new forward migration.
