@@ -12,7 +12,6 @@ import { extractIdentityDocument, nameKey, type ExtractedIdentity, type Identity
 export const PURCHASE_CONSENT =
   "I confirm that I want to proceed with this ANCFZ sandbox purchase for the exact approved quotation amount and that the required test documents have been submitted.";
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
-const key=/^[a-z][a-z0-9_]{0,127}$/;
 const MAX_FILE=1048576;
 type PurchaseQuote={id:string;intent_id:string;intent_key:string;amount:string;currency:string;state:string};
 type DocRow={id:string;requirement_key:string;label:string;guidance:string|null;
@@ -181,8 +180,8 @@ export class PurchaseOperations {
     await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||!q.id||q.state!=="verified_completed")
-        throw new PersistenceError("CONFLICT","A verified quotation and supported intent are required");
+      if(!q)
+        throw new PersistenceError("CONFLICT","Select a purchase-enabled intent before uploading documents");
       if(await confirmation(client,scope.agentId,ticketId,q))
         throw new PersistenceError("CONFLICT","Purchase documents are locked");
       const req=await client.query(
@@ -195,8 +194,8 @@ export class PurchaseOperations {
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||!q.id||q.state!=="verified_completed")
-        throw new PersistenceError("CONFLICT","A verified quotation and purchase-enabled intent are required");
+      if(!q)
+        throw new PersistenceError("CONFLICT","Select a purchase-enabled intent before uploading documents");
       if(await confirmation(client,scope.agentId,ticketId,q))
         throw new PersistenceError("CONFLICT","Documents are locked after purchase confirmation");
       const req=await client.query<{id:string}>(
