@@ -18,16 +18,16 @@ jobs:
         include:
           - stream: P1
             sha: 5a0f2e73cf43e22407b6ca52779f6e33d0028681
-            command: node --experimental-transform-types --test services/api/src/gemini/adapter.test.ts
+            command: npm install --ignore-scripts --no-audit --no-fund && npx tsc -p services/api/src/gemini/tsconfig.p1.json --noEmit false --outDir /tmp/gemini-p1-dist && node --test /tmp/gemini-p1-dist/services/api/src/gemini/adapter.test.js
           - stream: P2
-            sha: 464914bd11c720c61cb5c27b920f7ab4b2f49ba8
+            sha: cfec98678eeea7e6231f5a53bef854973aed5605
             command: bash -n infra/postgres/gemini-p2-validate.sh && bash -n infra/bootstrap/apply-migrations.sh && bash -n scripts/publish-ancfz-test-catalog.sh
           - stream: P3
             sha: 969b5c62af4c21c4ad41dad25bf97e6705e3e0b8
-            command: node --experimental-strip-types --test services/api/src/knowledge/knowledge.test.mjs
+            command: npm install --ignore-scripts --no-audit --no-fund && npm run build --workspace @ai-service-agent/api && node --test services/api/src/knowledge/knowledge.test.mjs
           - stream: P4
             sha: 898413bbddbfdda000fefe34f8e8c77bc3af4334
-            command: node --experimental-strip-types --test services/api/src/grounding/__tests__/grounding.test.mjs
+            command: npm install --ignore-scripts --no-audit --no-fund && npm run build --workspace @ai-service-agent/api && node --test services/api/src/grounding/__tests__/grounding.test.mjs
           - stream: P5
             sha: 423ad02cfde243793c4f22f9b04cd0f11d3b9765
             command: node --experimental-transform-types --test services/api/src/integrations/gemini-n8n/adapter.test.mjs
