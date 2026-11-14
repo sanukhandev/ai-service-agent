@@ -8,6 +8,12 @@ import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 const DEFINITIONS=[
   {
+    file:"02-render-pdf.json",
+    oldName:"ANCFZ | PDF Quotation or Invoice",newName:"ANCFZ | PDF Quotation or Invoice",
+    path:"ancfz/render-pdf",oldNode:"Prepare Escaped HTML",newNode:"Prepare Escaped HTML",
+    merchantRequired:false,invoice:true,
+  },
+  {
     file:"03-mockgateway-payment-link.json",
     oldName:"ANCFZ | MockGateway Demo Order Request (checkout URL if provided)",
     newName:"ANCFZ | 2Checkout Mock Order Create",path:"ancfz/payment-link",
@@ -106,6 +112,7 @@ function confirmExpectedBindings(detail,source,d){
   const sourceWeb=source.nodes.find(n=>n.type==="n8n-nodes-base.webhook");
   if(credentialId(web)!==expectedWeb || credentialId(sourceWeb)!==expectedWeb)
     fail("CREDENTIAL_CONFLICT","Existing webhook credential binding differs: "+d.path);
+  if(d.merchantRequired===false)return;
   const merchant=detail.nodes.find(n=>n.name===d.oldNode||n.name===d.newNode);
   const sourceMerchant=source.nodes.find(n=>n.name===d.newNode);
   // The historical verification workflow was intentionally fail-closed and
@@ -156,14 +163,27 @@ async function main(){
     const trigger=detail.nodes.find(n=>n.type==="n8n-nodes-base.webhook");
     if(trigger?.parameters?.authentication!=="headerAuth")fail("WORKFLOW_CONFLICT","Private webhook header auth is missing");
     const source=JSON.parse(readFileSync(new URL(d.file,import.meta.url),"utf8"));
-    const before=summary.name===d.oldName;
+    let before=summary.name===d.oldName;
+    if(d.invoice){
+      // This workflow retains its name; distinguish the two known historical
+      // invoice templates by their Code-node logic, not by the workflow title.
+      const current=detail.nodes.find(n=>n.name==="Prepare Escaped HTML")?.parameters?.jsCode;
+      const target=source.nodes.find(n=>n.name==="Prepare Escaped HTML")?.parameters?.jsCode;
+      if(typeof current!=="string"||typeof target!=="string")
+        fail("WORKFLOW_CONFLICT","Invoice template topology changed");
+      if(current===target)before=false;
+      else if(current.includes("Invoice requires verified test payment") ||
+              current.includes("mockgateway_demo_orders"))before=true;
+      else fail("SOURCE_DRIFT","Invoice Code node was modified outside the known templates");
+    }
     if(before && !detail.nodes.some(n=>n.name===d.oldNode))
       fail("WORKFLOW_CONFLICT","Unexpected old workflow topology: "+d.path);
     if(!before && !detail.nodes.some(n=>n.name===d.newNode))
       fail("WORKFLOW_CONFLICT","Existing upgraded workflow has unexpected topology: "+d.path);
     const binding=(source.nodes||[]).flatMap(n=>Object.values(n.credentials||{}))
       .find(c=>c?.id==="4d9487aa-e07b-4bfd-92b9-a9699ffb5e45");
-    if(!binding)fail("SOURCE_INVALID","Source workflow lost 2Checkout credential reference");
+    if(d.merchantRequired!==false && !binding)
+      fail("SOURCE_INVALID","Source workflow lost 2Checkout credential reference");
     confirmExpectedBindings(detail,source,d);
     if(!before)assertUpgradedMatches(detail,source,d);
     plan.push({d,id:summary.id,update:before,template:source,detail,hash:fingerprint(detail)});
