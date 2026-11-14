@@ -1,90 +1,44 @@
-# Testing strategy and acceptance gates
+# Gemini experiment — testing and acceptance
 
-## Evidence standard
+## What current CI establishes
 
-Mark tests **mock**, **local integration**, or **live external**. Never call a mock test a production Azure/n8n pass. Report exact code SHA, environment, test command, total/passed/failed/skipped and actual trace/correlation IDs without secrets.
+The experiment's `.github/workflows/gemini-p7-integration.yml` checks:
 
-## Test pyramid
+- Node TypeScript, shared Gemini contracts and independent adapter tests;
+- P3 knowledge normalization/transport tests and P4 grounding policy;
+- P5 n8n adapter's deterministic offline tests;
+- P6 golden/security/session/workflow **offline simulator** (not live application certification);
+- Next.js customer build, Docker API image and experiment Compose configuration;
+- disposable PostgreSQL fresh/repeat/checksum/RLS, catalog seed, 60-minute session and fake-model worker/API integration.
 
-| Layer | What it proves |
-|---|---|
-| Unit | Contracts, parsers, authorization rules, state transitions, consent and PII adapters |
-| Contract | Node/Foundry function-call schemas and output continuation, n8n callbacks, SSE events |
-| Database integration | Fresh migrations, RLS, composite FK, transaction boundaries, idempotency and outbox locking |
-| Docker smoke | Nginx single host port, private services, health, volume persistence and Next rendering |
-| Live Foundry | Published GPT-5.4 agent, identity, native IQ retrieval, citations and real tool errors |
-| Workflow integration | n8n dispatch, approval, provider evidence, callback replay and reconciliation |
-| Browser E2E | Guest and verified customer journey, SSE recovery, document upload and authorized actions |
+The G0 workflow checks immutable provider/tool/isolation contracts. Every new commit must pass its **own** exact-head runs. Previously green checks are not evidence for later revisions.
 
-## P0: repository and infrastructure
+## Required but outstanding live gates
 
-- Formatting/lint/typecheck/test/build commands exist and run successfully when apps are implemented.
-- `docker compose config` passes and **only** nginx publishes `80:80`.
-- Next.js renders `/`; there is no Angular admin app or `/admin/` route in this POC.
-- All private service ports are inaccessible directly from host.
-- No real secrets, API keys, OTP or customer PII in repository or test snapshots.
-- PostgreSQL fresh migration applies with an auditable ledger and no `vector` extension.
+| Gate | Passing evidence |
+| --- | --- |
+| G1 Gemini API | Real Google model ID, synthetic File Search store and document, accurate document citation identity, custom metadata and permitted function request/continuation |
+| Approved Sara corpus | Operator-approved source versions, actual retrieval, positive/negative business questions, independent source support and revocation |
+| External workflows | Isolated n8n sandbox and real provider lead/quote/payment state, consent and idempotency under retry |
+| Local P6 | Real Compose/Node/Postgres/Redis with full session, isolation, SSE and recovery probes against exact SHA |
+| Live P6 | Real Gemini citations/latency/cost, false rejection, unsupported claim escape, security and negative tests |
+| Deployment security | Credential separation, private document access, agent isolation, TLS before public access, audit trails and key handling |
 
-## P1: Foundry + working web chat
+The local/live P6 runner requires a real integration adapter and explicit authorization; missing infrastructure must be reported **blocked**, never silently converted to a success. See [P6 harness](../tests/gemini/README.md).
 
-Live tests:
-1. `hello` -> normal Sara greeting, no unnecessary knowledge tool call.
-2. `Tell me about ANCFZ` -> response grounded in actual FAQ/overview retrieval.
-3. `What company types are available?` -> company-type material, not only FAQ.
-4. `What packages are available?` -> Packages and Offers material.
-5. `What does one visa cost?` -> actual pricing source with conditions.
-6. `What IT consulting activities are supported?` -> activity source.
-7. `Tell me more` -> additional relevant detail; no repeated overview.
-8. `Create a quotation` before business tools -> does **not** claim success.
+## Commands
 
-For every factual case capture source IDs, agent/version, tool calls and response. Passing plausible natural language without genuine evidence is not a retrieval pass. Verify the agent has the knowledge MCP tool; a created agent with no attached tools is not sufficient.
+```bash
+npm install --ignore-scripts --no-audit --no-fund
+npm run build --workspace @ai-service-agent/api
+npm run build --workspace @ai-service-agent/web
+node scripts/check-gemini-g0.mjs
+node scripts/check-gemini-certification.mjs --mode=offline
+bash infra/postgres/gemini-p2-validate.sh
+```
 
-## P2: ticket durability and event replay
+`gemini-p2-validate.sh` uses an isolated disposable database and containers. It should never be pointed at an existing customer/project volume. The G1 synthetic script is opt-in, uses a temporary invented source and can incur charges. Refer to [P7 status](gemini-p7-status.md) for the supported trigger.
 
-- Two customers and two agents cannot access each other's ticket messages or events.
-- Restart Node/Redis while ticket is active; messages and event cursor remain recoverable from PostgreSQL.
-- Retrying the same customer message request does not create duplicated accepted messages.
-- Ticket facts/summary revisions remain scoped and source-linked.
-- SSE reconnect resumes from last acknowledged durable sequence without cross-ticket data.
+## Release verdict
 
-## P3: catalog and functions
-
-- Tool call input/output schema validation, size limits, budget/timeouts.
-- Model cannot choose a different `agent_id` or `ticket_id` through a tool argument.
-- Unknown, disabled and cross-agent tools denied.
-- Intent requirements can be collected across turns without repetitive questions.
-- Formal quote calculation uses structured versioned prices, not free-form RAG output.
-- Read tool never creates side effects.
-
-## P4: actions and n8n
-
-- Customer authorization is bound to exact action and current proposal.
-- Unauthorized or missing prerequisite actions denied.
-- Two simultaneous approvals cause one committed business request/outbox item.
-- n8n HTTP 2xx does not mark provider completion; verified callback/reconciliation does.
-- Callback signature, replay nonce, provider correlation and duplicate result tests.
-- Unknown provider outcome remains explicit; retries cannot double-create leads/quotes.
-
-## P5: identity, documents and privacy
-
-- OTP TTL, throttling, non-enumeration, reuse and replay denial.
-- OTP/credentials never enter model request, logs or telemetry.
-- Node privacy adapter tests for sensitive fields and representative false positives; preserve authorized contact fields while masking unnecessary PII. Azure AI Language PII is optional.
-- Upload file-size/type validation, agent-scoped object access isolation and malformed file handling.
-- OCR derived fields retain provenance and review status; AI extraction never silently validates identity.
-
-## P6/P7: integrated POC and release review (H1 automation deferred)
-
-- Controlled POC configuration scripts cannot access another agent's settings without authorization. Admin UI is deferred beyond the POC.
-- Catalog draft/publish/version pin works, including active ticket stability.
-- Basic accessibility and responsive browser tests for both UIs.
-- Load/test p50, p95, p99 latency, tool-call budget and concurrency with representative traffic.
-- Review live external failures, observability, resource access, data retention and HTTP/TLS boundary.
-
-## Failure classifications
-
-Use `FAILED_TOOL_EXECUTION`, `FAILED_RETRIEVAL`, `INSUFFICIENT_EVIDENCE`, `AUTHORIZATION_DENIED`, `INVALID_CONTRACT`, `PROVIDER_OUTCOME_UNKNOWN` and `FAILED_UI` or typed equivalents. Separate retrieval coverage failures from prompt-quality and Azure credentials failures.
-
-## Exit gate
-
-Do not declare the system production-ready from successful Docker boot or mocked Foundry outputs. The final report must distinguish implemented, tested, live-verified and deferred capabilities, and call out that public HTTP/interactive Azure CLI credentials are POC-only.
+Report each gate as `implemented`, `offline-verified`, `live-verified` or `blocked` with the exact tested SHA and evidence URL. Do not label the experiment production-ready while G1 and real n8n/P6 validations remain incomplete.
