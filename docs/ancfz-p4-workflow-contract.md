@@ -11,9 +11,9 @@ The four ANCFZ external business workflows are:
 3. `ancfz_payment_link`: create a **demo Orders** request against the ANCFZ-specific MockGateway API after explicit customer agreement and **Node-verified email OTP**; return a checkout link only if present in the actual response.
 4. `ancfz_payment_verify`: **not configured yet** for this demo Orders API. It must independently verify the provider transaction when a documented status endpoint is available. Only a real matched success authorizes `ancfz_render_pdf` with `documentType=invoice`.
 
-**Ticket creation is a direct Node/PostgreSQL operation only.** No n8n workflow or Foundry function may create tickets.
+**Ticket creation is a direct Node/PostgreSQL operation only.** No n8n workflow or Gemini model function may create tickets.
 
-Foundry Sara may conversationally discover an intent, collect customer-stated details and explain options. The model never owns the operation state, grants permission, mints an OTP, executes n8n directly or declares money received.
+Gemini Sara may conversationally discover an intent, collect customer-stated details and explain options. The model never owns the operation state, grants permission, mints an OTP, executes n8n directly or declares money received.
 
 Node owns all ticket/action state, customer scope, consent, idempotency, signed workflow dispatch, OTP challenges, provider correlation and authoritative completion statuses. n8n owns Salesforce/MockGateway HTTP calls and PDF rendering as an unprivileged integration worker.
 
@@ -80,7 +80,7 @@ Only use real, configured tax figures. The seed catalog has no validated ANCFZ p
 
 ## Customer consent and OTP
 
-Node generates a cryptographically random six-digit OTP, stores **only** a keyed digest, associates it with ticket, verified contact email, quotation fingerprint and approved amount, and expires it after 5 minutes. Limit failed attempts, throttle resends, invalidate prior challenges and forbid reuse. OTP submission occurs in a **separate authenticated HTTPS UI form**, not in conversation or a Foundry prompt. Use a configured email delivery provider; when mail cannot be sent, reject the authorization rather than returning the OTP.
+Node generates a cryptographically random six-digit OTP, stores **only** a keyed digest, associates it with ticket, verified contact email, quotation fingerprint and approved amount, and expires it after 5 minutes. Limit failed attempts, throttle resends, invalidate prior challenges and forbid reuse. OTP submission occurs in a **separate authenticated HTTPS UI form**, not in conversation or a Gemini prompt. Use a configured email delivery provider; when mail cannot be sent, reject the authorization rather than returning the OTP.
 
 The payment operation requires both OTP verification and a separate affirmative acceptance of the precise amount/currency and quotation. On local HTTP, use only non-sensitive disposable test identities; real OTP/contact information needs TLS.
 
@@ -136,7 +136,7 @@ MockGateway is a **test-only payment simulator**. Display **"Test payment confir
 9. Verified matched success: one stored invoice and ticket event; reconnecting SSE recovers it.
 10. Out-of-order/duplicate webhook, network timeout, declined checkout and restart produce no duplicate side effects.
 11. Cross-ticket/other-agent reads/actions are denied via Node owner checks and PostgreSQL RLS.
-12. Real Azure Foundry IQ, Salesforce OAuth, MockGateway live sandbox and actual n8n imports are independently smoke-verified before declaring P4 complete.
+12. Real Gemini File Search, Salesforce OAuth, MockGateway live sandbox and actual n8n imports are independently smoke-verified before declaring P4 complete.
 
 ## Required live configuration before enabling operations
 
