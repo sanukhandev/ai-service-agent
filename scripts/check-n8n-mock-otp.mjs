@@ -61,11 +61,11 @@ const AsyncFunction = Object.getPrototypeOf(async function(){}).constructor;
 const executeGate = new AsyncFunction("$input", "$env", gate.parameters.jsCode);
 const input = {
   first: () => ({json:{body:{
-    agentKey:"ancfz",ticketId:"11111111-1111-4111-8111-111111111111",
+    agentKey:"ancfz",testOnly:true,deliveryMode:"mock_datatable",ticketId:"11111111-1111-4111-8111-111111111111",
     email:"tester@example.invalid",otp:"002345",
   }}}),
 };
-const enabled = {APP_ENV:"development",ANCFZ_OTP_MOCK_ENABLED:"true"};
+const enabled = {};
 const start = Date.now();
 const rows = await executeGate(input, enabled);
 assert.equal(rows.length,1);
@@ -75,9 +75,9 @@ assert.equal(rows[0].json.status,"mock_issued");
 assert(Math.abs(new Date(rows[0].json.expiresAt).getTime() -
    new Date(rows[0].json.issuedAt).getTime() - 300000) < 100);
 assert(new Date(rows[0].json.issuedAt).getTime() >= start - 1000);
-await assert.rejects(executeGate(input, {...enabled,APP_ENV:"production"}),/disabled/i);
-await assert.rejects(executeGate(input, {...enabled,APP_ENV:"staging"}),/disabled/i);
-await assert.rejects(executeGate(input, {...enabled,ANCFZ_OTP_MOCK_ENABLED:"false"}),/disabled/i);
+await assert.rejects(executeGate({first:()=>({json:{body:{...input.first().json.body,testOnly:false}}})},enabled),/Synthetic OTP marker/);
+await assert.rejects(executeGate({first:()=>({json:{body:{...input.first().json.body,deliveryMode:"smtp"}}})},enabled),/Synthetic OTP marker/);
+await assert.rejects(executeGate({first:()=>({json:{body:{...input.first().json.body,email:"real@example.com"}}})},enabled),/Synthetic email required/);
 await assert.rejects(executeGate({first:()=>({json:{body:{...input.first().json.body,otp:"bad"}}})},enabled),/Invalid test OTP/);
 
 const schedule = cleanup.nodes.find(n => n.type === "n8n-nodes-base.scheduleTrigger");
@@ -85,7 +85,7 @@ assert.equal(schedule.parameters.rule.interval[0].minutesInterval,1);
 const deleteNode = cleanup.nodes.find(n => n.type === "n8n-nodes-base.dataTable");
 assert.equal(deleteNode.parameters.operation,"deleteRows");
 assert.deepEqual(deleteNode.parameters.filters.conditions.map(c=>[c.keyName,c.condition]),[["expiresAt","lte"]]);
-assert(cleanup.nodes.some(n=>n.parameters?.jsCode?.includes("ANCFZ_OTP_MOCK_ENABLED")));
+assert(cleanup.nodes.some(n=>n.parameters?.jsCode?.includes("cutoff")));
 
 const dir = mkdtempSync(join(tmpdir(), "n8n-mock-otp-"));
 try {
