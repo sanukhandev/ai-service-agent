@@ -4,6 +4,8 @@ on:
   pull_request:
     paths:
       - "scripts/check-n8n-anzfc-seed.mjs"
+      - "scripts/check-n8n-mock-otp.mjs"
+      - "scripts/setup-n8n-mock-otp.mjs"
       - "scripts/seed-n8n-anzfc.mjs"
       - "infra/n8n/ancfz/**"
       - ".github/workflows/n8n-seed-cross-platform.yml"
@@ -29,3 +31,5 @@ jobs:
         run: node scripts/check-n8n-anzfc-seed.mjs
       - name: Validate safe setup dry run
         run: node scripts/seed-n8n-anzfc.mjs --stage=setup --dry-run
+      - name: Validate local mock OTP add-on offline
+        run: node scripts/check-n8n-mock-otp.mjs

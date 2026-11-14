@@ -135,6 +135,9 @@ services:
       # MockGateway Demo Orders requires a configured guest identifier.
       MOCKGATEWAY_GUEST_ID: ${MOCKGATEWAY_GUEST_ID:-}
       ANCFZ_OTP_FROM_EMAIL: ${ANCFZ_OTP_FROM_EMAIL:-}
+      # Explicit local POC-only mock OTP recording. Disabled unless opted in.
+      APP_ENV: ${APP_ENV:-development}
+      ANCFZ_OTP_MOCK_ENABLED: ${ANCFZ_OTP_MOCK_ENABLED:-false}
     volumes:
       - n8n-data:/home/node/.n8n
       - ./infra/n8n/ancfz:/workflows/ancfz:ro
