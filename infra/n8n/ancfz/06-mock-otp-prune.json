@@ -39,7 +39,7 @@
       ],
       "parameters": {
         "mode": "runOnceForAllItems",
-        "jsCode": "if ($env.APP_ENV === 'production' || $env.ANCFZ_OTP_MOCK_ENABLED !== 'true') throw new Error('Mock OTP cleanup disabled outside local test mode');\nreturn [{json:{cutoff:new Date().toISOString()}}];"
+        "jsCode": "if ($env.APP_ENV !== 'development' || $env.ANCFZ_OTP_MOCK_ENABLED !== 'true') throw new Error('Mock OTP cleanup disabled outside local test mode');\nreturn [{json:{cutoff:new Date().toISOString()}}];"
       }
     },
     {
