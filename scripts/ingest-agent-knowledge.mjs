@@ -27,9 +27,9 @@ async function main(){
     console.log(JSON.stringify({dryRun:true,sources:docs},null,2));return;
   }
   if(dryRun){console.log(JSON.stringify({dryRun:true,command,arguments:args.map((s,i)=>i>3?'[REDACTED]':s)}));return;}
-  const mod=process.env.AGENT_KNOWLEDGE_REPOSITORY_MODULE;
-  if(!mod||!isAbsolute(mod))throw new Error('P2_REPOSITORY_ADAPTER_REQUIRED: set an absolute local AGENT_KNOWLEDGE_REPOSITORY_MODULE; no in-memory production fallback');
-  const adapter=await import(pathToFileURL(resolve(mod)).href);
+  // The P7 PostgreSQL repository is the sole supported persistence adapter.
+  // No arbitrary module path or in-memory repository is permitted in operator mode.
+  const adapter=await import('../services/api/dist/repositories/gemini-knowledge.js');
   if(typeof adapter.createKnowledgeRepository!=='function')throw new Error('P2_REPOSITORY_INVALID');
   const repo=await adapter.createKnowledgeRepository({operatorToken:process.env.KNOWLEDGE_OPERATOR_TOKEN});
   const [agent,version,x,y,z]=args;
