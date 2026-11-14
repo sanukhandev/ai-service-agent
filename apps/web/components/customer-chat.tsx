@@ -90,7 +90,13 @@ async function initializeTicket(agentKey: string): Promise<TicketHistory> {
       const history = await getTicket(previousId);
       if (history.ticket.agentKey !== agentKey)
         throw new ChatApiError("Ticket agent mismatch.", 404, "NOT_FOUND");
-      return history;
+      const expired = history.ticket.sessionStatus === "expired" ||
+        history.ticket.sessionStatus === "closed" ||
+        (history.ticket.expiresAt && Date.parse(history.ticket.expiresAt) <= Date.now());
+      if (!expired) return history;
+      // Preserve the old historical ticket in PostgreSQL, but begin a fresh
+      // AI session/ticket. Never copy its messages into the new model context.
+      rememberTicket(agentKey, null);
     } catch (error) {
       if (!(error instanceof ChatApiError) || error.status !== 404) throw error;
       rememberTicket(agentKey, null);
@@ -305,7 +311,20 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       const requestId = previous?.text === text ? previous.requestId : crypto.randomUUID();
       retryRequest.current = { text, requestId };
       try {
-        const accepted = await sendCustomerMessage(ticket.id, text, requestId);
+        let currentId=ticket.id;
+        let accepted;
+        try {
+          accepted=await sendCustomerMessage(currentId,text,requestId);
+        } catch(error) {
+          if (!(error instanceof ChatApiError) || error.code !== "SESSION_EXPIRED") throw error;
+          const fresh=await createTicket(agentKey);
+          rememberTicket(agentKey,fresh.id);
+          setTicket(fresh);
+          setMessages([]);
+          currentId=fresh.id;
+          // A new ticket never inherits old conversation or pending call state.
+          accepted=await sendCustomerMessage(currentId,text,crypto.randomUUID());
+        }
         retryRequest.current = null;
         setMessages((current) =>
           mergeMessages(current, [
@@ -320,7 +339,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
         setTurnState((state) =>
           state === "idle" || state === "processing" ? state : "accepted",
         );
-        void refresh();
+        if (currentId===ticket.id) void refresh();
       } catch (error) {
         setTurnState("idle");
         setSendError(`${displayError(error)} The draft is still available to retry.`);
@@ -329,7 +348,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
         sendLock.current = false;
       }
     },
-    [ticket?.id, ticket?.status, refresh],
+    [agentKey, ticket?.id, ticket?.status, refresh],
   );
 
   useLayoutEffect(() => {
