@@ -103,7 +103,7 @@ export class PostgresOperationStore implements OperationStore {
         JOIN event_outbox e ON e.agent_id=op.agent_id AND e.ticket_id=op.ticket_id AND e.id=op.outbox_id
         WHERE op.agent_id=$1 AND op.state='running' AND e.status='leased'
           AND e.lease_until<now() AND op.operation_key IN ('ancfz_salesforce_lead','ancfz_render_quote')
-        FOR UPDATE OF op,e SKIP LOCKED LIMIT 50`,[agentId]);
+        LIMIT 50 FOR UPDATE OF op,e SKIP LOCKED`,[agentId]);
       for(const row of expired.rows){
         await client.query(`UPDATE ticket_operations SET state='unknown_outcome',provider_status='lease_expired',updated_at=now()
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,[agentId,row.ticket_id,row.id]);

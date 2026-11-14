@@ -45,3 +45,8 @@ test('23 valid correlated PDF is verified only with bytes and checksum',()=>{con
 test('24 provider result with another ticket cannot complete',()=>{assert.equal(evaluateResponse(base,{...leadReply,ticketId:randomUUID()}).state,'unknown_outcome');});
 test('25 missing live inventory is retryable only before request was sent',async()=>{const x=make({registry:{current:async()=>{throw Error('api unavailable');}}});assert.equal((await x.bridge.dispatch(scope)).outcome.state,'retryable_failure');assert.equal(x.calls.length,0);});
 test('26 mock OTP cannot be used outside development opt-in',()=>{assert.throws(()=>validateActiveWorkflow('ancfz_otp_email',[{name:'ANCFZ | MOCK OTP Data Table Delivery (LOCAL ONLY)',active:true,path:'ancfz/otp-email',method:'POST',headerAuth:true}],true),/MOCK_OTP_FORBIDDEN/);});
+test('27 nginx configuration rejects public business webhook ingress (static)',async()=>{
+  const {readFileSync}=await import('node:fs');
+  const nginx=readFileSync(new URL('../../../../../infra/nginx/default.conf',import.meta.url),'utf8');
+  assert.match(nginx,/location ~ \^\/n8n\/\(\?:webhook\|webhook-test\|webhook-waiting\|form\|form-test\|form-waiting\|mcp\|mcp-test\)\(\?:\/\|\$\) \{\s*return 404;/);
+});
