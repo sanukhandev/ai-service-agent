@@ -17,8 +17,11 @@ Migration 011: ai_conversation_sessions, gemini_response_qualifications,
 gemini_response_claims, gemini_response_evidence. Ticket/session identity,
 pinned versions, opaque continuation, 60-minute database TTL and response audit.
 
-Migration 013: immutable approved/revoked document provenance and one-to-one\nqualification linkage to a supported assistant response.\n\nMigration 012: same-ticket message/source checks and approved File Search,
+Migration 012: same-ticket message/source checks and approved File Search,
 catalog and verified-operation evidence authorization.
+
+Migration 013: immutable approved/revoked document provenance and one-to-one
+qualification linkage to a supported assistant response.
 
 Migrations 001–008 remain unchanged. The migration runner checksums all 003–013
 and never resets existing records. All new private tables have FORCE RLS and
@@ -45,7 +48,8 @@ commercial authority. Catalog publication never changes an active agent version.
 4. Remove provider='foundry' and resp_-prefix assumptions from the integration-
    owned turn queue and worker. Persist opaque state using advanceContinuation.
 5. Call P4 independent verifier before factual response persistence/SSE.
-   GeminiQualificationRepository.record persists evidence decisions and\nattachAssistant links a supported audit to the persisted assistant reply; neither
+   GeminiQualificationRepository.record persists evidence decisions and
+attachAssistant links a supported audit to the persisted assistant reply; neither
    not itself authorize streaming. Catalog evidence IDs are intent/<versionId>
    or offering/<versionId>. Verified operations use the operation UUID.
 6. P3 must privately preserve originals and normalized text, record approval and
@@ -57,7 +61,8 @@ commercial authority. Catalog publication never changes an active agent version.
 
 Run: bash infra/postgres/gemini-p2-validate.sh
 
-The validator overrides every fixed named volume/network and refuses existing test state.\nIt uses ONLY ai-service-agent-gemini-p2-verify resources; runs
+The validator overrides every fixed named volume/network and refuses existing test state.
+It uses ONLY ai-service-agent-gemini-p2-verify resources; runs
 fresh/repeat migration, a checksum tamper negative test, two-agent SQL approval
 and RLS assertions, repeat catalog publication, and Node sessions tests against
 actual PostgreSQL. It removes the disposable test project afterward. Neither

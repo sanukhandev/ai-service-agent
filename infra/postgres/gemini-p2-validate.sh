@@ -9,6 +9,8 @@ export POSTGRES_PASSWORD="$(node -e 'process.stdout.write(require("node:crypto")
 export POSTGRES_APP_PASSWORD="$(node -e 'process.stdout.write(require("node:crypto").randomBytes(24).toString("hex"))')"
 export ANCFZ_CATALOG_ENV=test
 export GEMINI_MODEL_ID=gemini-2.5-flash
+# Environment must not supply usable Foundry bindings to this Gemini bootstrap.
+export FOUNDRY_PROJECT_ENDPOINT='' FOUNDRY_AGENT_NAME='' FOUNDRY_AGENT_VERSION=''
 # The base compose has fixed named volumes, independent of the project name.
 # Override every persistent resource before starting or deleting ANY test container.
 OVERRIDE="$(mktemp --suffix=-gemini-p2.yml)"

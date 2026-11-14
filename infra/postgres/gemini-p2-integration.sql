@@ -100,6 +100,21 @@ BEGIN
  THEN RAISE EXCEPTION 'Approved knowledge did not publish'; END IF;
 END $pub$;
 
+
+DO $immutable_source$
+DECLARE blocked boolean:=false;
+BEGIN
+ BEGIN
+  UPDATE gemini_source_revisions SET original_storage_ref='private://tampered'
+   WHERE agent_id='aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa'
+     AND approval_status='approved';
+ EXCEPTION WHEN others THEN blocked:=true;
+ END;
+ IF NOT blocked THEN
+   RAISE EXCEPTION 'Approved source provenance changed after publication';
+ END IF;
+END $immutable_source$;
+
 DO $unapproved_publish$
 DECLARE denied boolean:=false;
 BEGIN
