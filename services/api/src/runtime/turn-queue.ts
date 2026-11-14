@@ -231,10 +231,15 @@ export class TurnQueue {
         "UPDATE tickets SET status='open',updated_at=now() WHERE agent_id=$1 AND id=$2",
         [turn.agentId,turn.ticketId],
       );
+      const userErrorMessage = code === "FOUNDRY_SUBSCRIPTION_DISABLED"
+        ? "Sara is temporarily unavailable because the Azure AI subscription spending limit has been reached or the subscription is disabled in Azure. Please contact your Azure administrator."
+        : uncertain
+          ? "The model operation has an uncertain outcome. Please contact support before retrying."
+          : "Sara could not complete that response. You can send another message.";
+
       await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.failed",{
         requestId:turn.requestId,code,
-        message: uncertain ? "The model operation has an uncertain outcome. Please contact support before retrying."
-          : "Sara could not complete that response. You can send another message.",
+        message: userErrorMessage,
       });
       await appendEventTx(client,turn.agentId,turn.ticketId,"ticket.updated",{status:"open"});
     });

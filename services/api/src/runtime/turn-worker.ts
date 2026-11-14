@@ -146,7 +146,7 @@ export class TurnWorker {
       const uncertain=code==="FOUNDRY_FUNCTION_CONTINUATION_FAILED" ||
         code==="FOUNDRY_TIMEOUT" || code==="FOUNDRY_RESPONSE_ID_MISSING" ||
         code==="FOUNDRY_API_FAILED" || code==="RUNTIME_FAILED";
-      this.log({agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id,code,uncertain},
+      this.log({agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id,code,uncertain,errorMessage:(error as Error).message,errorStack:(error as Error).stack,errorCause:(error as any)?.cause},
         "Assistant turn failed");
       try {await this.queue.fail(turn,code,uncertain);}
       catch(failure){this.log({errorCode:(failure as Error).name,turnId:turn.id},"Failed to store turn error");}

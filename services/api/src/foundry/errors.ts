@@ -7,6 +7,7 @@ export type FoundryErrorCode =
   | "FOUNDRY_INVALID_FUNCTION_CALL"
   | "FOUNDRY_FUNCTION_CONTINUATION_FAILED"
   | "FOUNDRY_TOOL_BUDGET_EXCEEDED"
+  | "FOUNDRY_SUBSCRIPTION_DISABLED"
   | "FOUNDRY_API_FAILED";
 
 export class FoundryError extends Error {
@@ -35,6 +36,14 @@ export function classifyFoundryError(error: unknown, phase: "invoke" | "continua
     : typeof info?.statusCode === "number" ? info.statusCode : undefined;
   const name = typeof info?.name === "string" ? info.name : "";
   const code = typeof info?.code === "string" ? info.code : "";
+  const errorMsg = typeof (error as Error)?.message === "string" ? (error as Error).message : "";
+  if (
+    code === "SubscriptionNotRegistered" ||
+    code === "ReadOnlyDisabledSubscription" ||
+    /subscription.*disabled|spending.*limit|not registered with the Microsoft\.CognitiveServices/i.test(errorMsg)
+  ) {
+    return new FoundryError("FOUNDRY_SUBSCRIPTION_DISABLED", "Azure subscription is disabled or spending limit reached", false, status, error);
+  }
   if (status === 401 || status === 403 || /credential|authentication|authorization/i.test(name)) {
     return new FoundryError("FOUNDRY_AUTHENTICATION_FAILED", "Azure Foundry authentication or authorization failed", false, status, error);
   }
