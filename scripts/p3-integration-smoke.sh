@@ -45,7 +45,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 8
+test "$migrations" = 9
 # New OTP/payment/invoice tables must enforce agent-scoped row-level security.
 payment_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname IN ('ticket_payment_otps','ticket_payment_attempts','ticket_payment_invoices') AND relrowsecurity AND relforcerowsecurity")
