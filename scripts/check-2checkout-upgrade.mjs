@@ -24,12 +24,13 @@ try {
   const mock=[
     'import {readFileSync} from "node:fs";',
     'const source=[',
+    ' JSON.parse(readFileSync("infra/n8n/ancfz/02-render-pdf.json","utf8")),',
     ' JSON.parse(readFileSync("infra/n8n/ancfz/03-mockgateway-payment-link.json","utf8")),',
     ' JSON.parse(readFileSync("infra/n8n/ancfz/04-mockgateway-payment-verify.json","utf8")),',
     '];',
-    'const oldNames=["ANCFZ | MockGateway Demo Order Request (checkout URL if provided)","ANCFZ | MockGateway Demo Orders Status (Fail Closed Until Verified)"];',
-    'const oldNodes=["MockGateway Demo Orders POST","Reject Unverified Demo Order"];',
-    'const paths=["ancfz/payment-link","ancfz/payment-verify"];',
+    'const oldNames=["ANCFZ | PDF Quotation or Invoice","ANCFZ | MockGateway Demo Order Request (checkout URL if provided)","ANCFZ | MockGateway Demo Orders Status (Fail Closed Until Verified)"];',
+    'const oldNodes=["Prepare Escaped HTML","MockGateway Demo Orders POST","Reject Unverified Demo Order"];',
+    'const paths=["ancfz/render-pdf","ancfz/payment-link","ancfz/payment-verify"];',
     'const hookCred={httpHeaderAuth:{id:"feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",name:"ANCFZ - Node to n8n Webhook Header"}};',
     'const payCred={httpHeaderAuth:{id:"4d9487aa-e07b-4bfd-92b9-a9699ffb5e45",name:"ANCFZ - MockGateway Demo X-API-Key"}};',
     'const mode=process.env.MOCK_UPGRADE||"legacy";',
@@ -37,14 +38,16 @@ try {
     ' const legacy=mode!=="updated"&&mode!=="drift";',
     ' const web=structuredClone(d.nodes.find(n=>n.type==="n8n-nodes-base.webhook"));',
     ' web.credentials=hookCred;',
-    ' const old={name:oldNodes[i],type:i?"n8n-nodes-base.code":"n8n-nodes-base.httpRequest",',
-    '   credentials:i?undefined:payCred,parameters:i?{jsCode:"return []"}:{method:"POST"}};',
-    ' const content=legacy?{name:oldNames[i],nodes:[web,old],',
-    '   connections:{},settings:d.settings}:{...d};',
+    ' const old={name:oldNodes[i],type:i===1?"n8n-nodes-base.httpRequest":"n8n-nodes-base.code",',
+    '   credentials:i===1?payCred:undefined,parameters:i===1?{method:"POST"}:{jsCode:"return []"}};',
+    ' const priorInvoice=structuredClone(d);',
+    ' if(i===0)priorInvoice.nodes.find(n=>n.name==="Prepare Escaped HTML").parameters.jsCode="if(b.documentType===\\'invoice\\' && b.paymentVerified!==true) throw new Error(\\'Invoice requires verified test payment\\');";',
+    ' const content=legacy?(i===0?priorInvoice:{name:oldNames[i],nodes:[web,old],',
+    '   connections:{},settings:d.settings}):{...d};',
     ' return {...content,id:"wf-"+i,active:mode==="active"&&i===0};',
     '});',
-    'if(mode==="drift")rows[0].nodes.find(n=>n.name==="Inspect Demo Order Response").parameters.jsCode+="\\n// drift";',
-    'if(mode==="credential")rows[0].nodes.find(n=>n.name===oldNodes[0]).credentials.httpHeaderAuth.id="wrong-id";',
+    'if(mode==="drift")rows[1].nodes.find(n=>n.name==="Inspect Demo Order Response").parameters.jsCode+="\\n// drift";',
+    'if(mode==="credential")rows[1].nodes.find(n=>n.name===oldNodes[1]).credentials.httpHeaderAuth.id="wrong-id";',
     'globalThis.fetch=async (url,opts={})=>{',
     ' const u=new URL(url);const method=opts.method||"GET";',
     ' if(u.pathname.endsWith("/workflows")&&method==="GET")',
@@ -72,7 +75,7 @@ try {
   assert(inspected.workflows.every(w=>w.state==="legacy_needs_upgrade"));
   const backup=simulate("snapshot","legacy");
   assert.equal(backup.ok,true);
-  assert.equal(backup.snapshot.length,2);
+  assert.equal(backup.snapshot.length,3);
   assert(backup.snapshot.every(x=>x.document.id===x.id && /^[a-f0-9]{64}$/.test(x.hash)));
   assert.equal(simulate("apply","legacy").code,"BACKUP_REQUIRED");
   const expected=backup.snapshot.map(({id,hash})=>({id,hash}));
