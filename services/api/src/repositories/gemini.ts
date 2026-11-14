@@ -193,18 +193,26 @@ export class GeminiSessionRepository {
     });
   }
 
-  /** Authorize ticket ownership before finding its sole AI session. Expiry is evaluated by recover(). */
+  /**
+   * Status-only authorized lookup. HTTP admission and ticket GET need session
+   * metadata, NOT a repeated read of the first 500 historical messages.
+   * Browser history uses TicketMessageRepository; model uses forModelTurn().
+   */
   async forTicket(scope: TicketScope, ticketId: string) {
     requireUuid(ticketId, "ticketId");
-    const id = await this.db.withAgent(scope.agentId, async client => {
-      await authorizedTicket(client, scope, ticketId);
-      const found = await client.query<{id:string}>(
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const found=await client.query<{id:string}>(
         "SELECT id FROM ai_conversation_sessions WHERE agent_id=$1 AND ticket_id=$2",
-        [scope.agentId,ticketId],
-      );
-      return found.rows[0]?.id ?? null;
+        [scope.agentId,ticketId]);
+      if(!found.rows[0])return null;
+      const row=await lockedSession(client,scope,found.rows[0].id);
+      const at=await clock(client);
+      if(await expireIfNeeded(client,row,at))
+        return {active:false,session:mapSession({...row,status:"expired" as const,
+          continuation_opaque_ref:null,pending_tool_state_ref:null}),messages:[]};
+      return {active:true,session:mapSession(row),messages:[]};
     });
-    return id ? this.recover(scope,id) : null;
   }
 
   /**
