@@ -142,7 +142,7 @@ function usableDoc(doc: SourceRecord, agent: AgentRuntimeBinding, session: AiSes
   if (!agent.knowledge || doc.agentId !== agent.agentId || session.agentId !== agent.agentId ||
     doc.knowledgeVersionId !== agent.knowledge.knowledgeVersionId || doc.knowledgeVersionId !== session.knowledgeVersionId ||
     doc.providerStoreResourceName !== agent.knowledge.storeResourceName ||
-    agent.knowledge.state !== "published" || !agent.knowledge.approvalReference || !agent.knowledge.publishedAt ||
+    !["published","retired"].includes(agent.knowledge.state) || !agent.knowledge.approvalReference || !agent.knowledge.publishedAt ||
     doc.approvalStatus !== "approved" || doc.indexStatus !== "active" || !doc.approvalReference || !shaOK(doc.sourceSha256)) return "DOCUMENT_NOT_AUTHORIZED";
   if (!doc.verifiedText || !doc.verifiedTextSha256 || sha256(doc.verifiedText) !== doc.verifiedTextSha256) return "SOURCE_TEXT_UNAVAILABLE";
   return null;
@@ -212,7 +212,7 @@ export async function verifyGrounding(input: GroundingInput): Promise<GroundingD
     const claimText = claims[i], claimId = `claim-${i+1}`;
     const sources: { text: string; e: VerifiedClaimEvidence; kind: SemanticCheck["source"] }[] = [];
     for (const doc of authorizedDocs) for (const sentence of pieces(doc.verifiedText!)) {
-      if (!BAD_INSTRUCTIONS.test(sentence)) sources.push({ text: sentence, kind: "document", e: evidence(doc.documentVersionId, claimId, agent.agentId, "approved_file_search", doc.documentVersionId, doc.knowledgeVersionId) });
+      if (!BAD_INSTRUCTIONS.test(sentence)) sources.push({ text: sentence, kind: "document", e: evidence(doc.providerDocumentResourceName, claimId, agent.agentId, "approved_file_search", doc.documentVersionId, doc.knowledgeVersionId) });
     }
     for (const record of catalogs) for (const sentence of pieces(record.statement)) {
       if (!BAD_INSTRUCTIONS.test(sentence)) sources.push({ text: sentence, kind: "catalog", e: evidence(record.recordId, claimId, agent.agentId, "approved_catalog", record.sourceDocumentVersionId, null) });
