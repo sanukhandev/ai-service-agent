@@ -231,13 +231,29 @@ export class PurchaseOperations {
       if(!reqId)throw new PersistenceError("INVALID_INPUT","Unrecognized document requirement");
       const existing=await client.query<{id:string;sha256:string}>(
         `SELECT id,sha256 FROM ticket_purchase_documents
-          WHERE agent_id=$1 AND ticket_id=$2 AND requirement_id=$3`,
+          WHERE agent_id=$1 AND ticket_id=$2 AND requirement_id=$3 FOR UPDATE`,
         [scope.agentId,ticketId,reqId],
       );
       if(existing.rows[0]){
-        if(existing.rows[0].sha256!==digest)
-          throw new PersistenceError("CONFLICT","Document already received; replacement requires staff review");
-        return {documentId:existing.rows[0].id,requirementKey:v.requirementKey,duplicated:true};
+        const previous=existing.rows[0];
+        if(previous.sha256===digest)
+          return {documentId:previous.id,requirementKey:v.requirementKey,duplicated:true};
+        // Authorized ticket row lock serializes correction against confirmation.
+        await client.query(
+          `UPDATE ticket_purchase_documents
+             SET file_name=$4,content_type=$5,bytes=$6,sha256=$7,
+                 extracted_full_name=$8,document_number_last4=$9,
+                 extraction_model=$10,extraction_status='extracted',replaced_at=now()
+           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
+          [scope.agentId,ticketId,previous.id,v.fileName,v.contentType,bytes,digest,
+            extracted.fullName,extracted.documentNumberLast4,extracted.model],
+        );
+        // Audit both hashes without retaining outdated private document bytes.
+        await appendEventTx(client,scope.agentId,ticketId,"purchase.document.replaced",{
+          documentId:previous.id,requirementKey:v.requirementKey,
+          previousSha256:previous.sha256,sha256:digest,
+        });
+        return {documentId:previous.id,requirementKey:v.requirementKey,replaced:true,duplicated:false};
       }
       const documentId=randomUUID();
       await client.query(
