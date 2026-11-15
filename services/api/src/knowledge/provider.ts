@@ -25,6 +25,23 @@ export function assertDocumentName(store:string,s:string):void {
   assertStoreName(store);
   if(!s.startsWith(store+'/documents/')||!/^fileSearchStores\/[a-z0-9-]+\/documents\/[a-z0-9][a-z0-9-]{0,38}[a-z0-9]$/.test(s)) throw new FileSearchError('invalid',false);
 }
+// Google's long-running upload operations omit "done" while indexing is pending.
+// Normalize that absence to false; never interpret it as successful indexing.
+const operationNamePattern = /^(?:fileSearchStores\/[a-z0-9-]+\/(?:operations|upload\/operations|import\/operations)\/[a-zA-Z0-9_-]+|operations\/[a-zA-Z0-9_-]+)$/;
+function normalizeIndexOperation(value:unknown):IndexOperation {
+  if(!value || typeof value!=='object' || Array.isArray(value))
+    throw new FileSearchError('provider',false);
+  const raw=value as Record<string,unknown>;
+  if(typeof raw.name!=='string' || !operationNamePattern.test(raw.name) ||
+    (raw.done!==undefined && typeof raw.done!=='boolean'))
+    throw new FileSearchError('provider',false);
+  return {
+    name:raw.name,
+    done:raw.done===true,
+    ...(raw.error!==undefined?{error:raw.error}:{}),
+    ...(raw.response!==undefined?{response:raw.response as IndexOperation['response']}:{}),
+  };
+}
 function classified(status:number): FileSearchError {
   if(status===429) return new FileSearchError('rate_limit',true);
   if(status===408||status===504) return new FileSearchError('timeout',true);
@@ -81,13 +98,11 @@ export class GoogleFileSearchProvider implements FileSearchProvider {
       'x-goog-api-key':this.apiKey,'content-type':source.mime,'x-goog-upload-offset':'0','x-goog-upload-command':'upload, finalize',
     },body:new Uint8Array(source.data)});
     if(!res.ok) throw classified(res.status);
-    const op=await res.json() as IndexOperation;
-    if(!op.name||typeof op.done!=='boolean') throw new FileSearchError('provider',true);
-    return op;
+    return normalizeIndexOperation(await res.json());
   }
   async operation(name:string):Promise<IndexOperation> {
-    if(!/^fileSearchStores\/[a-z0-9-]+\/(?:operations|upload\/operations|import\/operations)\/[a-zA-Z0-9_-]+$/.test(name)&&!/^operations\/[a-zA-Z0-9_-]+$/.test(name))throw new FileSearchError('invalid',false);
-    return this.json('/v1beta/'+name);
+    if(!operationNamePattern.test(name))throw new FileSearchError('invalid',false);
+    return normalizeIndexOperation(await this.json('/v1beta/'+name));
   }
   async getDocument(document:string):Promise<ProviderDocument> {
     if(!/^fileSearchStores\/[a-z0-9-]+\/documents\/[a-z0-9-]+$/.test(document)) throw new FileSearchError('invalid',false);
