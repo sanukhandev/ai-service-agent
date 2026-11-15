@@ -212,7 +212,9 @@ export class TurnQueue {
         return {
           ...ref,
           title,
-          uri: `/api/v1/tickets/${turn.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`,
+          uri: /^(assistant|file)-[A-Za-z0-9_-]+$/.test(ref.sourceId)
+            ? `/api/v1/tickets/${turn.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`
+            : ref.uri,
         };
       });
       const envelope={message:{id:message.id,role:"assistant",text,createdAt:message.created_at.toISOString(),sourceReferences:enrichedRefs}};
