@@ -82,7 +82,7 @@ SELECT count(*) FROM pg_class WHERE relkind='r' AND oid IN (
  to_regclass('public.ticket_action_proposals'),
  to_regclass('public.agent_action_bindings'))")"
 test "$table_count" = '9'
-echo 'Gemini and ANCFZ migrations 001-022 coexist without number collisions'
+echo 'Gemini and ANCFZ migrations 001-023 coexist without number collisions'
 bindings="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "
 SELECT count(*) FROM agent_action_bindings b JOIN agents a ON a.id=b.agent_id
 WHERE a.agent_key='ancfz' AND b.enabled=true")"
@@ -98,6 +98,8 @@ fi
 rm -f "$tampered"
 echo 'TEST 4: PostgreSQL approval, RLS and role checks'
 compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 < infra/postgres/gemini-p2-integration.sql
+echo 'TEST 4A: Linked pending source receives one reviewed approval; provenance stays immutable'
+compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -v ON_ERROR_STOP=1 < infra/postgres/gemini-source-approval-test.sql
 echo 'TEST 5: Catalog publish and repeat without agent mutation'
 before="$(compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" -c "SELECT active_version_id FROM agents WHERE agent_key='ancfz'")"
 bash scripts/publish-ancfz-test-catalog.sh --publish-test
