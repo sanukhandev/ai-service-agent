@@ -336,6 +336,17 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     }
   },[ticket?.id,hasOlder,olderLoading,messages]);
 
+  // Only poll when SSE is not delivering events; normal connected sessions
+  // remain event-driven. Reconcile both transcript and action panels.
+  useEffect(() => {
+    if(!ticket || loadState!=="ready" || stream==="connected")return;
+    const timer=setInterval(()=>{
+      void refresh();
+      schedulePanelRefresh();
+    },10000);
+    return ()=>clearInterval(timer);
+  },[ticket?.id,loadState,stream,refresh,schedulePanelRefresh]);
+
   const send = useCallback(
     async (text: string) => {
       if (!ticket || sendLock.current || ticket.status === "closed")
