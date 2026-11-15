@@ -322,3 +322,33 @@ test('File Search rejects malformed operation names and done types without accep
     async()=>new Response(JSON.stringify({name,done:'true'}),{status:200}),1);
   await assert.rejects(badPoll.operation(name),/FILE_SEARCH_PROVIDER/);
 });
+
+
+test('long DOCX source normalizes without truncation and remains bounded',async()=>{
+  const mime='application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+  // Exercise multiple Word paragraphs so the cumulative counter, not a repeated
+  // full document join, enforces the normalized evidence limit.
+  const content=Array.from({length:12},(_,i)=>'Section '+i+': '+'A'.repeat(20000));
+  const xml='<w:document><w:body>'+content.map(p=>
+    '<w:p><w:r><w:t>'+p+'</w:t></w:r></w:p>').join('')+'</w:body></w:document>';
+  const docx=mkzip('word/document.xml',xml);
+  const expected=content.join('\n');
+  assert.ok(expected.length>200000);
+  assert.ok(expected.length<1000000);
+  const extracted=await normalizedSourceText(docx,mime);
+  assert.equal(extracted,expected);
+  assert.equal(extracted.length,expected.length);
+
+  // Both text and DOCX must still reject sources over the expanded hard cap.
+  const cap=1000000;
+  assert.equal((await normalizedSourceText(Buffer.from('B'.repeat(cap)), 'text/plain')).length,cap);
+  await assert.rejects(
+    normalizedSourceText(Buffer.from('B'.repeat(cap+1)), 'text/plain'),
+    /KNOWLEDGE_NORMALIZED_TEXT_TOO_LARGE/
+  );
+  const oversized=mkzip('word/document.xml',
+    '<w:document><w:body><w:p><w:t>'+'C'.repeat(cap+1)+
+    '</w:t></w:p></w:body></w:document>');
+  await assert.rejects(normalizedSourceText(oversized,mime),
+    /KNOWLEDGE_NORMALIZED_TEXT_TOO_LARGE/);
+});
