@@ -72,6 +72,7 @@ async function run(){
     });
     const doc1=Buffer.from("%PDF-1.4\n"+("A".repeat(260))+"\n%%EOF\n");
     const doc2=Buffer.from("%PDF-1.4\n"+("B".repeat(260))+"\n%%EOF\n");
+    const correctedPassport=Buffer.from("%PDF-1.4\n"+("C".repeat(260))+"\n%%EOF\n");
     const upload=async (requirementKey:string,bytes:Buffer)=>purchases.upload(scope,ticketId,{
       requirementKey,fileName:requirementKey+".pdf",
       contentType:"application/pdf",dataBase64:bytes.toString("base64"),
@@ -79,7 +80,18 @@ async function run(){
     const first=await upload("passport",doc1);
     assert.equal(first.duplicated,false);
     assert.equal((await upload("passport",doc1)).duplicated,true);
-    await assert.rejects(()=>upload("passport",doc2),conflict);
+    const replaced=await upload("passport",correctedPassport);
+    assert.equal(replaced.replaced,true);
+    assert.equal(replaced.documentId,first.documentId);
+    const audit=await db.withAgent(agent.id,async client=>{
+      const row=await client.query<{payload:{previousSha256:string;sha256:string}}>(
+        "SELECT payload FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2 AND event_type='purchase.document.replaced' ORDER BY sequence DESC LIMIT 1",
+        [agent.id,ticketId],
+      );
+      return row.rows[0]?.payload;
+    });
+    assert.equal(audit?.previousSha256,createHash("sha256").update(doc1).digest("hex"));
+    assert.equal(audit?.sha256,createHash("sha256").update(correctedPassport).digest("hex"));
     await assert.rejects(()=>purchases.confirm(scope,ticketId,consent),conflict);
     const second=await upload("emirates_id",doc2);
     assert.ok(second.documentId);
@@ -92,7 +104,7 @@ async function run(){
     assert.equal(checklist.requirements.find(d=>d.key==="emirates_id")?.uploaded,true);
     const downloaded=await purchases.download(scope,ticketId,
       checklist.requirements.find(d=>d.key==="passport")?.documentId??"");
-    assert(downloaded.bytes.equals(doc1));
+    assert(downloaded.bytes.equals(correctedPassport));
     await assert.rejects(()=>purchases.confirm(scope,ticketId,{...consent,amount:"1.00"}),conflict);
     const created=await purchases.confirm(scope,ticketId,consent);
     assert.equal(created.confirmed,true);
