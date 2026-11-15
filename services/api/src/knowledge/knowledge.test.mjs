@@ -254,3 +254,71 @@ test("approved TXT, DOCX and text PDF normalize deterministically; unverified bi
   await assert.rejects(normalizedSourceText(Buffer.from(""),"application/pdf"),
     /KNOWLEDGE_UNSAFE_SOURCE_SIZE/);
 });
+
+
+test('File Search accepts a pending upload operation with omitted done, then polls to completion',async()=>{
+  const store='fileSearchStores/test-123',name=store+'/upload/operations/op-123';
+  const endpoint='https://generativelanguage.googleapis.com';
+  const uploadUrl=endpoint+'/upload/v1beta/fileSearchStores/test-123:uploadToFileSearchStore?upload_id=mock';
+  const source=validateSource('sample.txt',Buffer.from('Synthetic approved text'));
+  const metadata={agentId:AGENT,documentVersionId:REV};
+  const seen=[];
+  const fetcher=async(url,init)=>{
+    seen.push(String(url));
+    if(String(url)===endpoint+'/upload/v1beta/'+store+':uploadToFileSearchStore'){
+      assert.equal(init.method,'POST');
+      assert.equal(init.headers['x-goog-upload-command'],'start');
+      assert.deepEqual(JSON.parse(init.body).customMetadata,
+        Object.entries(metadata).map(([key,stringValue])=>({key,stringValue})));
+      return new Response(null,{status:200,headers:{'x-goog-upload-url':uploadUrl}});
+    }
+    if(String(url)===uploadUrl){
+      assert.equal(init.headers['x-goog-upload-command'],'upload, finalize');
+      assert.equal(Buffer.from(init.body).toString('utf8'),'Synthetic approved text');
+      return new Response(JSON.stringify({name}),{status:200});
+    }
+    if(String(url)===endpoint+'/v1beta/'+name){
+      return new Response(JSON.stringify({name,done:true,response:{
+        documentName:store+'/documents/doc-123'
+      }}),{status:200});
+    }
+    throw Error('Unexpected request');
+  };
+  const google=new GoogleFileSearchProvider('synthetic-test-key',fetcher,1);
+  const pending=await google.upload(store,source,metadata);
+  assert.deepEqual(pending,{name,done:false});
+  const completed=await google.operation(pending.name);
+  assert.equal(completed.done,true);
+  assert.equal(completed.response.documentName,store+'/documents/doc-123');
+  assert.equal(seen.length,3);
+});
+
+test('File Search polling treats missing done as pending and preserves provider errors',async()=>{
+  const name='fileSearchStores/test-123/upload/operations/op-123';
+  const responses=[{name},{name,done:true,error:{code:500,message:'Synthetic indexing failure'}}];
+  const fetcher=async()=>new Response(JSON.stringify(responses.shift()),{status:200});
+  const google=new GoogleFileSearchProvider('synthetic-test-key',fetcher,1);
+  assert.deepEqual(await google.operation(name),{name,done:false});
+  const failed=await google.operation(name);
+  assert.equal(failed.done,true);
+  assert.equal(failed.error.code,500);
+});
+
+test('File Search rejects malformed operation names and done types without accepting indexing',async()=>{
+  const store='fileSearchStores/test-123',name=store+'/upload/operations/op-123';
+  const uploadUrl='https://generativelanguage.googleapis.com/upload/v1beta/upload-session';
+  const source=validateSource('sample.txt',Buffer.from('Synthetic approved text'));
+  for(const body of [null,{}, {name:'other-store/operations/op-123'}, {name,done:'false'}, {name,done:0}]){
+    let calls=0;
+    const fetcher=async()=>++calls===1
+      ?new Response(null,{status:200,headers:{'x-goog-upload-url':uploadUrl}})
+      :new Response(JSON.stringify(body),{status:200});
+    const google=new GoogleFileSearchProvider('synthetic-test-key',fetcher,1);
+    await assert.rejects(google.upload(store,source,{}),e=>
+      e instanceof FileSearchError&&e.code==='provider'&&e.retryable===false);
+    assert.equal(calls,2);
+  }
+  const badPoll=new GoogleFileSearchProvider('synthetic-test-key',
+    async()=>new Response(JSON.stringify({name,done:'true'}),{status:200}),1);
+  await assert.rejects(badPoll.operation(name),/FILE_SEARCH_PROVIDER/);
+});
