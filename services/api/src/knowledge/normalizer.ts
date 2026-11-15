@@ -5,7 +5,8 @@
 import { PDFParse } from "pdf-parse";
 import { zipEntries } from "./intake.js";
 
-const MAX_NORMALIZED_CHARACTERS = 200_000;
+// Hard ceiling for trusted normalized source text; source/archive byte caps remain enforced.
+const MAX_NORMALIZED_CHARACTERS = 1_000_000;
 
 function xmlText(raw:string):string {
   return raw.replace(/&(amp|lt|gt|quot|apos|#\d+|#x[0-9a-fA-F]+);/g,(source,token:string)=>{
@@ -24,6 +25,7 @@ function docxText(bytes:Buffer):string {
   if(!main)throw new Error("KNOWLEDGE_MISSING_DOCX_TEXT");
   const xml=new TextDecoder("utf-8",{fatal:true}).decode(main.data);
   const paragraphs:string[]=[];
+  let totalCharacters=0;
   for(const m of xml.matchAll(/<w:p(?:\s[^>]*)?>([\s\S]*?)<\/w:p>/g)){
     const parts:string[]=[];
     const body=m[1]??"";
@@ -31,9 +33,12 @@ function docxText(bytes:Buffer):string {
       if(fragment[1]!==undefined)parts.push(xmlText(fragment[1]));
       else parts.push(" ");
     }
-    if(parts.join("").trim())paragraphs.push(parts.join(""));
-    if(paragraphs.join("\n").length>MAX_NORMALIZED_CHARACTERS)
+    const paragraph=parts.join("");
+    if(!paragraph.trim())continue;
+    totalCharacters+=paragraph.length+(paragraphs.length?1:0);
+    if(totalCharacters>MAX_NORMALIZED_CHARACTERS)
       throw new Error("KNOWLEDGE_NORMALIZED_TEXT_TOO_LARGE");
+    paragraphs.push(paragraph);
   }
   return paragraphs.join("\n");
 }
