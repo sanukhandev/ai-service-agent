@@ -22,6 +22,7 @@ import {
   createTicket,
   eventFailureMessage,
   getTicket,
+  getOlderMessages,
   messageFromEvent,
   sendCustomerMessage,
   ticketFromEvent,
@@ -136,6 +137,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadState, setLoadState] = useState<LoadState>("loading");
   const [ticket, setTicket] = useState<Ticket | null>(null);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [hasOlder, setHasOlder] = useState(false);
+  const [olderLoading, setOlderLoading] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
+  const prependRestore = useRef<{height:number;top:number}|null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
@@ -174,6 +179,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
         if (!subscribed) return;
         setTicket(history.ticket);
         setMessages(history.messages);
+        setHasOlder(history.hasOlder===true);
         setTurnState(history.ticket.status === "processing" ? "processing" : "idle");
         setLoadError(null);
         setLoadState("ready");
@@ -193,6 +199,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     retryRequest.current = null;
     setTicket(null);
     setMessages([]);
+    setHasOlder(false);
+    setOlderLoading(false);
+    setOlderError(null);
+    prependRestore.current=null;
     setTurnState("idle");
     setSendError(null);
     setLoadError(null);
@@ -305,6 +315,27 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     schedulePanelRefresh();
   });
 
+  const loadOlder = useCallback(async () => {
+    if(!ticket || !hasOlder || olderLoading) return;
+    const before=messages.find(m=>m.sequence)?.sequence;
+    if(!before) { setHasOlder(false);return; }
+    setOlderLoading(true);
+    setOlderError(null);
+    const panel=transcriptRef.current;
+    if(panel) prependRestore.current={height:panel.scrollHeight,top:panel.scrollTop};
+    try {
+      const page=await getOlderMessages(ticket.id,before);
+      setHasOlder(page.hasOlder);
+      if(page.messages.length) setMessages(existing=>mergeMessages(existing,page.messages));
+      else prependRestore.current=null;
+    } catch(error) {
+      prependRestore.current=null;
+      setOlderError(displayError(error));
+    } finally {
+      setOlderLoading(false);
+    }
+  },[ticket?.id,hasOlder,olderLoading,messages]);
+
   const send = useCallback(
     async (text: string) => {
       if (!ticket || sendLock.current || ticket.status === "closed")
@@ -349,6 +380,12 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     const added = messages.length > prevMessageCount.current;
     prevMessageCount.current = messages.length;
     if (!added) return;
+    if (prependRestore.current) {
+      const {height,top}=prependRestore.current;
+      prependRestore.current=null;
+      panel.scrollTop=top+panel.scrollHeight-height;
+      return;
+    }
     if (followLatest.current) {
       panel.scrollTo({ top: panel.scrollHeight, behavior: "auto" });
       setShowLatest(false);
@@ -591,6 +628,14 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             </div>
           )}
 
+          {/* Owner-scoped cursor pagination; never replace newer SSE messages. */}
+          {loadState==="ready" && hasOlder && messages.length>0 && (
+            <button type="button" disabled={olderLoading} onClick={()=>{void loadOlder();}}
+              className="mb-4 self-center rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-medium text-zinc-800 shadow-sm disabled:opacity-50">
+              {olderLoading?"Loading earlier messages…":"Load earlier messages"}
+            </button>
+          )}
+          {olderError && <p role="alert" className="mb-3 text-center text-xs text-rose-700">{olderError}</p>}
           {/* Conversation History */}
           {messages.length > 0 && (
             <ol
