@@ -278,7 +278,7 @@ export class PaymentOperations {
         paymentId:attemptId,quotationId:input.quotationId,
       });
       // OTP verification, payment queue and assistant message commit atomically.
-      await new TicketMessageRepository(this.db).createAssistantMessageTx(
+      await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
         client,scope,ticketId,lifecycleNoticeId("otp.verified",row.id),
         "Your synthetic test OTP has been verified. Your sandbox order is queued; payment has not yet been confirmed.",
       );

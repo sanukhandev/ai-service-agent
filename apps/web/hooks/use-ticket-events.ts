@@ -37,6 +37,7 @@ const eventNames = [
   "ticket.summary.updated",
   "ticket.service_request.recorded",
   "purchase.document.received",
+  "purchase.document.replaced",
   "purchase.confirmed",
   "payment.otp_requested",
   "payment.queued",

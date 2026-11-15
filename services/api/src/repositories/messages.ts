@@ -205,8 +205,46 @@ export class TicketMessageRepository {
     });
   }
 
+  /** Cursor page of older messages; page is returned oldest-to-newest.
+   * Returns one extra row to determine whether earlier history exists.
+   */
+  async messagesBefore(scope: TicketScope, ticketId: string, before: string, limit = 100):
+    Promise<{messages: MessageRecord[]; hasOlder: boolean}> {
+    const beforeSeq = cursor(before);
+    if(beforeSeq === "0") throw new PersistenceError("INVALID_INPUT","Message before cursor must be positive");
+    const take = pageSize(limit, 200);
+    return this.db.withAgent(scope.agentId, async client => {
+      await authorizedTicket(client,scope,ticketId);
+      const result = await client.query<MessageRow>(
+        "SELECT * FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND message_sequence<$3::bigint ORDER BY message_sequence DESC LIMIT $4",
+        [scope.agentId,ticketId,beforeSeq,take+1],
+      );
+      return {
+        messages:result.rows.slice(0,take).reverse().map(mapMessage),
+        hasOlder:result.rows.length>take,
+      };
+    });
+  }
+
+  /** Look up an exact citation on any page, never just the first 200 messages. */
+  async citedSource(scope: TicketScope, ticketId: string, sourceId: string):
+    Promise<SourceReference | null> {
+    requireBounded(sourceId,"sourceId",512);
+    return this.db.withAgent(scope.agentId, async client => {
+      await authorizedTicket(client,scope,ticketId);
+      const result = await client.query<{source_references:SourceReference[]}>(
+        `SELECT source_references FROM ticket_messages
+          WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant'
+            AND source_references @> jsonb_build_array(jsonb_build_object('sourceId',$3::text))
+          ORDER BY message_sequence DESC LIMIT 1`,
+        [scope.agentId,ticketId,sourceId],
+      );
+      return result.rows[0]?.source_references.find(x=>x.sourceId===sourceId)??null;
+    });
+  }
+
   async recentMessages(scope: TicketScope, ticketId: string, limit = 20): Promise<MessageRecord[]> {
-    const take = pageSize(limit, 100);
+    const take = pageSize(limit, 200);
     return this.db.withAgent(scope.agentId, async (client) => {
       await authorizedTicket(client, scope, ticketId);
       const result = await client.query<MessageRow>(

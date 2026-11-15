@@ -79,10 +79,12 @@ export function PurchaseChecklist({
       if(!["application/pdf","image/png","image/jpeg"].includes(file.type))
         throw Error("Use a PDF, PNG or JPEG file");
       const dataBase64=await asBase64(file);
-      await json(url+"/documents","POST",{
+      const result=await json(url+"/documents","POST",{
         requirementKey:key,fileName:file.name,contentType:file.type,dataBase64,
-      });
-      setNotice("Test document received in your private ticket. Document authenticity is not verified.");
+      }) as {replaced?:boolean;duplicated?:boolean};
+      setNotice(result.replaced
+        ? "The previous test document was replaced. Document authenticity is not verified."
+        : "Test document received in your private ticket. Document authenticity is not verified.");
       await load();
     }catch(e){setError(e instanceof Error?e.message:"Document upload failed");}
     finally{setBusy(null);}
@@ -124,17 +126,18 @@ export function PurchaseChecklist({
     {data.requirements.map(item=><div key={item.key} className="rounded border border-slate-200 p-2 text-xs">
       <p className="font-medium">{item.label}{item.required?" (required)":""}</p>
       {item.guidance&&<p className="mt-1 text-slate-600">{item.guidance}</p>}
-      {item.uploaded?<p className="mt-1 text-emerald-800">
+      {item.uploaded&&<p className="mt-1 text-emerald-800">
         Received: {item.fileName}
         {item.documentId&&<a className="ml-2 underline"
           href={url+"/documents/"+encodeURIComponent(item.documentId)}>Download</a>}
-      </p>:<label className="mt-2 block">
-        Upload PDF, PNG or JPEG (max 1 MiB)
+      </p>}
+      <label className="mt-2 block">
+        {item.uploaded?"Replace this test document before confirmation":"Upload PDF, PNG or JPEG (max 1 MiB)"}
         <input className="mt-1 block w-full text-xs" type="file"
           accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
           disabled={busy!==null}
           onChange={e=>{void upload(item.key,e.target.files?.[0]);e.target.value="";}}/>
-      </label>}
+      </label>
     </div>)}
     {data.billingName&&<p className="text-xs font-medium text-slate-700">Document-derived billing name: {data.billingName}</p>}
     {data.missing.includes("identity_name_mismatch")&&<p role="alert" className="text-xs text-rose-700">The passport and Emirates ID holder names disagree. Invoice creation is blocked until resolved.</p>}

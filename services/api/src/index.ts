@@ -7,6 +7,7 @@ import { N8nQuoteWorker } from "./runtime/n8n-quote-worker.js";
 import { N8nPaymentWorker } from "./runtime/n8n-payment-worker.js";
 import { N8nInvoiceWorker } from "./runtime/n8n-invoice-worker.js";
 import { N8nPaymentVerificationWorker } from "./runtime/n8n-payment-verification-worker.js";
+import { LifecycleNoticeRecovery } from "./runtime/lifecycle-notice-recovery.js";
 
 const port=Number(process.env.API_PORT??"4000");
 const host=process.env.API_HOST??"0.0.0.0";
@@ -21,6 +22,7 @@ const quoteWorker=new N8nQuoteWorker(db,(data,message)=>app.log.info(data,messag
 const paymentWorker=new N8nPaymentWorker(db,(data,message)=>app.log.info(data,message));
 const invoiceWorker=new N8nInvoiceWorker(db,(data,message)=>app.log.info(data,message));
 const verificationWorker=new N8nPaymentVerificationWorker(db,(data,message)=>app.log.info(data,message));
+const noticeRecovery=new LifecycleNoticeRecovery(db,(data,message)=>app.log.info(data,message));
 app.addHook("onClose",async()=>{
   worker.stop();
   leadWorker.stop();
@@ -28,6 +30,7 @@ app.addHook("onClose",async()=>{
   paymentWorker.stop();
   invoiceWorker.stop();
   verificationWorker.stop();
+  noticeRecovery.stop();
   await db.close();
 });
 
@@ -44,6 +47,7 @@ try {
   paymentWorker.start();
   invoiceWorker.start();
   verificationWorker.start();
+  noticeRecovery.start();
 } catch(error) {
   app.log.error({errorCode:(error as Error).name,message:(error as Error).message},"Runtime startup failed");
   process.exitCode=1;

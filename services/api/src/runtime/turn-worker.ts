@@ -50,7 +50,11 @@ function authorizedTools(config:Record<string,unknown>):ReadonlySet<RegisteredTo
 }
 
 export class TurnWorker {
-  private busy=false;
+  private tickInProgress=false;
+  private active=0;
+  // Ticket turns remain ordered by TurnQueue.claim; unrelated tickets can run concurrently.
+  // Keep this deliberately small to cap Azure model calls and PostgreSQL pressure.
+  private readonly concurrency=3;
   private stopped=false;
   private lastRecovery=0;
   private timer:ReturnType<typeof setInterval>|undefined;
@@ -79,19 +83,30 @@ export class TurnWorker {
   }
 
   private async tick():Promise<void> {
-    if(this.busy||this.stopped) return;
-    this.busy=true;
+    if(this.tickInProgress||this.stopped||this.active>=this.concurrency)return;
+    this.tickInProgress=true;
     try {
       if(Date.now()-this.lastRecovery>30000) {
         await this.queue.reconcileMissing();
         await this.queue.recoverAbandoned();
         this.lastRecovery=Date.now();
       }
-      const turn=await this.queue.claim();
-      if(turn) await this.process(turn);
+      while(!this.stopped && this.active<this.concurrency) {
+        const turn=await this.queue.claim();
+        if(!turn)break;
+        this.active++;
+        // Only the next ticket turn is claimed; the queue's SQL predicate
+        // serializes each ticket's previous_response_id across worker slots.
+        void this.process(turn).catch(error=>{
+          this.log({errorCode:(error as Error).name,turnId:turn.id},"Unexpected turn worker error");
+        }).finally(()=>{
+          this.active--;
+          if(!this.stopped)void this.tick();
+        });
+      }
     } catch(error) {
       this.log({errorCode:(error as Error).name},"Turn worker polling failed");
-    } finally {this.busy=false;}
+    } finally {this.tickInProgress=false;}
   }
 
   private async process(turn:PendingTurn):Promise<void> {

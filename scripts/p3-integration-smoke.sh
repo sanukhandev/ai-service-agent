@@ -45,7 +45,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 11
+test "$migrations" = 12
 # New OTP/payment/invoice tables must enforce agent-scoped row-level security.
 payment_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname IN ('ticket_payment_otps','ticket_payment_attempts','ticket_payment_invoices') AND relrowsecurity AND relforcerowsecurity")
@@ -156,5 +156,25 @@ test "$otp_disabled" = 503
 printf '%s\n' 'P5 scoped payment tables and disabled-by-default routes PASS'
 
 
+
+
+# Long-ticket regression: the customer must see the newest 200 messages, with
+# authenticated cursor access to older history (not the oldest 200 forever).
+history_ticket=$(curl --fail --silent --show-error -b "$jar" -H 'Content-Type: application/json' -d '{}'   http://localhost/api/v1/agents/ancfz/tickets)
+history_id=$(printf '%s' "$history_ticket" | python3 -c 'import json,sys;print(json.load(sys.stdin)["id"])')
+docker compose exec -T postgres psql -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" <<SQL
+UPDATE tickets SET last_message_sequence=205 WHERE id='$history_id';
+INSERT INTO ticket_messages(agent_id,ticket_id,role,content,request_id,source_references,message_sequence)
+SELECT t.agent_id,t.id,'assistant','CI historical message '||n::text,
+       gen_random_uuid(),'[]'::jsonb,n
+FROM tickets t CROSS JOIN generate_series(1,205) n WHERE t.id='$history_id';
+SQL
+latest=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$history_id")
+printf '%s' "$latest" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert len(d["messages"])==200;assert d["messages"][0]["sequence"]=="6";assert d["messages"][-1]["sequence"]=="205";assert d["hasOlder"]'
+older=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$history_id/messages?before=6&limit=100")
+printf '%s' "$older" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert [m["sequence"] for m in d["messages"]]==[str(i) for i in range(1,6)];assert not d["hasOlder"]'
+denied_older=$(curl -s -o /dev/null -w '%{http_code}' "http://localhost/api/v1/tickets/$history_id/messages?before=6")
+test "$denied_older" = 404
+printf '%s\n' 'Long-ticket regression PASS: newest-window bootstrap, owner-scoped older pagination'
 
 printf '%s\n' 'Live Foundry and browser certification remain BLOCKED without credentials.'

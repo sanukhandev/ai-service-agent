@@ -43,6 +43,8 @@ jobs:
         run: node scripts/check-p5-2checkout.mjs
       - name: Validate SSE milestone notices and fail-safe persistence
         run: node scripts/check-sse-lifecycle-notifications.mjs
+      - name: Validate bounded multi-ticket worker concurrency
+        run: node scripts/check-turn-worker-concurrency.mjs
       - name: Validate Compose and Nginx-only ingress
         run: |
           docker compose config --quiet
