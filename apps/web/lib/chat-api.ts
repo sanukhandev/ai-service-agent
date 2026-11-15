@@ -22,12 +22,19 @@ export interface ChatMessage {
   role: "customer" | "assistant";
   text: string;
   createdAt: string;
+  sequence?: string;
   sourceReferences?: SourceReference[];
 }
 
 export interface TicketHistory {
   ticket: Ticket;
   messages: ChatMessage[];
+  hasOlder?: boolean;
+}
+
+export interface OlderMessagesPage {
+  messages: ChatMessage[];
+  hasOlder: boolean;
 }
 
 export interface AcceptedMessage {
@@ -81,6 +88,7 @@ export function validMessage(value: unknown): value is ChatMessage {
     (value.role === "customer" || value.role === "assistant") &&
     typeof value.text === "string" &&
     typeof value.createdAt === "string" &&
+    (value.sequence === undefined || (typeof value.sequence === "string" && /^[1-9][0-9]*$/.test(value.sequence))) &&
     (value.sourceReferences === undefined ||
       (Array.isArray(value.sourceReferences) && value.sourceReferences.every(validSource)))
   );
@@ -141,6 +149,17 @@ export async function getTicket(ticketId: string): Promise<TicketHistory> {
   if (!isRecord(data) || !validTicket(data.ticket) || data.ticket.id !== ticketId ||
       !Array.isArray(data.messages) || !data.messages.every(validMessage)) invalidContract();
   return data as unknown as TicketHistory;
+}
+
+/** Owner-scoped older transcript window, newest-first in SQL but ascending on wire. */
+export async function getOlderMessages(ticketId: string, beforeSequence: string): Promise<OlderMessagesPage> {
+  if (!/^[1-9][0-9]{0,18}$/.test(beforeSequence))
+    throw new ChatApiError("Invalid conversation cursor.",0,"INVALID_CURSOR");
+  const path=`/api/v1/tickets/${encodeURIComponent(ticketId)}/messages?before=${encodeURIComponent(beforeSequence)}&limit=100`;
+  const data=await request(path,{method:"GET"},200);
+  if(!isRecord(data)||!Array.isArray(data.messages)||!data.messages.every(validMessage)||
+    typeof data.hasOlder!=="boolean")invalidContract();
+  return data as unknown as OlderMessagesPage;
 }
 
 export async function sendCustomerMessage(
