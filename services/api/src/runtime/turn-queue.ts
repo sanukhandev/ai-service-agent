@@ -95,7 +95,10 @@ export class TurnQueue {
             "JOIN ticket_messages m ON m.agent_id=q.agent_id AND m.id=q.customer_message_id",
             "WHERE q.agent_id=$1 AND q.state='queued' AND t.status <> 'closed'",
             "AND NOT EXISTS (SELECT 1 FROM ticket_turns earlier WHERE earlier.agent_id=q.agent_id",
-            "AND earlier.ticket_id=q.ticket_id AND earlier.state NOT IN ('completed','failed')",
+            // Uncertain turns are terminal for ordering, NOT candidates for replay:
+            // Model tools cannot perform external actions and are source-message idempotent.
+            // New customer messages may proceed from the last committed Foundry cursor.
+            "AND earlier.ticket_id=q.ticket_id AND earlier.state NOT IN ('completed','failed','uncertain')",
             "AND EXISTS (SELECT 1 FROM ticket_messages em WHERE em.agent_id=earlier.agent_id",
             "AND em.id=earlier.customer_message_id AND em.message_sequence<m.message_sequence))",
             "ORDER BY m.message_sequence,q.id FOR UPDATE OF q SKIP LOCKED LIMIT 1)",
