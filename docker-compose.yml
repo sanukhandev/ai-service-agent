@@ -69,6 +69,40 @@ services:
     networks: [frontend, backend]
     restart: unless-stopped
 
+  # Opt-in, operator-only knowledge ingestion. Never starts with normal 'up'.
+  # Uses the same compiled code as the API, but owner credentials and write access
+  # are restricted to this one-off profile and never reach the chat container.
+  knowledge-operator:
+    profiles: [knowledge-operator]
+    build:
+      context: .
+      dockerfile: services/api/Dockerfile
+    user: "0:0"
+    working_dir: /app
+    entrypoint: ["node", "/app/scripts/ingest-agent-knowledge.mjs"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent_gemini}
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your private .env}
+      KNOWLEDGE_DATABASE_URL: ""
+      KNOWLEDGE_OPERATOR_MODE: "true"
+      KNOWLEDGE_OPERATOR_TOKEN: ${KNOWLEDGE_OPERATOR_TOKEN:-}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      GEMINI_FILE_SEARCH_MODEL: ${GEMINI_FILE_SEARCH_MODEL:-gemini-3.8-flash}
+      AGENT_KNOWLEDGE_ORIGINALS_ROOT: /app/approved-text
+    volumes:
+      # API reads approved normalized text read-only from this same host vault.
+      - ${GEMINI_APPROVED_TEXT_ROOT_HOST:-./private/gemini-approved}:/app/approved-text:rw
+      - ${KNOWLEDGE_SOURCE_ROOT_HOST:-./private/gemini-sources}:/sources:ro
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
   # One-off migration owner. Never give its password to the Node runtime.
   migrate:
     image: postgres:16-alpine
