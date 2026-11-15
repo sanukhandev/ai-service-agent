@@ -16,6 +16,7 @@
 | [Docker and Nginx](07-docker-and-deployment.md) | One public port, local Azure CLI volume |
 | [Customer UI](08-ui-guidelines.md) | Minimal Next.js, Tailwind and self-hosted Inter |
 | [Testing and acceptance](09-testing-and-acceptance.md) | Smoke vs deferred H1 hardening |
+| [Flow reliability and recovery](flow-reliability-hardening.md) | Uncertain turns, event recovery, document correction and cursor pagination |
 | [POC phases](10-implementation-plan.md) | P0–P7 delivery plan |
 | [Intent-driven employee conversation](11-intent-conversation-and-node-ownership.md) | How Node catalog, ticket facts and Foundry tools work |
 | [Service employee instructions](../services/api/prompts/sara-service-employee.md) | Sara's natural, non-robotic prompt |
