@@ -8,6 +8,7 @@ import {readFile} from 'node:fs/promises';
 import {readSourceFile,readArchiveFile,withPrivateStage,expandApprovedArchive} from '../services/api/dist/knowledge/intake.js';
 import {GoogleFileSearchProvider} from '../services/api/dist/knowledge/provider.js';
 import {KnowledgePublisher} from '../services/api/dist/knowledge/publisher.js';
+import {normalizedSourceText} from '../services/api/dist/knowledge/normalizer.js';
 
 const [command,...raw]=process.argv.slice(2);
 const dryRun=raw.includes('--dry-run');const args=raw.filter(x=>x!=='--dry-run');
@@ -21,8 +22,8 @@ async function main(){
       if(file.toLowerCase().endsWith('.zip')){
         if(process.env.KNOWLEDGE_ENABLE_ARCHIVES!=='true')throw new Error('ZIP_DISABLED');
         const bytes=await readArchiveFile(file);
-        for(const doc of expandApprovedArchive(file,bytes,true))docs.push({name:doc.name,sha256:doc.sha256,mime:doc.mime,bytes:doc.data.length});
-      }else {const doc=await readSourceFile(file);docs.push({name:doc.name,sha256:doc.sha256,mime:doc.mime,bytes:doc.data.length});}
+        for(const doc of expandApprovedArchive(file,bytes,true))docs.push({name:doc.name,sha256:doc.sha256,mime:doc.mime,bytes:doc.data.length,normalizedCharacters:(await normalizedSourceText(doc.data,doc.mime)).length});
+      }else {const doc=await readSourceFile(file);docs.push({name:doc.name,sha256:doc.sha256,mime:doc.mime,bytes:doc.data.length,normalizedCharacters:(await normalizedSourceText(doc.data,doc.mime)).length});}
     }
     console.log(JSON.stringify({dryRun:true,sources:docs},null,2));return;
   }
