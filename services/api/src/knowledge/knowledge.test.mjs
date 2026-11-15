@@ -352,3 +352,25 @@ test('long DOCX source normalizes without truncation and remains bounded',async(
   await assert.rejects(normalizedSourceText(oversized,mime),
     /KNOWLEDGE_NORMALIZED_TEXT_TOO_LARGE/);
 });
+
+
+test('operator validate preflight enforces normalization limits before staging',async()=>{
+  const {spawnSync}=await import('node:child_process');
+  const root=await mkdtemp(join(tmpdir(),'gemini-normalization-preflight-'));
+  try{
+    const valid=join(root,'large-approved.txt');
+    await writeFile(valid,'D'.repeat(220000));
+    const pass=spawnSync(process.execPath,['scripts/ingest-agent-knowledge.mjs','validate',valid],
+      {encoding:'utf8'});
+    assert.equal(pass.status,0,pass.stderr);
+    const parsed=JSON.parse(pass.stdout);
+    assert.equal(parsed.sources[0].normalizedCharacters,220000);
+    assert.equal(parsed.sources[0].bytes,220000);
+    const oversized=join(root,'oversized.txt');
+    await writeFile(oversized,'E'.repeat(1000001));
+    const fail=spawnSync(process.execPath,['scripts/ingest-agent-knowledge.mjs','validate',oversized],
+      {encoding:'utf8'});
+    assert.notEqual(fail.status,0);
+    assert.match(fail.stderr,/KNOWLEDGE_NORMALIZED_TEXT_TOO_LARGE/);
+  }finally{await rm(root,{recursive:true,force:true});}
+});
