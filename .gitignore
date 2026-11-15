@@ -51,3 +51,5 @@ temp/
 .cache/
 *.sqlite
 *.db
+# Operator-only approved RAG originals, normalized text and import manifests
+private/
