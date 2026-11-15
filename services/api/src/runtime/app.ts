@@ -31,11 +31,13 @@ function ticketView(ticket:TicketRecord,agentKey:string) {
 }
 function messageView(message:MessageRecord) {
   return {id:message.id,role:message.role,text:message.text,
-    createdAt:message.createdAt,
+    createdAt:message.createdAt,sequence:message.sequence,
     sourceReferences:(message.sourceReferences ?? []).map(ref => ({
       ...ref,
       title: cleanSourceTitle(ref.title ?? undefined, ref.sourceId),
-      uri: `/api/v1/tickets/${message.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`,
+      uri:/^(assistant|file)-[A-Za-z0-9_-]+$/.test(ref.sourceId)
+        ? `/api/v1/tickets/${message.ticketId}/sources/${encodeURIComponent(ref.sourceId)}/download`
+        : typeof ref.uri==="string" && /^https:\/\//i.test(ref.uri) ? ref.uri : undefined,
     }))};
 }
 function cookieToken(request:FastifyRequest):string|null {
@@ -214,8 +216,22 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const alias=(await db.pool.query<{agent_key:string}>(
       "SELECT agent_key FROM agents WHERE id=$1",[scope.agentId])).rows[0]?.agent_key;
     if(!alias) throw new PersistenceError("NOT_FOUND","Ticket not found");
-    const history=await messages.listTicketMessages(scope,id,"0",200);
-    return {ticket:ticketView(ticket,alias),messages:history.map(messageView)};
+    // Initial snapshot returns the newest window, not the first 200 forever.
+    const history=await messages.recentMessages(scope,id,200);
+    return {ticket:ticketView(ticket,alias),messages:history.map(messageView),
+      hasOlder:history.length===200};
+  });
+
+  app.get("/api/v1/tickets/:ticketId/messages",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    const id=idParam(request);
+    const query=request.query as Record<string,unknown>;
+    if(Object.keys(query).some(key=>key!=="before"&&key!=="limit") ||
+       typeof query.before!=="string")
+      throw new PersistenceError("INVALID_INPUT","An earlier message cursor is required");
+    const limit=query.limit===undefined ? 100 : Number(query.limit);
+    const page=await messages.messagesBefore(scope,id,query.before,limit);
+    return {messages:page.messages.map(messageView),hasOlder:page.hasOlder};
   });
 
   app.post("/api/v1/tickets/:ticketId/messages",async(request,reply)=>{
@@ -251,11 +267,8 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     // from an authorized ticket message; no partial matches or random fallback.
     const sourceId = rawSourceId;
     if (sourceId.length > 512) throw new PersistenceError("NOT_FOUND", "Source document not found");
-    const history = await messages.listTicketMessages(scope, ticketId, "0", 200);
-    const targetRef: SourceReference | undefined = history
-      .flatMap(message => message.sourceReferences ?? [])
-      .find(ref => ref.sourceId === sourceId);
-    if (!targetRef) {
+    const targetRef = await messages.citedSource(scope,ticketId,sourceId);
+    if (!targetRef || !/^(assistant|file)-[A-Za-z0-9_-]+$/.test(sourceId)) {
       throw new PersistenceError("NOT_FOUND", "Source document not found for this ticket");
     }
 
