@@ -1,6 +1,6 @@
 # Chat-only customer journey transition
 
-Status: **UI removal prepared; do not deploy before conversational authorization is implemented.**
+Status: **Node conversation authorization and backend sequencing implemented on the draft PR. Secure inline chat controls and live provider acceptance remain outstanding; do not deploy this PR yet.**
 
 ## Target interaction
 - The chat transcript and composer are the only persistent customer-facing layout. Do not render the separate `Available actions for <intent>` panel.
@@ -13,7 +13,21 @@ Status: **UI removal prepared; do not deploy before conversational authorization
 - Only independently verified sandbox payment permits TEST invoice generation, download link and chat milestone. Do not claim paid status from checkout redirect or n8n response.
 - Preserve ticket ownership, SSE/replay, idempotency, and restart recovery.
 
-## Current gap
-The branch removing the old `IntentActionPanel` is **not functionally complete**. The existing lead, quotation, document, purchase, OTP and payment routes remain operational for authorized clients, but the customer UI no longer exposes their older forms. The chat worker currently records intents and facts only and **does not execute authorized side effects from chat consent**.
+## Backend implementation (draft PR #30)
+- `ChatJourney.prepare` reads source-linked ANCFZ ticket facts and matches the **exact** visa-count/term SKU and price revision; missing details are asked in chat instead of defaulting to the first SKU. Office preference is disclosed as a request, not falsely guaranteed in the package.
+- Customer authorization is an **exact conversational approval** immediately following the displayed Node-generated proposal, with proposal reference and frozen snapshot. Node commits the approval locally; Foundry does not execute the action.
+- `ChatJourneyDispatcher` scans durable consent events and calls existing idempotent `LeadOperations.submit`; only a verified Lead ID permits matching `QuotationOperations.submit`. Reconciled/unknown outcomes are never blindly retried.
+- The second exact-amount purchase/payment authorization is separate. Validated synthetic document intake remains behind `PurchaseOperations`. After consent, Node records purchase confirmation, requests one synthetic OTP and writes a dispatch-start marker before the n8n POST to prevent crash replays.
+- `GET /api/v1/tickets/:ticketId/chat-journey` gives the ticket owner document readiness, OTP challenge ID (never the code), payment and invoice state for inline chat controls. `POST /api/v1/tickets/:ticketId/chat-journey/otp/verify` securely accepts only challenge ID, 6-digit code and idempotent request ID. The OTP must never be sent through `/messages` or Foundry.
+- Existing purchase document upload APIs, independent 2Checkout GET verification, and verified TEST invoice PDF endpoint remain authoritative. Verified quote and hosted-checkout links are delivered as ticket-scoped lifecycle messages.
 
-Do not merge/deploy this UI-only change in isolation. The chat-based action authorization/orchestrator and secure inline controls must land together, with a fresh synthetic end-to-end Lead -> Quote -> Documents -> Purchase consent -> OTP -> Payment verification -> TEST Invoice acceptance test.
+## Rollout blockers
+This is **not yet an end-to-end usable chat-only product**. Removing the old action panel hides the existing file-upload and OTP-entry forms. Add secure inline document attachment/OTP controls to the Next.js transcript (or restore those forms) before merging/deploying. Hosted sandbox checkout remains an external site; never collect card details in chat.
+
+Run a fresh synthetic Lead -> Quote -> identity upload -> purchase consent -> OTP -> hosted checkout -> verified payment -> TEST invoice smoke with deployed n8n/Salesforce/mocks before declaring provider success. The repository's offline CI does not prove provider availability. Keep the older unknown-outcome Salesforce ticket quarantined.
+
+### Consent phrases
+- Salesforce + quotation: `I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.`
+- Sandbox purchase + OTP preparation: `I authorize the ANCFZ sandbox purchase and test payment for the exact quotation amount shown.`
+
+These only work immediately after a matching, newly displayed ticket-scoped proposal. A generic `yes` is deliberately insufficient.
