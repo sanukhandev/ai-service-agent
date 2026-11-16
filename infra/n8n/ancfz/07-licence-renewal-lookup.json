@@ -1,0 +1,162 @@
+{
+  "name": "ANCFZ | TEST Licence Lookup (Read-Only Data Table)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "renewal-hook",
+      "name": "Read-Only Renewal Lookup",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        360
+      ],
+      "webhookId": "a71c4d81-fb5d-46fe-9761-ac42f221a979",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/renewal-lookup",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ea64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "id": "renewal-validate",
+      "name": "Validate Licence Request",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const b=$input.first().json.body??{};\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||\n   !/^[0-9a-f]{8}-[0-9a-f-]{27,31}$/i.test(b.ticketId)||\n   typeof b.licenceNumber!=='string'||\n   !/^ANCFZ-TEST-[A-Z0-9-]{4,40}$/.test(b.licenceNumber))\n  throw Error('Invalid synthetic renewal lookup');\nreturn [{json:{licenceNumber:b.licenceNumber}}];"
+      }
+    },
+    {
+      "id": "renewal-get",
+      "name": "Get Matching Licence Rows",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        360
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ANCFZ_POC_LICENCES"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "licenceNumber",
+              "condition": "eq",
+              "keyValue": "={{ $json.licenceNumber }}"
+            }
+          ]
+        },
+        "returnAll": false,
+        "limit": 2,
+        "options": {}
+      }
+    },
+    {
+      "id": "renewal-sanitize",
+      "name": "Sanitize Licence Lookup",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        970,
+        360
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const licenceNumber=$('Validate Licence Request').first().json.licenceNumber;\nconst all=$input.all().map(x=>x.json).filter(x=>x&&x.licenceNumber===licenceNumber);\nlet output={status:'not_found'};\nif(all.length>1)output={status:'review'};\nelse if(all.length===1){\n  const row=all[0];\n  const clean=(value,n)=>typeof value==='string'?value.trim().slice(0,n):'';\n  const companyName=clean(row.companyName,200);\n  const licenceStatus=clean(row.licenceStatus,32).toLowerCase();\n  const expiresOn=clean(row.expiresOn,20).slice(0,10);\n  const offeringKey=clean(row.offeringKey,128);\n  const termYears=Number(row.termYears);\n  if(companyName&&['active','expired','suspended','cancelled'].includes(licenceStatus)&&\n     /^\\d{4}-\\d{2}-\\d{2}$/.test(expiresOn)&&\n     /^renewal_[a-z0-9_]{1,110}$/.test(offeringKey)&&\n     Number.isInteger(termYears)&&termYears>=1&&termYears<=5)\n    output={status:'found',licenceNumber,companyName,licenceStatus,\n      expiresOn,offeringKey,termYears};\n  else output={status:'review'};\n}\nreturn [{json:output}];"
+      }
+    },
+    {
+      "id": "renewal-reply",
+      "name": "Return Safe Licence Status",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1220,
+        360
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Read-Only Renewal Lookup": {
+      "main": [
+        [
+          {
+            "node": "Validate Licence Request",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Licence Request": {
+      "main": [
+        [
+          {
+            "node": "Get Matching Licence Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Matching Licence Rows": {
+      "main": [
+        [
+          {
+            "node": "Sanitize Licence Lookup",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sanitize Licence Lookup": {
+      "main": [
+        [
+          {
+            "node": "Return Safe Licence Status",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
