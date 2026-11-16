@@ -13,6 +13,7 @@ import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
+import {LicenceRenewalOperations} from "./licence-renewal.js";
 import { paymentEnabled } from "./payment-evidence.js";
 
 export type RequestedBusinessAction="create_lead"|"generate_quote"|"purchase_quotation"|"invoice";
@@ -52,6 +53,9 @@ export function requestedBusinessAction(
   // until Node presents and receives consent for the full proposal.
   if(/\b(?:start|set up|open|register|form|establish)\b[\s\S]{0,80}\b(?:company|business|firm|startup)\b/i.test(text) &&
     /\b(?:want|need|help|please|would like|i'd like)\b/i.test(text))
+    return "generate_quote";
+  if(/\b(?:renew|renewal|extend)\b[\s\S]{0,80}\b(?:licen[cs]e|trade licen[cs]e)\b/i.test(text)||
+     /\b(?:licen[cs]e|trade licen[cs]e)\b[\s\S]{0,80}\b(?:renew|renewal|extend)\b/i.test(text))
     return "generate_quote";
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
   // A purchase request can legitimately reference the reviewed quotation.
@@ -178,6 +182,13 @@ export class ConversationActionHandoff {
     const state=await new IntentActionOperations(this.db).catalog(scope,ticketId);
     if(!state.intentKey)return step("intent_needed",
       "I can help with that. Are you setting up a new company or requesting a service for an existing one?");
+    if(state.intentKey==="license_renewal"){
+      const status=await new LicenceRenewalOperations(this.db).read(scope,ticketId);
+      if(!status.record)return step("renewal_lookup",
+        "Enter your synthetic ANCFZ licence number in the secure licence renewal panel. I will check the n8n licence table and ask you to confirm the matching record.");
+      if(!status.record.confirmed)return step("renewal_confirm",
+        "I found a matching synthetic licence. Review its company, expiry date and renewal term in the secure panel and confirm those details before the quotation.");
+    }
     const actions=state.actions as Action[];
     const lead=actions.find(a=>a.actionKey==="create_lead");
     const quotation=actions.find(a=>a.actionKey==="generate_quote");
