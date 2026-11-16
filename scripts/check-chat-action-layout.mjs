@@ -125,3 +125,4 @@ assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP a
 console.log("Chat consent contracts PASS: exact/contextual approval, immutable snapshot, secure in-chat inputs");
 
 await import("./check-chat-journey-state.mjs");
+await import("./check-chat-consent-reconciliation.mjs");
