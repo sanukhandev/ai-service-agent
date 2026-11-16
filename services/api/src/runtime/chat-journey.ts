@@ -374,9 +374,9 @@ export class ChatJourney {
    * ticket stream. It is not a fabricated customer chat turn or an order dispatch.
    */
   async afterDocumentsReceived(
-    scope:TicketScope,ticketId:string,sourceDocumentId:string,
+    scope:TicketScope,ticketId:string,sourceDocumentId:string|null=null,
   ):Promise<boolean>{
-    requireUuid(sourceDocumentId,"sourceDocumentId");
+    if(sourceDocumentId!==null)requireUuid(sourceDocumentId,"sourceDocumentId");
     const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
     if(!purchase.supported||purchase.confirmed||purchase.missing.length||
        !purchase.billingName||!purchase.quotationId)return false;
@@ -384,10 +384,23 @@ export class ChatJourney {
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
        quote.id!==purchase.quotationId)return false;
 
+    // A stable quote-scoped message key makes this safe to trigger both from
+    // the final upload and from a refreshed, already-complete document panel.
+    // Never re-offer the initial review automatically after it was displayed.
+    const noticeId=lifecycleNoticeId("purchase.review.ready",purchase.quotationId);
+    const alreadyDisplayed=await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const r=await client.query(
+        "SELECT 1 FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND request_id=$3 LIMIT 1",
+        [scope.agentId,ticketId,noticeId]);
+      return (r.rowCount??r.rows.length)>0;
+    });
+    if(alreadyDisplayed)return false;
+
     // The action cursor must survive refresh and the next customer's billing
     // email answer. Uploads are not approvals; the separate quoted purchase
     // proposal still requires an exact, displayed conversational consent.
-    const reviewEvent=await this.db.withAgent(scope.agentId,async client=>{
+    await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       return appendEventTx(client,scope.agentId,ticketId,"purchase.review.started",{
         actionKey:"purchase_quotation",sourceDocumentId,
@@ -397,7 +410,7 @@ export class ChatJourney {
     const review=await this.prepare(scope,ticketId,"purchase_quotation");
     if(!review)return false;
     await new TicketMessageRepository(this.db).createAssistantMessage(
-      scope,ticketId,lifecycleNoticeId("purchase.review.upload",reviewEvent.id),
+      scope,ticketId,noticeId,
       review,[],
     );
     return true;
@@ -519,12 +532,21 @@ export class ChatJourney {
         expiresAt:x.expires_at.toISOString(),
       }:null;
     });
+    const reviewIssued=quote?.id?await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const noticeId=lifecycleNoticeId("purchase.review.ready",quote.id);
+      const r=await client.query(
+        "SELECT 1 FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND request_id=$3 LIMIT 1",
+        [scope.agentId,ticketId,noticeId]);
+      return (r.rowCount??r.rows.length)>0;
+    }):false;
     return {lead,quotation:quote,purchase:{
       supported:purchase.supported,quotationId:purchase.quotationId,
       amount:purchase.amount,currency:purchase.currency,
       documents:purchase.requirements.map(x=>({key:x.key,label:x.label,required:x.required,
         uploaded:x.uploaded,status:x.status})),
       missing:purchase.missing,confirmed:purchase.confirmed,readyForOtp:purchase.readyForOtp,
+      reviewIssued,
     },otp:challenge,payment};
   }
 
