@@ -369,6 +369,40 @@ export class ChatJourney {
     });
   }
 
+  /** A completed secure upload advances to a PURCHASE REVIEW, never consent.
+   * This Node-authored assistant message is persisted and sent over the existing
+   * ticket stream. It is not a fabricated customer chat turn or an order dispatch.
+   */
+  async afterDocumentsReceived(
+    scope:TicketScope,ticketId:string,sourceDocumentId:string,
+  ):Promise<boolean>{
+    requireUuid(sourceDocumentId,"sourceDocumentId");
+    const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
+    if(!purchase.supported||purchase.confirmed||purchase.missing.length||
+       !purchase.billingName||!purchase.quotationId)return false;
+    const quote=await new QuotationOperations(this.db).get(scope,ticketId);
+    if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
+       quote.id!==purchase.quotationId)return false;
+
+    // The action cursor must survive refresh and the next customer's billing
+    // email answer. Uploads are not approvals; the separate quoted purchase
+    // proposal still requires an exact, displayed conversational consent.
+    await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      await appendEventTx(client,scope.agentId,ticketId,"purchase.review.started",{
+        actionKey:"purchase_quotation",sourceDocumentId,
+        quotationId:purchase.quotationId,
+      });
+    });
+    const review=await this.prepare(scope,ticketId,"purchase_quotation");
+    if(!review)return false;
+    await new TicketMessageRepository(this.db).createAssistantMessage(
+      scope,ticketId,lifecycleNoticeId("purchase.review.upload",sourceDocumentId),
+      review,[],
+    );
+    return true;
+  }
+
   /** Safe background convergence from durable authorization to independently
    * verified provider operations. No uncertain POST is ever re-dispatched. */
   async advance(log:(data:Record<string,unknown>,message:string)=>void):Promise<void>{
