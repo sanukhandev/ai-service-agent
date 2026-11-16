@@ -46,11 +46,11 @@ enqueue an order and independently verify provider evidence.
    documents were uploaded before this feature, the secure chat UI can recover
    the review through a customer-owned `POST /chat-journey/review` request
    without re-uploading documents.
-6. Customer confirms the exact quote and the specific
+5. Customer confirms the exact quote and the specific
    `PURCHASE_CONSENT` wording. Node creates a durable
    `ticket_purchase_confirmations` row; documents cannot be changed after
    confirmation. The model cannot grant or forge consent.
-5. Node's payment OTP endpoints independently assert supported intent,
+6. Node's payment OTP endpoints independently assert supported intent,
    verified quote, full configured document set and exact quote confirmation.
    Synthetic OTP is recorded only to the private n8n test Data Table with
    rate limiting, HMAC digest, expiration and max failures.
