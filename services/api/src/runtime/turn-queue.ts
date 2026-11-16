@@ -225,6 +225,46 @@ export class TurnQueue {
     });
   }
 
+  /** Node-authored reply for a customer transaction decision. Preserve the
+   * Foundry response cursor so a provider timeout can never obscure consent.
+   * The local reply, queue completion and SSE event commit atomically. */
+  async completeLocal(turn:PendingTurn,text:string):Promise<void>{
+    if(!text.trim()||text.length>30000)
+      throw new PersistenceError("INVALID_INPUT","Invalid local response");
+    await this.db.withAgent(turn.agentId,async client=>{
+      const scope=workerTicketScope(turn.agentId,turn.ticketId);
+      await authorizedTicket(client,scope,turn.ticketId,true);
+      const active=await client.query(
+        "SELECT 1 FROM ticket_turns WHERE agent_id=$1 AND id=$2 AND state='processing' AND lease_token=$3 FOR UPDATE",
+        [turn.agentId,turn.id,turn.leaseToken],
+      );
+      if(!active.rows.length)throw new PersistenceError("CONFLICT","Turn lease lost");
+      const previous=await client.query(
+        "SELECT 1 FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND request_id=$3",
+        [turn.agentId,turn.ticketId,turn.requestId],
+      );
+      if(previous.rows.length)throw new PersistenceError("CONFLICT","Assistant message already committed");
+      const seq=await client.query<{last_message_sequence:string}>(
+        "UPDATE tickets SET last_message_sequence=last_message_sequence+1,status='awaiting_customer',updated_at=now() WHERE agent_id=$1 AND id=$2 RETURNING last_message_sequence",
+        [turn.agentId,turn.ticketId],
+      );
+      const created=await client.query<{id:string;created_at:Date}>(
+        "INSERT INTO ticket_messages(agent_id,ticket_id,role,content,request_id,source_references,message_sequence) VALUES($1,$2,'assistant',$3,$4,'[]'::jsonb,$5) RETURNING id,created_at",
+        [turn.agentId,turn.ticketId,text,turn.requestId,seq.rows[0]?.last_message_sequence],
+      );
+      const message=created.rows[0];
+      if(!message)throw new PersistenceError("DATABASE_ERROR","Local assistant reply missing");
+      await client.query(
+        "UPDATE ticket_turns SET state='completed',lease_token=NULL,lease_until=NULL,updated_at=now() WHERE agent_id=$1 AND id=$2 AND state='processing'",
+        [turn.agentId,turn.id],
+      );
+      await appendEventTx(client,turn.agentId,turn.ticketId,"assistant.message",{
+        message:{id:message.id,role:"assistant",text,createdAt:message.created_at.toISOString(),sourceReferences:[]},
+      });
+      await appendEventTx(client,turn.agentId,turn.ticketId,"ticket.updated",{status:"awaiting_customer"});
+    });
+  }
+
   async fail(turn: PendingTurn, code: string, uncertain = false): Promise<void> {
     await this.db.withAgent(turn.agentId,async client => {
       const current=await client.query(

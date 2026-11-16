@@ -177,9 +177,9 @@ export class ConversationContextRepository {
       if (source.rows[0]?.role !== "customer") {
         throw new PersistenceError("CONFLICT", "Customer message provenance required");
       }
-      const selected = await client.query<{ id: string }>(
+      const selected = await client.query<{ id: string; allowed_actions:string[] }>(
         [
-          "SELECT i.id FROM ticket_intents ti JOIN intents i",
+          "SELECT i.id,i.allowed_actions FROM ticket_intents ti JOIN intents i",
           "ON i.agent_id = ti.agent_id AND i.id = ti.intent_id",
           "WHERE ti.agent_id = $1 AND ti.ticket_id = $2 AND ti.status = 'active'",
           "AND i.catalog_version_id = $3",
@@ -193,6 +193,18 @@ export class ConversationContextRepository {
         [scope.agentId, intentId],
       );
       const keys = new Map(permitted.rows.map((r) => [r.requirement_key, r.value_type]));
+      // ANCFZ contact/billing facts are customer-stated data, not additional
+      // catalog requirements. Keep them provenance-linked to the original
+      // customer message and unavailable to agents without the lead action.
+      if(selected.rows[0]?.allowed_actions.includes("create_lead")) {
+        const agent=await client.query<{agent_key:string}>(
+          "SELECT agent_key FROM agents WHERE id=$1",[scope.agentId]);
+        if(agent.rows[0]?.agent_key==="ancfz") {
+          keys.set("customer_name","text");
+          keys.set("customer_phone","text");
+          keys.set("customer_test_email","email");
+        }
+      }
       const seen = new Set<string>();
       const result: StoredFact[] = [];
       for (const fact of facts) {
@@ -203,6 +215,12 @@ export class ConversationContextRepository {
         seen.add(fact.key);
         const value = fact.value;
         const expectedType = keys.get(fact.key);
+        if(fact.key==="customer_name" && (typeof value!=="string" || !/^[\p{L}][\p{L} .'-]{1,119}$/u.test(value.trim())))
+          throw new PersistenceError("INVALID_INPUT","Invalid customer name");
+        if(fact.key==="customer_phone" && (typeof value!=="string" || !/^\+?[0-9 ()-]{7,40}$/.test(value.trim())))
+          throw new PersistenceError("INVALID_INPUT","Invalid customer phone");
+        if(fact.key==="customer_test_email" && (typeof value!=="string" || !/^[A-Za-z0-9._%+-]+@example\.invalid$/i.test(value)))
+          throw new PersistenceError("INVALID_INPUT","Use a synthetic example.invalid billing email");
         if ((expectedType === "number" && typeof value !== "number") ||
           ((expectedType === "email" || expectedType === "text" || expectedType === "choice") && typeof value !== "string") ||
           (expectedType === "email" && (typeof value !== "string" || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)))) {

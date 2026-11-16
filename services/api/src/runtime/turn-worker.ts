@@ -13,6 +13,7 @@ import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ConversationActionHandoff, shouldUseHandoff } from "./conversation-action-handoff.js";
+import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -124,6 +125,27 @@ export class TurnWorker {
       if(!binding.intentCatalogRevision||!binding.offeringCatalogRevision) throw new Error("PINNED_CATALOG_MISSING");
       const stored=await this.context.read(scope,turn.ticketId);
       const text=await this.queue.currentCustomerMessage(turn);
+      const chatJourney=new ChatJourney(this.db);
+      // Consent is tied to a Node-authored, ticket-scoped proposal that was
+      // actually displayed before this message. Model text alone cannot act.
+      let acceptedChatAction:"lead_quote"|"purchase_payment"|null=null;
+      try {
+        acceptedChatAction=await chatJourney.accept(scope,turn.ticketId,turn.messageId,text);
+      } catch(error) {
+        this.log({turnId:turn.id,errorCode:(error as Error).name},
+          "Conversational approval rejected; no business action authorized");
+      }
+      if(acceptedChatAction){
+        await this.queue.completeLocal(turn,acceptedChatAction==="lead_quote"
+          ? "Your explicit authorization for the reviewed Salesforce enquiry and quotation is recorded. I will submit the enquiry once and generate the exact quotation only after Salesforce verifies the lead. I will not retry uncertain submissions."
+          : "Your exact-amount sandbox purchase and test-payment authorization is recorded. I will validate the secure documents and arrange the synthetic OTP. Never send an OTP or card data in an ordinary chat message.");
+        return;
+      }
+      if(isLeadQuoteApproval(text)||isPurchasePaymentApproval(text)){
+        await this.queue.completeLocal(turn,
+          "I could not match that authorization to the latest reviewed proposal. No action was authorized. Please ask me to show the current proposal again.");
+        return;
+      }
       const handoff=new ConversationActionHandoff(this.db);
       // Record the customer's REQUEST only. Never turn speech into action consent.
       let requestedAction:Awaited<ReturnType<typeof handoff.observe>>={action:null,explicit:false};
@@ -166,8 +188,8 @@ export class TurnWorker {
           previousSummary:stored.summary?.text ?? null,
           ...(recent.length ? {earlierMessages:recent.slice(0,-1).map(m=>({role:m.role,text:m.text}))}:{}),
         }),
-        "For requested actions, discover/select the intent, check operation requirements, and record only customer-stated facts. Node authorizes all consequential operations after explicit UI consent; a service request does not submit to any government, bank or partner. Checkout requires verified quote, secure synthetic ID uploads, purchase consent and OTP. Never collect identity files, OTPs or card details in chat, or claim payment/invoice without independent verification.",
-        "Honor lastCustomerVisibleAssistantReply over older model text. Reply naturally in 1–3 sentences unless detail is requested. For formal quotes/PDFs, follow the verified Salesforce lead and Node approval workflow; ask ONE missing fact at a time using nextQuestionOrStep, and never invent facts. Refer customers to the secure approval, checkout and invoice UI when ready. Do not display IQ citations or download URLs in chat.",
+        "For requested actions, discover/select the intent, check operation requirements, and record only customer-stated facts. ANCFZ company enquiries also need customer_name and customer_phone (record from the customer's own message); sandbox payments use a synthetic customer_test_email ending @example.invalid. Never invent any detail. Node issues a transaction-specific, explicit conversational proposal and validates subsequent consent before side effects; you must not approve or execute an operation. A service request is not a government, bank or partner application. Secure synthetic ID uploads and OTP are private UI inputs INSIDE the chat, not message text. Never collect identity files, OTPs or cards in chat messages or claim payment/invoice without independent verification.",
+        "Honor lastCustomerVisibleAssistantReply over older model text. Reply naturally in 1–3 sentences unless detail is requested. For formal quotes/PDFs, record sourced contact and package facts; ask ONE missing fact at a time and never invent facts. Node provides the exact price, proposal and consent text in the conversation. No separate Available Actions panel exists. Guide private document and OTP inputs in the chat UI; payment-card entry is on the hosted test checkout. Do not display IQ citations or invented download URLs.",
         "Latest customer message:",text,
       ].join("\n");
       const toolRegistry=new AgentToolRegistry();
@@ -228,6 +250,13 @@ export class TurnWorker {
       }catch(error){
         this.log({turnId:turn.id,errorCode:(error as Error).name},
           "Action handoff read failed; retaining the normal Foundry response");
+      }
+      try {
+        const proposal=await chatJourney.prepare(scope,turn.ticketId,requestedAction.action);
+        if(proposal)responseText=proposal;
+      }catch(error){
+        this.log({turnId:turn.id,errorCode:(error as Error).name},
+          "Conversational proposal unavailable; keeping normal assistant reply");
       }
       await this.queue.complete(turn,responseText,
         responseText===result.text?citations(result.sourceReferences):[],

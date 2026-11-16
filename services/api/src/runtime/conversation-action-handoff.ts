@@ -36,8 +36,14 @@ export function requestedBusinessAction(
   const explicitSubmission=/\b(?:send|share|prepare|generate|create|produce|issue|submit|download)\b/i;
   if(/^(?:what|why|how|when|where|which)\b/i.test(text))return null;
   if(informational.test(text) && !explicitSubmission.test(text))return null;
-  const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
+  const request=/(?:\bhelp me\b|\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
   if(!request.test(text))return null;
+  // An explicit request to set up a company is a transactional enquiry,
+  // even when the customer hasn't used "quotation" yet. No side effect occurs
+  // until Node presents and receives consent for the full proposal.
+  if(/\b(?:start|set up|open|register|form|establish)\b[\s\S]{0,80}\b(?:company|business|firm|startup)\b/i.test(text) &&
+    /\b(?:want|need|help|please|would like|i'd like)\b/i.test(text))
+    return "generate_quote";
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
   if(/\bpdf\b/i.test(text) &&
@@ -156,7 +162,7 @@ export class ConversationActionHandoff {
       }
       if(!leadDispatchEnabled())
         return step("lead_disabled","Salesforce enquiry submission is currently unavailable. Your details are saved, and no lead has been submitted.");
-      return step("lead_consent","I have the enquiry details. Please open “Request Salesforce follow-up” below, review the contact form and approve submission to Salesforce.");
+      return step("lead_consent","I have your enquiry details. I'll summarize the exact Salesforce contact-sharing and quotation proposal here in chat; please review it before authorizing.");
     }
     if(request==="create_lead")
       return step("lead_complete","Your Salesforce lead is verified. Would you like me to help prepare a formal quotation?");
@@ -172,7 +178,7 @@ export class ConversationActionHandoff {
     if(!quote) {
       if(!quoteDispatchEnabled())
         return step("quote_disabled","Formal quotation generation is temporarily unavailable. I can confirm your package details, but no PDF has been issued.");
-      return step("quote_consent","Your details are ready. Please choose the package under “Request a non-binding test quotation” below and approve the quotation request.");
+      return step("quote_consent","Your details are ready. I'll present the matched published package, exact price and authorization here in the conversation.");
     }
     if(quote.state!=="verified_completed"||!quote.pdfAvailable) {
       if(quote.state==="unknown_outcome"||quote.state==="terminal_failed")
@@ -180,7 +186,7 @@ export class ConversationActionHandoff {
       return step("quote_processing","Your quotation is being prepared. I'll let you know when the PDF is ready.");
     }
     if(request==="generate_quote")return step("quote_ready",
-      "Your formal test quotation is ready in the quotation section. Would you like to proceed with the sandbox checkout?");
+      "Your verified quotation PDF is available here in the conversation. Would you like to continue with the sandbox documents and test checkout?");
     if(!purchase)return step("purchase_unsupported",
       "The quotation is ready, but checkout isn't configured for this service.");
 
@@ -190,22 +196,22 @@ export class ConversationActionHandoff {
         "This quotation is not available for sandbox checkout. I can help review the next steps.");
     if(documents.missing.length){
       return step("documents_pending",
-        "Before checkout, please upload the required identity documents in the secure document section. Don't send passport or Emirates ID files in chat.",
+        "Before checkout, upload the required synthetic documents using the secure file controls shown inside this conversation. Never paste identity details into a normal chat message.",
         documents.missing.length);
     }
     if(!documents.confirmed)
       return step("purchase_consent",
-        "Your documents are ready. Please review and approve the sandbox purchase in the secure checkout section.");
+        "Your synthetic documents are ready. I'll present the exact-amount sandbox purchase consent here in the conversation.");
     if(!documents.readyForOtp)
       return step("purchase_review",
-        "Checkout requirements still need review. Please check the secure document and purchase section before requesting an OTP.");
+        "Your sandbox purchase needs further verification; I will not issue an OTP until the secure document and approval checks pass.");
     if(!paymentEnabled())
       return step("payment_disabled",
         "Your purchase details are ready, but sandbox payment is currently unavailable. No payment has been processed.");
     const payments=await new PaymentOperations(this.db).get(scope,ticketId);
     const payment=payments.payments[0];
     if(!payment)return step("otp_pending",
-      "Please request your test OTP from the secure checkout section. Don't share the code in chat.");
+      "Your approved sandbox purchase is being prepared. Enter the test OTP only in the secure code input displayed in this conversation, never in a normal message.");
     if(payment.state==="unknown_outcome"||payment.state==="payment_refunded"||
        payment.state==="payment_declined")
       return step("payment_review",
@@ -215,7 +221,7 @@ export class ConversationActionHandoff {
         "Your sandbox payment is being checked. I'll confirm it only after independent verification.");
     if(payments.invoice?.pdfAvailable)
       return step("invoice_ready",
-        "Your sandbox payment is verified and your test invoice is ready in the secure checkout section.");
+        "Your sandbox payment is verified and your TEST invoice PDF is available in this conversation.");
     return step("invoice_processing",
       "Your sandbox payment is verified. Your test invoice is being prepared.");
   }

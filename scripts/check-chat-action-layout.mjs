@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Offline regression for duplicated Salesforce buttons and composer overlap.
+/** Offline regression for customer-chat-only layout and legacy action contracts.
  * Requires npm install + API build; no browser or Foundry credentials.
  */
 import assert from "node:assert/strict";
@@ -64,13 +64,64 @@ assert.match(paymentUI,/setPurchaseReady\(purchase\?\.readyForOtp===true/,
   "On reload, readiness must restore without a mounted document checklist");
 const chat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
 const transcriptStart=chat.indexOf("ref={transcriptRef}");
-const panelPosition=chat.indexOf("<IntentActionPanel");
 const transcriptEnd=chat.indexOf("</section>",transcriptStart);
 const footerStart=chat.indexOf("<footer");
 assert.ok(transcriptStart>=0 && transcriptEnd>transcriptStart);
-assert.ok(panelPosition>transcriptStart && panelPosition<transcriptEnd,
-  "Action controls must scroll in the transcript, never expand the fixed composer footer");
-assert.ok(footerStart>transcriptEnd);
-assert.equal((chat.match(/<IntentActionPanel\b/g)??[]).length,1,
-  "Only one action panel may be mounted for a ticket");
-console.log("Chat action UI PASS: deduplicated catalog actions and scrollable panel outside composer");
+assert.ok(footerStart>transcriptEnd,
+  "Chat composer must remain outside the scrollable message transcript");
+assert.ok(!chat.includes('from "./intent-action-panel"'),
+  "The legacy action panel must not be imported in the chat-only UI");
+assert.ok(!chat.includes("<IntentActionPanel"),
+  "No action catalog or status card should render below the conversation");
+assert.doesNotMatch(chat,/data-chat-action-panel/,
+  "Remove obsolete action panel wrapper");
+assert.doesNotMatch(chat,/schedulePanelRefresh|eventRevision/,
+  "Remove action-panel-specific refresh state and timers");
+assert.ok(chat.includes("useTicketEvents("),
+  "Continue receiving verified workflow status events over SSE");
+console.log("Chat-only layout PASS: legacy action panel absent, transcript and SSE preserved");
+
+
+// The exact chat consent must not be inferred from a generic "yes",
+// unrelated customer conversation, or a mismatched purchase approval.
+const {
+  isLeadQuoteApproval,isPurchasePaymentApproval,
+  LEAD_QUOTE_APPROVAL,PURCHASE_PAYMENT_APPROVAL,isContextualApproval,
+}=await import("../services/api/dist/runtime/chat-journey.js");
+assert.equal(isLeadQuoteApproval(LEAD_QUOTE_APPROVAL),true);
+assert.equal(isLeadQuoteApproval("Yes, "+LEAD_QUOTE_APPROVAL),true);
+assert.equal(isLeadQuoteApproval("yes"),false);
+assert.equal(isLeadQuoteApproval("Please generate a quote"),false);
+assert.equal(isLeadQuoteApproval(PURCHASE_PAYMENT_APPROVAL),false);
+assert.equal(isPurchasePaymentApproval(PURCHASE_PAYMENT_APPROVAL),true);
+assert.equal(isPurchasePaymentApproval("Yes, "+PURCHASE_PAYMENT_APPROVAL),true);
+assert.equal(isPurchasePaymentApproval("yes"),false);
+assert.equal(isPurchasePaymentApproval(LEAD_QUOTE_APPROVAL),false);
+
+const backend=readFileSync("services/api/src/runtime/chat-journey.ts","utf8");
+const turnWorker=readFileSync("services/api/src/runtime/turn-worker.ts","utf8");
+const turnQueue=readFileSync("services/api/src/runtime/turn-queue.ts","utf8");
+assert.match(backend,/proposalId:p\.id,sourceMessageId/);
+assert.match(backend,/fingerprint\(current\)!==item\.proposal\.fingerprint/);
+assert.match(backend,/lead\.state!=="verified_completed"/);
+assert.match(backend,/matched=options\.options\.find/);
+assert.match(backend,/chat\.otp\.dispatch_started/);
+assert.match(backend,/verifySecureOtp/);
+assert.match(turnWorker,/chatJourney\.accept\(/);
+assert.match(turnWorker,/completeLocal\(turn/);
+assert.match(turnQueue,/async completeLocal\(/);
+assert.equal(isContextualApproval("yes"),true);
+assert.equal(isContextualApproval("go ahead"),true);
+assert.equal(isContextualApproval("i approve"),true);
+assert.equal(isContextualApproval("yes, but change to 0 visas"),false);
+assert.equal(isContextualApproval("not yet"),false);
+const inline=readFileSync("apps/web/components/chat-journey-controls.tsx","utf8");
+assert.ok(chat.includes("<ChatJourneyControls"),"Secure chat controls must mount in transcript");
+assert.match(inline,/chat-journey\/otp\/verify/);
+assert.match(inline,/purchase\/documents/);
+assert.match(inline,/autoComplete="one-time-code"/);
+assert.match(inline,/\.size>1048576/);
+assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP after chat consent");
+console.log("Chat consent contracts PASS: exact/contextual approval, immutable snapshot, secure in-chat inputs");
+
+await import("./check-chat-journey-state.mjs");

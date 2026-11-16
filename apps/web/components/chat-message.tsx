@@ -99,10 +99,10 @@ function formatInline(
         const linkUrl = match[2];
         // Invoice PDFs are ticket-owned application attachments, not IQ
         // source IDs. Never rewrite the route through Foundry source download.
-        const invoiceRoute = ticketId
-          ? new RegExp("^/api/v1/tickets/"+encodeURIComponent(ticketId)+"/invoices/[0-9a-f-]{36}/pdf$")
+        const transactionRoute = ticketId
+          ? new RegExp("^/api/v1/tickets/"+encodeURIComponent(ticketId)+"/(?:quotations|invoices)/[0-9a-f-]{36}/pdf$")
           : null;
-        if(invoiceRoute?.test(linkUrl)){
+        if(transactionRoute?.test(linkUrl)){
           return <a key={index} href={linkUrl} download
             className="inline-flex items-center gap-1 font-semibold text-indigo-700 underline">
             <DownloadIcon className="size-3" />{linkText}
@@ -449,7 +449,7 @@ export function MessageBubble({
     ? message.sourceReferences?.filter((ref) => ref.sourceId.trim()) ?? []
     : [];
   const visibleText = assistant && !SHOW_CHAT_SOURCES
-    ? conversationalText(message.text) : message.text;
+    ? conversationalText(message.text, ticketId) : message.text;
   const time = new Date(message.createdAt);
   const validDate = !Number.isNaN(time.getTime());
 

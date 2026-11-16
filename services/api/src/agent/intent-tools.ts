@@ -183,7 +183,7 @@ export function registerIntentTools(
     },
     {
       name: "record_ticket_facts",
-      description: "Persist details explicitly provided or corrected in the latest customer message. Never infer missing facts. Node records customer-stated provenance, not verified documents.",
+      description: "Persist customer-provided details from the latest message. For ANCFZ lead enquiries also record customer_name and customer_phone, and for mock billing customer_test_email (@example.invalid). Do not invent values or record OTP/card/identity contents. Every fact is linked to the customer's message.",
       parameters: schema({
         intentKey: { type: "string", maxLength: 128 },
         facts: {
@@ -210,6 +210,13 @@ export function registerIntentTools(
           throw new Error("Invalid fact count");
         }
         const allowed = new Set(intent.requirements.map((req) => req.key));
+        // Only the ANCFZ lead-capable intent may record these optional
+        // contact fields; the database repeats this authorization check.
+        if(intent.allowedActions.includes("create_lead")) {
+          allowed.add("customer_name");
+          allowed.add("customer_phone");
+          allowed.add("customer_test_email");
+        }
         const updates = args["facts"].map((candidate) => {
           if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
             throw new Error("Invalid customer fact");

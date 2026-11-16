@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatComposer } from "./chat-composer";
-import { IntentActionPanel } from "./intent-action-panel";
+import { ChatJourneyControls } from "./chat-journey-controls";
 import { MessageBubble } from "./chat-message";
 import {
   AlertCircleIcon,
@@ -144,21 +144,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
-  // Changes only when durable SSE events arrive (or a connection is restored).
-  // Child action forms refresh from this revision instead of periodic GET polling.
-  const [eventRevision, setEventRevision] = useState(0);
-  const panelRefreshTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const schedulePanelRefresh = useCallback(() => {
-    // Coalesce the large replay batch on reconnect into one panel refresh.
-    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
-    panelRefreshTimer.current = setTimeout(() => {
-      panelRefreshTimer.current = null;
-      setEventRevision((previous) => previous + 1);
-    }, 150);
-  }, []);
-  useEffect(() => () => {
-    if (panelRefreshTimer.current !== null) clearTimeout(panelRefreshTimer.current);
-  }, [ticket?.id]);
+  const [journeyRevision, setJourneyRevision] = useState(0);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
   const [showLatest, setShowLatest] = useState(false);
@@ -243,8 +229,8 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
   const handleEvent = useCallback(
     (event: TicketEvent) => {
-      if (!["assistant.processing", "agent.processing", "agent.response.started"].includes(event.name)) {
-        schedulePanelRefresh();
+      if(!["assistant.processing","agent.processing","agent.response.started"].includes(event.name)){
+        setJourneyRevision(value=>value+1);
       }
       const incomingMessage = messageFromEvent(event.data);
       const incomingTicket = ticketFromEvent(event.data);
@@ -307,12 +293,12 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           break;
       }
     },
-    [agentKey, ticket?.id, refresh, schedulePanelRefresh],
+    [agentKey, ticket?.id, refresh],
   );
 
   const stream = useTicketEvents(ticket?.id ?? null, handleEvent, () => {
     void refresh();
-    schedulePanelRefresh();
+    setJourneyRevision(value=>value+1);
   });
 
   const loadOlder = useCallback(async () => {
@@ -342,10 +328,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     if(!ticket || loadState!=="ready" || stream==="connected")return;
     const timer=setInterval(()=>{
       void refresh();
-      schedulePanelRefresh();
+      setJourneyRevision(value=>value+1);
     },10000);
     return ()=>clearInterval(timer);
-  },[ticket?.id,loadState,stream,refresh,schedulePanelRefresh]);
+  },[ticket?.id,loadState,stream,refresh]);
 
   const send = useCallback(
     async (text: string) => {
@@ -662,12 +648,11 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             </ol>
           )}
 
-          {/* Ticket actions scroll with the conversation, never with the composer.
-              This keeps the message viewport usable even for long action forms. */}
-          {ticket && loadState === "ready" && (
-            <div className="mt-6 min-w-0 w-full" data-chat-action-panel>
-              <IntentActionPanel key={ticket.id} ticketId={ticket.id} revision={eventRevision} />
-            </div>
+          {/* Secure ticket-owned attachments and OTP input live in the thread;
+              no legacy Available Actions forms or non-chat dashboard. */}
+          {ticket && loadState==="ready" && (
+            <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
+              revision={journeyRevision} />
           )}
 
           {/* Natural Frosted Glass Thinking Indicator */}

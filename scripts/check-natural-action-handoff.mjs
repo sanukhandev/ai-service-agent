@@ -12,6 +12,9 @@ import { QuotationOperations } from "../services/api/dist/runtime/quotation-oper
 import { PurchaseOperations } from "../services/api/dist/runtime/purchase-operations.js";
 import { PaymentOperations } from "../services/api/dist/runtime/payment-operations.js";
 
+assert.equal(requestedBusinessAction("I want to start a company"),"generate_quote");
+assert.equal(requestedBusinessAction("Please help me set up an IT business"),"generate_quote");
+assert.equal(requestedBusinessAction("How do I start a company?"),null);
 assert.equal(requestedBusinessAction("can you send me a quotation"),"generate_quote");
 assert.equal(requestedBusinessAction("can you sen me a pdf?", "generate_quote"),"generate_quote");
 assert.equal(requestedBusinessAction("can I have a PDF?",null,true),"generate_quote");
@@ -144,13 +147,24 @@ assert.ok(!cleaned.includes("source"));
 assert.ok(!cleaned.includes("Download"));
 assert.ok(!cleaned.includes("/api/v1"));
 assert.match(cleaned,/quotation is ready/);
+const ownTicket="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const wrongTicket="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const quoteId="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const quoteLink="[Download verified quotation](/api/v1/tickets/"+ownTicket+"/quotations/"+quoteId+"/pdf)";
+const invoiceLink="[Download TEST invoice](/api/v1/tickets/"+ownTicket+"/invoices/"+quoteId+"/pdf)";
+assert.equal(helpers.conversationalText(quoteLink,ownTicket),quoteLink);
+assert.equal(helpers.conversationalText(invoiceLink,ownTicket),invoiceLink);
+assert.ok(!helpers.conversationalText(quoteLink,wrongTicket).includes("Download"));
+assert.ok(!helpers.conversationalText(quoteLink).includes("Download"));
+assert.ok(!helpers.conversationalText("[Download report](https://private.search.windows.net/file.pdf)",ownTicket)
+  .includes("Download report"));
 assert.equal(helpers.conversationalText("Visit https://ancfz.example for office hours."),
   "Visit https://ancfz.example for office hours.");
 assert.ok(!helpers.conversationalText("See https://private.search.windows.net/download/foo.pdf")
   .includes("search.windows.net"));
 const component=readFileSync("apps/web/components/chat-message.tsx","utf8");
 assert.match(component,/SHOW_CHAT_SOURCES = process\.env\.NEXT_PUBLIC_SHOW_CHAT_SOURCES === "true"/);
-assert.match(component,/conversationalText\(message\.text\)/);
+assert.match(component,/conversationalText\(message\.text,\s*ticketId\)/);
 assert.match(component,/SHOW_CHAT_SOURCES && references\.length > 0/);
 const worker=readFileSync("services/api/src/runtime/turn-worker.ts","utf8");
 assert.match(worker,/handoff\.observe\(/);

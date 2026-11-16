@@ -10,6 +10,7 @@ import { QuotationOperations } from "./quotation-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
+import { ChatJourney } from "./chat-journey.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -136,6 +137,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const payments=new PaymentOperations(db);
   const purchases=new PurchaseOperations(db);
   const intentActions=new IntentActionOperations(db);
+  const chatJourney=new ChatJourney(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -296,6 +298,19 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
 
   app.get<{Params:{ticketId:string;sourceId:string}}>("/api/v1/tickets/:ticketId/sources/:sourceId/download", downloadSourceHandler);
   app.get<{Params:{ticketId:string}}>("/api/v1/tickets/:ticketId/sources/download", downloadSourceHandler);
+
+  // Inline chat controls use these ticket-owner-scoped endpoints. No OTP is
+  // submitted as a normal chat message or sent to Foundry.
+  app.get("/api/v1/tickets/:ticketId/chat-journey",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return chatJourney.status(scope,idParam(request));
+  });
+  app.post("/api/v1/tickets/:ticketId/chat-journey/otp/verify",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return reply.code(202).send(await chatJourney.verifySecureOtp(scope,
+      idParam(request),request.body));
+  });
 
   // Customer-initiated operation only; never callable as a model tool.
   // Consent is collected in a separate UI form and recorded in Node.
