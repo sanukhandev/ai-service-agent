@@ -12,6 +12,9 @@ import { QuotationOperations } from "../services/api/dist/runtime/quotation-oper
 import { PurchaseOperations } from "../services/api/dist/runtime/purchase-operations.js";
 import { PaymentOperations } from "../services/api/dist/runtime/payment-operations.js";
 
+assert.equal(requestedBusinessAction("I want to start a company"),"generate_quote");
+assert.equal(requestedBusinessAction("Please help me set up an IT business"),"generate_quote");
+assert.equal(requestedBusinessAction("How do I start a company?"),null);
 assert.equal(requestedBusinessAction("can you send me a quotation"),"generate_quote");
 assert.equal(requestedBusinessAction("can you sen me a pdf?", "generate_quote"),"generate_quote");
 assert.equal(requestedBusinessAction("can I have a PDF?",null,true),"generate_quote");
