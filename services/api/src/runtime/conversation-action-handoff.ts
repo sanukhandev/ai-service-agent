@@ -32,6 +32,7 @@ export function isCheckoutContinuation(message:string):boolean{
     .test(message.trim());
 }
 const STOP_EVENT="customer.action.cancelled";
+const DOCUMENT_REVIEW_EVENT="purchase.review.started";
 
 /** Detect explicit requests, not casual questions about business procedures. */
 export function requestedBusinessAction(
@@ -111,8 +112,8 @@ export class ConversationActionHandoff {
       await authorizedTicket(client,scope,ticketId);
       const result=await client.query<{event_type:string;payload:{actionKey?:string}}>(
         `SELECT event_type,payload FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2
-         AND event_type IN ($3,$4) ORDER BY sequence DESC LIMIT 1`,
-        [scope.agentId,ticketId,ACTION_EVENT,STOP_EVENT],
+         AND event_type IN ($3,$4,$5) ORDER BY sequence DESC LIMIT 1`,
+        [scope.agentId,ticketId,ACTION_EVENT,STOP_EVENT,DOCUMENT_REVIEW_EVENT],
       );
       const row=result.rows[0];
       if(!row||row.event_type===STOP_EVENT)return null;
