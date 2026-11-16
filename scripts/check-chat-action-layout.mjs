@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-/** Offline regression for duplicated Salesforce buttons and composer overlap.
+/** Offline regression for customer-chat-only layout and legacy action contracts.
  * Requires npm install + API build; no browser or Foundry credentials.
  */
 import assert from "node:assert/strict";
@@ -64,13 +64,19 @@ assert.match(paymentUI,/setPurchaseReady\(purchase\?\.readyForOtp===true/,
   "On reload, readiness must restore without a mounted document checklist");
 const chat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
 const transcriptStart=chat.indexOf("ref={transcriptRef}");
-const panelPosition=chat.indexOf("<IntentActionPanel");
 const transcriptEnd=chat.indexOf("</section>",transcriptStart);
 const footerStart=chat.indexOf("<footer");
 assert.ok(transcriptStart>=0 && transcriptEnd>transcriptStart);
-assert.ok(panelPosition>transcriptStart && panelPosition<transcriptEnd,
-  "Action controls must scroll in the transcript, never expand the fixed composer footer");
-assert.ok(footerStart>transcriptEnd);
-assert.equal((chat.match(/<IntentActionPanel\b/g)??[]).length,1,
-  "Only one action panel may be mounted for a ticket");
-console.log("Chat action UI PASS: deduplicated catalog actions and scrollable panel outside composer");
+assert.ok(footerStart>transcriptEnd,
+  "Chat composer must remain outside the scrollable message transcript");
+assert.doesNotMatch(chat,/import\\s*\\{\\s*IntentActionPanel\\s*\\}/,
+  "The legacy action panel must not be imported in the chat-only UI");
+assert.doesNotMatch(chat,/<IntentActionPanel\\b/,
+  "No action catalog or status card should render below the conversation");
+assert.doesNotMatch(chat,/data-chat-action-panel/,
+  "Remove obsolete action panel wrapper");
+assert.doesNotMatch(chat,/schedulePanelRefresh|eventRevision/,
+  "Remove action-panel-specific refresh state and timers");
+assert.match(chat,/useTicketEvents\\(/,
+  "Continue receiving verified workflow status events over SSE");
+console.log("Chat-only layout PASS: legacy action panel absent, transcript and SSE preserved");
