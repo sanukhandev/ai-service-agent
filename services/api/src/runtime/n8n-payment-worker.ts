@@ -5,6 +5,8 @@
  */
 import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
+import { workerTicketScope } from "../repositories/types.js";
 import { paymentEnabled, verifyCreatedOrder, type PaymentIdentity } from "./payment-evidence.js";
 
 interface Claim extends PaymentIdentity {
@@ -150,6 +152,17 @@ export class N8nPaymentWorker {
           status:created?.state??"unknown_outcome",
           verified:false,
         });
+      if(created?.checkoutUrl){
+        // A checkout link is NOT evidence of payment. Payment verification
+        // remains an independent authenticated provider GET.
+        await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+          client,workerTicketScope(c.agentId,c.ticketId),c.ticketId,
+          lifecycleNoticeId("checkout.available",c.paymentId),
+          "Your test payment order is ready. [Open the hosted sandbox checkout]("+
+          created.checkoutUrl+"). Do not enter card information into chat. "+
+          "I will issue a TEST invoice only after independent payment verification.",
+        );
+      }
     });
   }
   private async tick(){
