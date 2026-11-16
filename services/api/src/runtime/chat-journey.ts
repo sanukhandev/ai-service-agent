@@ -51,7 +51,10 @@ const count=(value:unknown,min:number,max:number):number|null=>{
 };
 const fingerprint=(data:unknown):string=>
   createHash("sha256").update(JSON.stringify(data)).digest("hex");
-const canonical=(v:string):string=>v.trim().replace(/\s+/g," ").toLowerCase();
+const canonical=(v:string):string=>v.trim()
+  .replace(/^["“”']+|["“”']+$/g,"")
+  .replace(/[.!]+$/g,"")
+  .replace(/\s+/g," ").toLowerCase();
 export const isLeadQuoteApproval=(s:string):boolean=>
   canonical(s)===canonical(LEAD_QUOTE_APPROVAL) ||
   canonical(s)===canonical("Yes, "+LEAD_QUOTE_APPROVAL);
@@ -127,7 +130,10 @@ export class ChatJourney {
     if(!exactKind&&!isContextualApproval(text))return null;
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
-      if(!await agentIsAncfz(client,scope.agentId))return null;
+      if(!await agentIsAncfz(client,scope.agentId)){
+        if(exactKind)throw new PersistenceError("CONFLICT","CHAT_APPROVAL_AGENT_INACTIVE");
+        return null;
+      }
       // Contextual assent is intentionally scoped to the most recent proposal
       // across both transaction types; never guess which operation was meant.
       const row=exactKind
@@ -181,8 +187,10 @@ export class ChatJourney {
       // quotation changed. The sequenced next customer message must be approval.
       if(kind==="lead_quote"){
         const fresh=await this.leadQuoteData(client,scope.agentId,ticketId);
-        if(!fresh||fingerprint(fresh)!==p.payload.fingerprint)
-          throw new PersistenceError("CONFLICT","Enquiry details or package changed; request a new proposal");
+        if(!fresh)
+          throw new PersistenceError("CONFLICT","CHAT_APPROVAL_SNAPSHOT_UNAVAILABLE");
+        if(fingerprint(fresh)!==p.payload.fingerprint)
+          throw new PersistenceError("CONFLICT","CHAT_APPROVAL_SNAPSHOT_CHANGED");
       }else{
         const x=p.payload.data as PurchaseData;
         const q=await client.query<{amount:string;currency:string;state:string}>(
