@@ -36,7 +36,7 @@ export function requestedBusinessAction(
   const explicitSubmission=/\b(?:send|share|prepare|generate|create|produce|issue|submit|download)\b/i;
   if(/^(?:what|why|how|when|where|which)\b/i.test(text))return null;
   if(informational.test(text) && !explicitSubmission.test(text))return null;
-  const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:i'd|i would) like\b)/i;
+  const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
   if(!request.test(text))return null;
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
