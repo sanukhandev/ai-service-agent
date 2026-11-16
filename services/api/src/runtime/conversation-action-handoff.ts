@@ -23,6 +23,14 @@ export type HandoffStep={
 };
 
 const ACTION_EVENT="customer.action.requested";
+const CHECKOUT_CONTINUATION_PROMPT=
+  "Would you like to continue with the sandbox documents and test checkout?";
+/** A short affirmative is a checkout REQUEST only when answering Node's
+ * immediately preceding verified-quote question, never a payment approval. */
+export function isCheckoutContinuation(message:string):boolean{
+  return /^(?:yes|yes please|yes, please|please proceed|proceed|continue|go ahead|sure|okay|ok|let's proceed|let's continue)[.! ]*$/i
+    .test(message.trim());
+}
 const STOP_EVENT="customer.action.cancelled";
 
 /** Detect explicit requests, not casual questions about business procedures. */
@@ -120,8 +128,34 @@ export class ConversationActionHandoff {
       const catalog=await new IntentActionOperations(this.db).catalog(scope,ticketId);
       quotePdfSupported=catalog.actions.some(a=>a.actionKey==="generate_quote");
     }
-    const action=requestedBusinessAction(message,previous,quotePdfSupported);
+    let action=requestedBusinessAction(message,previous,quotePdfSupported);
     const stop=cancelled.test(message.trim());
+    if(!action&&!stop && previous==="generate_quote" &&
+       isCheckoutContinuation(message)){
+      const state=await this.status(scope,ticketId,previous);
+      if(state?.stage==="quote_ready"){
+        const last=await this.db.withAgent(scope.agentId,async client=>{
+          await authorizedTicket(client,scope,ticketId);
+          const r=await client.query<{role:string;content:string}>(
+            `SELECT role,content FROM ticket_messages
+              WHERE agent_id=$1 AND ticket_id=$2
+                AND message_sequence < (
+                  SELECT message_sequence FROM ticket_messages
+                  WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 AND role='customer'
+                )
+              ORDER BY message_sequence DESC LIMIT 1`,
+            [scope.agentId,ticketId,messageId],
+          );
+          return r.rows[0]??null;
+        });
+        if(last?.role==="assistant" &&
+           last.content.includes(CHECKOUT_CONTINUATION_PROMPT)){
+          // Persist only the customer's request; separate, exact-amount
+          // proposal and explicit consent still gate any purchase/payment.
+          action="purchase_quotation";
+        }
+      }
+    }
     if(!action&&!stop)return {action:previous,explicit:false};
     const next=stop?null:action;
     if(next===previous)return {action:next,explicit:Boolean(action)};
@@ -186,7 +220,7 @@ export class ConversationActionHandoff {
       return step("quote_processing","Your quotation is being prepared. I'll let you know when the PDF is ready.");
     }
     if(request==="generate_quote")return step("quote_ready",
-      "Your verified quotation PDF is available here in the conversation. Would you like to continue with the sandbox documents and test checkout?");
+      "Your verified quotation PDF is available here in the conversation. "+CHECKOUT_CONTINUATION_PROMPT);
     if(!purchase)return step("purchase_unsupported",
       "The quotation is ready, but checkout isn't configured for this service.");
 
