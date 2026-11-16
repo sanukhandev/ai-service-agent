@@ -5,6 +5,7 @@ import { LeadSubmission } from "./lead-submission";
 import { QuotationRequest } from "./quotation-request";
 import { PaymentCheckout } from "./payment-checkout";
 import { PurchaseChecklist } from "./purchase-checklist";
+import { uniqueActionsByKey } from "../lib/unique-actions";
 
 const consentText =
   "I ask ANCFZ to record this POC service request using the information I provided in this ticket. I understand this does not submit an application to a bank, government body or external partner.";
@@ -71,7 +72,8 @@ export function IntentActionPanel({ticketId,revision}:{ticketId:string;revision:
     finally{setSending(false);}
   }
   if(!catalog?.intentKey)return null;
-  const actions=catalog.actions;
+  // Server catalog entries can be repeated; one actionable control per key.
+  const actions=uniqueActionsByKey(catalog.actions);
   return <section className="mb-3 space-y-2" aria-label="Available intent actions">
     <p className="text-xs font-semibold text-slate-700">
       Available actions for {catalog.intentName??catalog.intentKey.replaceAll("_"," ")}
