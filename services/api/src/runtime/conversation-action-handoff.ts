@@ -179,6 +179,9 @@ export class ConversationActionHandoff {
       "The quotation is ready, but checkout isn't configured for this service.");
 
     const documents=await new PurchaseOperations(this.db).read(scope,ticketId);
+    if(!documents.supported)
+      return step("purchase_unsupported",
+        "This quotation is not available for sandbox checkout. I can help review the next steps.");
     if(documents.missing.length){
       return step("documents_pending",
         "Before checkout, please upload the required identity documents in the secure document section. Don't send passport or Emirates ID files in chat.",
@@ -187,6 +190,9 @@ export class ConversationActionHandoff {
     if(!documents.confirmed)
       return step("purchase_consent",
         "Your documents are ready. Please review and approve the sandbox purchase in the secure checkout section.");
+    if(!documents.readyForOtp)
+      return step("purchase_review",
+        "Checkout requirements still need review. Please check the secure document and purchase section before requesting an OTP.");
     if(!paymentEnabled())
       return step("payment_disabled",
         "Your purchase details are ready, but sandbox payment is currently unavailable. No payment has been processed.");
@@ -194,7 +200,8 @@ export class ConversationActionHandoff {
     const payment=payments.payments[0];
     if(!payment)return step("otp_pending",
       "Please request your test OTP from the secure checkout section. Don't share the code in chat.");
-    if(payment.state==="unknown_outcome"||payment.state==="payment_refunded")
+    if(payment.state==="unknown_outcome"||payment.state==="payment_refunded"||
+       payment.state==="payment_declined")
       return step("payment_review",
         "Your payment needs review. I can't confirm payment or issue an invoice from an unverified result.");
     if(payment.state!=="verified_test_payment")
