@@ -9,6 +9,7 @@ import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations } from "./quotation-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
 import { PurchaseOperations } from "./purchase-operations.js";
+import {LicenceRenewalOperations} from "./licence-renewal.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ChatJourney } from "./chat-journey.js";
 
@@ -136,6 +137,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const quotes=new QuotationOperations(db);
   const payments=new PaymentOperations(db);
   const purchases=new PurchaseOperations(db);
+  const renewals=new LicenceRenewalOperations(db);
   const intentActions=new IntentActionOperations(db);
   const chatJourney=new ChatJourney(db);
 
@@ -388,6 +390,24 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
         request.params.actionKey,request.body);
       return reply.code(result.duplicated?200:201).send(result);
     });
+
+  // Renewal lookup is a ticket-owner, development-only read of a synthetic n8n
+  // Data Table. Confirmation acknowledges displayed details; never renews,
+  // quotes, charges, changes a licence, or bypasses order/payment preflight.
+  app.get("/api/v1/tickets/:ticketId/renewal",async request=>{
+    const scope=await scopeFromCookie(db,request);
+    return renewals.read(scope,idParam(request));
+  });
+  app.post("/api/v1/tickets/:ticketId/renewal/lookup",async request=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return renewals.lookup(scope,idParam(request),request.body);
+  });
+  app.post("/api/v1/tickets/:ticketId/renewal/confirm",async request=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return renewals.confirm(scope,idParam(request),request.body);
+  });
 
   // Customer-owned document intake and explicit purchase authorization.
   // No AI tool can bypass these routes or their PostgreSQL ownership checks.
