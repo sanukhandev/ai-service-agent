@@ -11,6 +11,7 @@ import { scopedIntentToolRepositories } from "../repositories/intent-adapter.js"
 import { workerTicketScope, type SourceReference } from "../repositories/types.js";
 import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
+import {LicenceRenewalOperations} from "./licence-renewal.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ConversationActionHandoff, shouldUseHandoff } from "./conversation-action-handoff.js";
 import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
@@ -254,6 +255,30 @@ export class TurnWorker {
       });
       if(!result.responseId) throw new Error("FOUNDRY_RESPONSE_ID_MISSING");
       let responseText=result.text;
+      // If the customer already supplied the synthetic licence number in
+      // ordinary chat, reuse it for ONE scoped read-only lookup after Foundry
+      // has selected the renewal intent. No second copy/paste is required.
+      const licenceMatch=text.toUpperCase().match(/\\bANCFZ-TEST-[A-Z0-9-]{4,40}\\b/);
+      if(licenceMatch){
+        try{
+          const renewals=new LicenceRenewalOperations(this.db);
+          const status=await renewals.read(scope,turn.ticketId);
+          if(status.applicable && status.enabled && !status.record){
+            await renewals.lookup(scope,turn.ticketId,{
+              licenceNumber:licenceMatch[0],
+            });
+            responseText="A matching synthetic licence record was found. "+
+              "Review the details in the secure renewal panel and confirm "+
+              "them before I can prepare your renewal quotation.";
+          }
+        }catch(error){
+          responseText=error instanceof PersistenceError?
+            error.message:"The private renewal lookup is unavailable. Please "+
+              "retry from the secure renewal panel or request staff review.";
+          this.log({turnId:turn.id,errorCode:(error as Error).name},
+            "Automatic synthetic licence lookup did not confirm a record");
+        }
+      }
       try{
         const next=await handoff.status(scope,turn.ticketId,requestedAction.action);
         if(shouldUseHandoff(text,requestedAction.explicit,handoffBefore,next)&&next){
