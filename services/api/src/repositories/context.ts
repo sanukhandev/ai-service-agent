@@ -177,7 +177,7 @@ export class ConversationContextRepository {
       if (source.rows[0]?.role !== "customer") {
         throw new PersistenceError("CONFLICT", "Customer message provenance required");
       }
-      const selected = await client.query<{ id: string }>(
+      const selected = await client.query<{ id: string; allowed_actions:string[] }>(
         [
           "SELECT i.id,i.allowed_actions FROM ticket_intents ti JOIN intents i",
           "ON i.agent_id = ti.agent_id AND i.id = ti.intent_id",
@@ -215,9 +215,9 @@ export class ConversationContextRepository {
         seen.add(fact.key);
         const value = fact.value;
         const expectedType = keys.get(fact.key);
-        if(fact.key==="customer_name" && (typeof value!=="string" || !/^[\\p{L}][\\p{L} .'-]{1,119}$/u.test(value.trim())))
+        if(fact.key==="customer_name" && (typeof value!=="string" || !/^[\p{L}][\p{L} .'-]{1,119}$/u.test(value.trim())))
           throw new PersistenceError("INVALID_INPUT","Invalid customer name");
-        if(fact.key==="customer_phone" && (typeof value!=="string" || !/^\\+?[0-9 ()-]{7,40}$/.test(value.trim())))
+        if(fact.key==="customer_phone" && (typeof value!=="string" || !/^\+?[0-9 ()-]{7,40}$/.test(value.trim())))
           throw new PersistenceError("INVALID_INPUT","Invalid customer phone");
         if(fact.key==="customer_test_email" && (typeof value!=="string" || !/^[A-Za-z0-9._%+-]+@example\\.invalid$/i.test(value)))
           throw new PersistenceError("INVALID_INPUT","Use a synthetic example.invalid billing email");
