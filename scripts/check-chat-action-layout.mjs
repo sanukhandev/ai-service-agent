@@ -69,14 +69,14 @@ const footerStart=chat.indexOf("<footer");
 assert.ok(transcriptStart>=0 && transcriptEnd>transcriptStart);
 assert.ok(footerStart>transcriptEnd,
   "Chat composer must remain outside the scrollable message transcript");
-assert.doesNotMatch(chat,/import\\s*\\{\\s*IntentActionPanel\\s*\\}/,
+assert.ok(!chat.includes('from "./intent-action-panel"'),
   "The legacy action panel must not be imported in the chat-only UI");
-assert.doesNotMatch(chat,/<IntentActionPanel\\b/,
+assert.ok(!chat.includes("<IntentActionPanel"),
   "No action catalog or status card should render below the conversation");
 assert.doesNotMatch(chat,/data-chat-action-panel/,
   "Remove obsolete action panel wrapper");
 assert.doesNotMatch(chat,/schedulePanelRefresh|eventRevision/,
   "Remove action-panel-specific refresh state and timers");
-assert.match(chat,/useTicketEvents\\(/,
+assert.ok(chat.includes("useTicketEvents("),
   "Continue receiving verified workflow status events over SSE");
 console.log("Chat-only layout PASS: legacy action panel absent, transcript and SSE preserved");
