@@ -2,11 +2,34 @@
 # Explicit operator-only TEST publication. Never runs during ordinary API boot.
 set -euo pipefail
 if [[ "${1:-}" != "--publish-test" ]]; then
-  echo "Usage: bash scripts/publish-ancfz-test-catalog.sh --publish-test" >&2
+  echo "Usage: bash scripts/publish-ancfz-test-catalog.sh --publish-test [--catalog=ancfz-test-renewal-2026.json]" >&2
+  exit 2
+fi
+catalog_file="ancfz-test-2026.json"
+if [[ "${2:-}" == "--catalog=ancfz-test-renewal-2026.json" ]]; then
+  catalog_file="ancfz-test-renewal-2026.json"
+elif [[ -n "${2:-}" ]]; then
+  echo "Refusing unknown catalog file; select the reviewed test renewal catalog explicitly" >&2
   exit 2
 fi
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$ROOT"
+
+if [[ "$catalog_file" == "ancfz-test-renewal-2026.json" ]]; then
+  # Never publish a supposed priced renewal service with zero approved rates.
+  node --input-type=module -e '
+    import {readFileSync} from "node:fs";
+    const catalog=JSON.parse(readFileSync("infra/catalog/ancfz-test-renewal-2026.json","utf8"));
+    const priced=catalog.offerings.filter(x=>x.intentKey==="license_renewal" &&
+      x.key.startsWith("renewal_")&&x.price &&
+      x.price.currency==="AED"&&Number.isFinite(x.price.amount)&&x.price.amount>0 &&
+      typeof x.price.conditions==="string" && x.price.conditions.trim());
+    if(priced.length===0) {
+      console.error("Blocked: fill at least one owner-approved, versioned TEST renewal offering price and its conditions");
+      process.exit(2);
+    }
+  '
+fi
 
 # Use the same private .env that Docker Compose uses. Never print secrets.
 if [[ -f .env ]]; then
@@ -45,7 +68,7 @@ trap cleanup EXIT
 
 # Relative path for Docker Desktop; do not convert the container's /tmp path.
 MSYS_NO_PATHCONV=1 docker cp \
-  "./infra/catalog/ancfz-test-2026.json" \
+  "./infra/catalog/$catalog_file" \
   "${container_id}:${seed_path}"
 
 # Do not depend on NTFS file mode bits.
