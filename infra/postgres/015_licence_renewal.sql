@@ -16,6 +16,8 @@ CREATE TABLE ticket_licence_renewals (
     CHECK (renewal_offering_key ~ '^renewal_[a-z0-9_]{1,110}$'),
   renewal_term_years integer NOT NULL CHECK (renewal_term_years BETWEEN 1 AND 5),
   source_fingerprint char(64) NOT NULL CHECK(source_fingerprint ~ '^[0-9a-f]{64}$'),
+  fulfilment_state varchar(32) NOT NULL DEFAULT 'not_requested'
+    CHECK (fulfilment_state IN ('not_requested','awaiting_staff_review')),
   state varchar(32) NOT NULL DEFAULT 'awaiting_confirmation'
     CHECK (state IN ('awaiting_confirmation','confirmed')),
   looked_up_at timestamptz NOT NULL DEFAULT now(),
