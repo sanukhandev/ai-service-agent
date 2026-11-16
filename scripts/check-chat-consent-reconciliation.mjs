@@ -40,6 +40,8 @@ async function scenario({messageText=LEAD_QUOTE_APPROVAL,notice=null,
       return {rows:[{id:ticketId,status:"processing"}]};
     if(sql.includes("SELECT agent_key FROM agents"))
       return {rows:[{agent_key:"ancfz"}]};
+    if(sql.includes("FROM ticket_events WHERE agent_id")&&sql.includes("event_type IN"))
+      return {rows:[proposalEvent]};
     if(sql.includes("FROM ticket_events WHERE agent_id")&&sql.includes("event_type=$3")){
       if(params[2]==="chat.lead_quote.proposed")return {rows:[proposalEvent]};
       if(params[2]==="chat.lead_quote.consented" && previousApproval)
