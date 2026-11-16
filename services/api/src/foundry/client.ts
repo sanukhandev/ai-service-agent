@@ -159,6 +159,8 @@ export class FoundryClient {
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     timeout.unref();
     const usages: TokenUsage[] = [];
+    let toolRoundCount=0;
+    let toolCallCount=0;
 
     try {
       let parsed;
@@ -190,6 +192,8 @@ export class FoundryClient {
       let lastParsed = parsed;
       const adapter: FoundryTurnAdapter = {
         continueWithToolOutputs: async (frame: AgentFrame, results: readonly FunctionOutput[]) => {
+          toolRoundCount++;
+          toolCallCount+=results.length;
           if (!frame.traceRef) {
             throw new FoundryError("FOUNDRY_INVALID_FUNCTION_CALL", "Foundry function response has no response ID", false);
           }
@@ -269,6 +273,7 @@ export class FoundryClient {
         sourceReferences: lastParsed.references,
         ...(finalFrame.traceRef ? { responseId: finalFrame.traceRef } : {}),
         ...(aggregateTokenUsage(usages) ? { usage: aggregateTokenUsage(usages) } : {}),
+        toolRoundCount,toolCallCount,
       };
     } finally {
       clearTimeout(timeout);
