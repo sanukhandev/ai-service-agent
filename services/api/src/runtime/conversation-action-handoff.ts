@@ -26,14 +26,18 @@ const ACTION_EVENT="customer.action.requested";
 const STOP_EVENT="customer.action.cancelled";
 
 /** Detect explicit requests, not casual questions about business procedures. */
-export function requestedBusinessAction(message:string,previous:RequestedBusinessAction|null=null):
-  RequestedBusinessAction|null {
+export function requestedBusinessAction(
+  message:string,previous:RequestedBusinessAction|null=null,quotePdfSupported=false,
+):RequestedBusinessAction|null {
   const text=message.trim().toLowerCase();
   const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
   if(!request.test(text))return null;
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
-  if(/\bpdf\b/i.test(text) && previous==="generate_quote")return "generate_quote";
+  if(/\bpdf\b/i.test(text) &&
+    (previous==="generate_quote" || (quotePdfSupported &&
+      !/\b(?:source|reference|policy|regulation|knowledge article|passport)\b/i.test(text))))
+    return "generate_quote";
   if(/\b(?:checkout|purchase|buy|pay(?:ment)?)\b/i.test(text))return "purchase_quotation";
   if(/\b(?:salesforce lead|crm lead|salesforce follow.up)\b/i.test(text))return "create_lead";
   return null;
@@ -97,7 +101,14 @@ export class ConversationActionHandoff {
   async observe(scope:TicketScope,ticketId:string,messageId:string,message:string):
     Promise<{action:RequestedBusinessAction|null;explicit:boolean}> {
     const previous=await this.current(scope,ticketId);
-    const action=requestedBusinessAction(message,previous);
+    let quotePdfSupported=false;
+    // "Can you send me a PDF?" should mean a quotation when this ticket
+    // offers quotations, even if the customer did not use the word "quote".
+    if(!previous && /\bpdf\b/i.test(message)){
+      const catalog=await new IntentActionOperations(this.db).catalog(scope,ticketId);
+      quotePdfSupported=catalog.actions.some(a=>a.actionKey==="generate_quote");
+    }
+    const action=requestedBusinessAction(message,previous,quotePdfSupported);
     const stop=cancelled.test(message.trim());
     if(!action&&!stop)return {action:previous,explicit:false};
     const next=stop?null:action;
