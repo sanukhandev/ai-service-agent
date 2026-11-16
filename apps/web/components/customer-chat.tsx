@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatComposer } from "./chat-composer";
 import { ChatJourneyControls } from "./chat-journey-controls";
+import {ChatLicenceRenewalControls} from "./chat-licence-renewal-controls";
 import { MessageBubble } from "./chat-message";
 import {
   AlertCircleIcon,
@@ -658,6 +659,14 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               onContinuePurchase={()=>send(
                 "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
               )} />
+          )}
+
+          {ticket && loadState==="ready" && (
+            <ChatLicenceRenewalControls key={"renewal:"+ticket.id} ticketId={ticket.id}
+              revision={journeyRevision} conversationBusy={locked||isSending}
+              onConfirmed={()=>send(
+                "I want a non-binding renewal quotation for my confirmed synthetic ANCFZ licence.",
+              )}/>
           )}
 
           {/* Natural Frosted Glass Thinking Indicator */}
