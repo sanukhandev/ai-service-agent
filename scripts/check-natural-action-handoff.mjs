@@ -14,6 +14,9 @@ import { PaymentOperations } from "../services/api/dist/runtime/payment-operatio
 
 assert.equal(requestedBusinessAction("can you send me a quotation"),"generate_quote");
 assert.equal(requestedBusinessAction("can you sen me a pdf?", "generate_quote"),"generate_quote");
+assert.equal(requestedBusinessAction("can I have a PDF?",null,true),"generate_quote");
+assert.equal(requestedBusinessAction("can I have a PDF?",null,false),null);
+assert.equal(requestedBusinessAction("can I have the policy PDF?",null,true),null);
 assert.equal(requestedBusinessAction("please prepare an invoice"),"invoice");
 assert.equal(requestedBusinessAction("I would like to pay for the package"),"purchase_quotation");
 assert.equal(requestedBusinessAction("What steps are needed for licensing?"),null);
