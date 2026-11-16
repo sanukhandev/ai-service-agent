@@ -109,7 +109,7 @@ export class ConversationContextRepository {
       const ticket = await authorizedTicket(client, scope, ticketId, true);
       if (ticket["status"] === "closed") throw new PersistenceError("CONFLICT", "Ticket is closed");
       await assertAgentActive(client, scope.agentId);
-      const selected = await client.query<{ id: string; allowed_actions: string[] }>(
+      const selected = await client.query<{ id: string }>(
         [
           "SELECT i.id FROM intents i JOIN intent_catalog_versions v",
           "ON v.agent_id = i.agent_id AND v.id = i.catalog_version_id",
@@ -219,7 +219,7 @@ export class ConversationContextRepository {
           throw new PersistenceError("INVALID_INPUT","Invalid customer name");
         if(fact.key==="customer_phone" && (typeof value!=="string" || !/^\+?[0-9 ()-]{7,40}$/.test(value.trim())))
           throw new PersistenceError("INVALID_INPUT","Invalid customer phone");
-        if(fact.key==="customer_test_email" && (typeof value!=="string" || !/^[A-Za-z0-9._%+-]+@example\\.invalid$/i.test(value)))
+        if(fact.key==="customer_test_email" && (typeof value!=="string" || !/^[A-Za-z0-9._%+-]+@example\.invalid$/i.test(value)))
           throw new PersistenceError("INVALID_INPUT","Use a synthetic example.invalid billing email");
         if ((expectedType === "number" && typeof value !== "number") ||
           ((expectedType === "email" || expectedType === "text" || expectedType === "choice") && typeof value !== "string") ||
