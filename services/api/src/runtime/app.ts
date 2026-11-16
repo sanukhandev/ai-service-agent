@@ -393,7 +393,21 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   },async(request,reply)=>{
     rejectCrossSite(request);
     const scope=await scopeFromCookie(db,request);
-    const result=await purchases.upload(scope,idParam(request),request.body);
+    const ticketId=idParam(request);
+    const result=await purchases.upload(scope,ticketId,request.body);
+    // The final successful synthetic upload makes Sara's NEXT review question
+    // appear as a persisted Node-authored assistant message. This is not
+    // customer consent, OTP issuance, an order, payment or invoice.
+    // A review-notice failure must not turn a stored document into a 500 upload.
+    if(!result.duplicated){
+      try{
+        await chatJourney.afterDocumentsReceived(scope,ticketId,result.documentId);
+      }catch(error){
+        request.log.warn({
+          errorCode:error instanceof PersistenceError?error.code:"REVIEW_UNAVAILABLE",
+        },"Automatic sandbox purchase review announcement failed");
+      }
+    }
     return reply.code(result.duplicated?200:201).send(result);
   });
 
