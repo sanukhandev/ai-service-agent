@@ -185,7 +185,8 @@ export class QuotationOperations {
     });
   }
 
-  async submit(scope:TicketScope,ticketId:string,raw:unknown):Promise<{quotation:QuoteView;duplicated:boolean}> {
+  async submit(scope:TicketScope,ticketId:string,raw:unknown,
+    expected?:{amount:string;currency:string;priceRevision:number}):Promise<{quotation:QuoteView;duplicated:boolean}> {
     requireUuid(ticketId,"ticketId");
     const input=parseQuoteRequest(raw);
     if(process.env.APP_ENV==="production"&&!process.env.PUBLIC_BASE_URL?.startsWith("https://"))
@@ -210,6 +211,11 @@ export class QuotationOperations {
       const leadId=await requireEligibleTicket(client,scope.agentId,ticketId);
       const options=await pricedOptions(client,scope.agentId,ticketId,input.offeringKey);
       const chosen=options[0];
+      // The consented price snapshot must still match inside this same
+      // transaction. A between-calls price revision must not change the quote.
+      if(expected && (!chosen || chosen.revision!==expected.priceRevision ||
+          chosen.amount!==expected.amount || chosen.currency.trim()!==expected.currency))
+        throw new PersistenceError("CONFLICT","Quoted price changed after customer authorization");
       if(!chosen)throw new PersistenceError("CONFLICT","Selected offering has no effective published price");
       const amount=Number(chosen.amount);
       if(!Number.isFinite(amount)||amount<=0||
