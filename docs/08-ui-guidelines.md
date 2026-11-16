@@ -29,9 +29,11 @@ Use native buttons, form controls, simple tables and dialogs where suitable, wit
 
 - Render useful conversational answers, not repetitive FAQ-style lists.
 - Show one clear next question or next step when relevant; do not force a multi-field wizard.
-- Preserve cited factual sources cleanly; never render raw tool JSON or internal prompts.
+- Preserve cited factual sources **in Node and PostgreSQL** for grounding/audit. Temporarily hide inline IQ citations and source/download links in customer chat by default; `NEXT_PUBLIC_SHOW_CHAT_SOURCES=true` can re-enable them in an explicit build. Never render raw tool JSON or internal prompts.
 - Separate indicative package explanation from formal price/quote confirmation.
 - Never optimistically display "lead created" or "quote sent" until Node reports verified provider completion via SSE.
+- On an explicit quotation/PDF request, let Sara ask one missing catalog fact at a time. Display the Salesforce consent or quotation acknowledgement control only when Node confirms the prerequisites.
+- Keep the composer free of workflow controls; business action forms belong to the scrollable transcript. Secure quotation and invoice PDF downloads stay in their authenticated workflow panels, even while source downloads are hidden in chat.
 
 ## Acceptance (POC smoke only)
 
