@@ -67,8 +67,8 @@ export function quoteRequirements(rows:readonly RequirementRow[]):QuoteRequireme
 export async function quoteRequirementsTx(
   client:PoolClient,agentId:string,ticketId:string,
 ):Promise<QuoteRequirement[]>{
-  const r=await client.query<RequirementRow>(
-    `SELECT req.requirement_key,req.label,tf.value,tf.verification_status
+  const r=await client.query<RequirementRow&{intent_key:string}>(
+    `SELECT req.requirement_key,req.label,tf.value,tf.verification_status,i.intent_key
      FROM tickets t
      JOIN ticket_intents ti ON ti.agent_id=t.agent_id
        AND ti.ticket_id=t.id AND ti.status='active'
@@ -83,7 +83,25 @@ export async function quoteRequirementsTx(
      ORDER BY req.requirement_key`,
     [agentId,ticketId],
   );
-  return quoteRequirements(r.rows);
+  const requirements=quoteRequirements(r.rows);
+  if(r.rows.some(x=>x.intent_key==="license_renewal")){
+    const renewal=await client.query<{
+      licence_number:string;company_name:string;expires_on:string;
+      renewal_term_years:number;
+    }>(`SELECT licence_number,company_name,expires_on::text,renewal_term_years
+       FROM ticket_licence_renewals WHERE agent_id=$1 AND ticket_id=$2
+       AND state='confirmed'`,[agentId,ticketId]);
+    const row=renewal.rows[0];
+    if(!row)throw new Error("Confirmed licence renewal lookup required before quotation");
+    // The Data Table snapshot is more authoritative than free-form chat facts.
+    const exclude=new Set(["Existing licence reference","Renewal duration"]);
+    return [...requirements.filter(x=>!exclude.has(x.label)),
+      {label:"Licence number",value:short(row.licence_number)},
+      {label:"Licensed company",value:short(row.company_name)},
+      {label:"Current licence expiry",value:short(row.expires_on)},
+      {label:"Renewal duration (years)",value:String(row.renewal_term_years)}];
+  }
+  return requirements;
 }
 export function quoteDetails(
   description:string,requirements:QuoteRequirement[],
