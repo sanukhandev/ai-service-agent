@@ -99,8 +99,12 @@ async function requireEligibleTicket(client: import("pg").PoolClient, agentId:st
      JOIN ticket_operations lead ON lead.agent_id=t.agent_id AND lead.ticket_id=t.id
        AND lead.operation_key='ancfz_salesforce_lead' AND lead.state='verified_completed'
      JOIN agents a ON a.id=t.agent_id AND a.agent_key='ancfz'
+     LEFT JOIN ticket_licence_renewals ren ON ren.agent_id=t.agent_id
+       AND ren.ticket_id=t.id AND ren.state='confirmed'
      WHERE t.agent_id=$1 AND t.id=$2 AND t.status<>'closed'
        AND 'generate_quote'=ANY(i.allowed_actions)
+       AND (i.intent_key<>'license_renewal' OR
+         (ren.ticket_id IS NOT NULL AND ren.licence_status IN ('active','expired')))
        AND lead.provider_reference ~ '^00Q[A-Za-z0-9]{12}([A-Za-z0-9]{3})?$'
      LIMIT 1`,
     [agentId,ticketId],
@@ -218,6 +222,23 @@ export class QuotationOperations {
           chosen.amount!==expected.amount || chosen.currency.trim()!==expected.currency))
         throw new PersistenceError("CONFLICT","Quoted price changed after customer authorization");
       if(!chosen)throw new PersistenceError("CONFLICT","Selected offering has no effective published price");
+      // A previously confirmed renewal cannot switch licence/renewal offering
+      // without a fresh source lookup and another explicit customer request.
+      const renewal=await client.query<{
+        intent_key:string;state:string|null;renewal_offering_key:string|null;
+      }>(`SELECT i.intent_key,r.state,r.renewal_offering_key
+         FROM tickets t JOIN ticket_intents ti
+           ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id AND ti.status='active'
+         JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id
+           AND i.catalog_version_id=t.intent_catalog_version_id
+         LEFT JOIN ticket_licence_renewals r ON r.agent_id=t.agent_id
+           AND r.ticket_id=t.id
+         WHERE t.agent_id=$1 AND t.id=$2 LIMIT 1`,
+        [scope.agentId,ticketId]);
+      if(renewal.rows[0]?.intent_key==="license_renewal"&&
+         (renewal.rows[0]?.state!=="confirmed"||
+          renewal.rows[0]?.renewal_offering_key!==chosen.offering_key))
+        throw new PersistenceError("CONFLICT","Renewal details must be confirmed for the exact priced package");
       const amount=Number(chosen.amount);
       if(!Number.isFinite(amount)||amount<=0||
          !/^\d{1,12}\.\d{2}$/.test(chosen.amount))
