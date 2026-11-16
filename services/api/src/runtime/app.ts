@@ -305,6 +305,14 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const scope=await scopeFromCookie(db,request);
     return chatJourney.status(scope,idParam(request));
   });
+  // Recovery for tickets whose synthetic documents were completed before this
+  // automatic handoff existed. Idempotent and proposal-only; it cannot pay.
+  app.post("/api/v1/tickets/:ticketId/chat-journey/review",async request=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const created=await chatJourney.afterDocumentsReceived(scope,idParam(request));
+    return {created};
+  });
   app.post("/api/v1/tickets/:ticketId/chat-journey/otp/verify",async(request,reply)=>{
     rejectCrossSite(request);
     const scope=await scopeFromCookie(db,request);
