@@ -405,3 +405,30 @@ export class ChatJourney {
     });
   }
 }
+
+/** One in-process converger. Each operation remains idempotent in PostgreSQL,
+ * so restarts cannot replay ambiguous provider POSTs. */
+export class ChatJourneyDispatcher {
+  private timer:ReturnType<typeof setInterval>|undefined;
+  private busy=false;
+  private stopped=false;
+  constructor(private readonly journey:ChatJourney,
+    private readonly log:(data:Record<string,unknown>,message:string)=>void){}
+  start():void {
+    this.timer=setInterval(()=>{void this.tick();},3000);
+    this.timer.unref();
+    void this.tick();
+  }
+  stop():void {
+    this.stopped=true;
+    if(this.timer)clearInterval(this.timer);
+  }
+  private async tick():Promise<void> {
+    if(this.busy||this.stopped)return;
+    this.busy=true;
+    try {await this.journey.advance(this.log);}
+    catch(error){
+      this.log({code:(error as Error).name},"Chat journey dispatch sweep postponed");
+    } finally {this.busy=false;}
+  }
+}
