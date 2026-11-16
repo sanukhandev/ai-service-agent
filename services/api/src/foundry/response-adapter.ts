@@ -104,9 +104,11 @@ export function parseFoundryFrame(response: unknown): ParsedFoundryFrame {
   const outputTokens = number(usageRaw?.output_tokens);
   const totalTokens = number(usageRaw?.total_tokens);
   const cached = number(object(usageRaw?.input_tokens_details)?.cached_tokens);
+  const reasoning = number(object(usageRaw?.output_tokens_details)?.reasoning_tokens);
   const usage: TokenUsage | undefined = inputTokens !== undefined &&
     outputTokens !== undefined && totalTokens !== undefined
-    ? { inputTokens, outputTokens, totalTokens, ...(cached !== undefined ? { cachedInputTokens: cached } : {}) }
+    ? { inputTokens, outputTokens, totalTokens, ...(cached !== undefined ? { cachedInputTokens: cached } : {}),
+        ...(reasoning !== undefined ? {reasoningTokens:reasoning} : {}) }
     : undefined;
 
   return {
@@ -127,6 +129,9 @@ export function aggregateTokenUsage(usages: readonly TokenUsage[]): TokenUsage |
     totalTokens: usages.reduce((sum, usage) => sum + usage.totalTokens, 0),
     ...(usages.some((usage) => usage.cachedInputTokens !== undefined) ? {
       cachedInputTokens: usages.reduce((sum, usage) => sum + (usage.cachedInputTokens ?? 0), 0),
+    } : {}),
+    ...(usages.some((usage) => usage.reasoningTokens !== undefined) ? {
+      reasoningTokens: usages.reduce((sum, usage) => sum + (usage.reasoningTokens ?? 0), 0),
     } : {}),
   };
 }
