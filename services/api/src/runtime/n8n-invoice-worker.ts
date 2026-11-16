@@ -13,7 +13,7 @@ interface Claim {
   agentId:string;ticketId:string;quotationId:string;paymentId:string;
   invoiceId:string;outboxId:string;documentNumber:string;
   orderReference:string;customerName:string;offeringLabel:string;
-  amount:string;currency:string;
+  amount:string;currency:string;renewalLicenceNumber:string|null;
 }
 /**
  * A GET verification in flight is not a refunded or failed payment. Defer
@@ -74,10 +74,11 @@ export class N8nInvoiceWorker {
       const r=await client.query<{
         id:string;ticket_id:string;quotation_id:string;payment_id:string;outbox_id:string;
         document_number:string;order_reference:string;customer_name:string;
-        offering_label:string;amount:string;currency:string;
+        offering_label:string;amount:string;currency:string;licence_number:string|null;
       }>(
         `SELECT i.id,i.ticket_id,i.quotation_id,i.payment_id,i.outbox_id,i.document_number,
-          p.order_reference,q.customer_name,q.offering_label,q.amount::text,q.currency
+          p.order_reference,q.customer_name,q.offering_label,q.amount::text,q.currency,
+          renewal.licence_number
           FROM ticket_payment_invoices i
           JOIN event_outbox e ON e.agent_id=i.agent_id AND e.ticket_id=i.ticket_id
             AND e.id=i.outbox_id
@@ -88,6 +89,9 @@ export class N8nInvoiceWorker {
               WHERE q2.agent_id=i.agent_id AND q2.ticket_id=i.ticket_id AND q2.id=i.quotation_id)
           JOIN ticket_quotations q ON q.agent_id=i.agent_id AND q.ticket_id=i.ticket_id
             AND q.id=i.quotation_id AND q.currency=p.currency
+          LEFT JOIN ticket_licence_renewals renewal
+            ON renewal.agent_id=i.agent_id AND renewal.ticket_id=i.ticket_id
+            AND renewal.state='confirmed' AND q.offering_key=renewal.renewal_offering_key
           WHERE i.agent_id=$1 AND i.state='queued' AND e.event_type='ancfz_render_invoice'
             AND e.status='pending' AND e.available_at<=now()
           ORDER BY e.created_at FOR UPDATE OF i,e SKIP LOCKED LIMIT 1`,
@@ -109,6 +113,7 @@ export class N8nInvoiceWorker {
         orderReference:x.order_reference,
         customerName:await invoiceBillingName(client,agentId,x.ticket_id,x.quotation_id),
         offeringLabel:x.offering_label,amount:x.amount,currency:x.currency.trim(),
+        renewalLicenceNumber:x.licence_number,
       };
     });
   }
@@ -126,7 +131,9 @@ export class N8nInvoiceWorker {
           agentKey:"ancfz",ticketId:c.ticketId,quotationId:c.quotationId,
           documentType:"invoice",documentNumber:c.documentNumber,
           customerName:c.customerName,currency:c.currency,
-          lines:[{label:c.offeringLabel,amount:total}],total,
+          lines:[{label:c.renewalLicenceNumber?
+            "TEST Licence renewal "+c.renewalLicenceNumber+" — "+c.offeringLabel:
+            c.offeringLabel,amount:total}],total,
           paymentVerified:true,
           paymentEvidence:{
             status:"verified_test_payment",provider:"2checkout_mock",
@@ -187,6 +194,16 @@ export class N8nInvoiceWorker {
         "UPDATE event_outbox SET status=$3,lease_until=NULL WHERE agent_id=$1 AND id=$2",
         [c.agentId,c.outboxId,publish?"completed":"dead"],
       );
+      if(publish&&c.renewalLicenceNumber){
+        // A TEST invoice does not establish official licence renewal.
+        await client.query(
+          `UPDATE ticket_licence_renewals
+           SET fulfilment_state='awaiting_staff_review'
+           WHERE agent_id=$1 AND ticket_id=$2 AND state='confirmed'
+             AND licence_number=$3 AND fulfilment_state='not_requested'`,
+          [c.agentId,c.ticketId,c.renewalLicenceNumber],
+        );
+      }
       await appendEventTx(client,c.agentId,c.ticketId,
         publish?"invoice.generated":"invoice.unknown_outcome",{
           invoiceId:c.invoiceId,paymentId:c.paymentId,testOnly:true,
