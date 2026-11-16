@@ -662,6 +662,14 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             </ol>
           )}
 
+          {/* Ticket actions scroll with the conversation, never with the composer.
+              This keeps the message viewport usable even for long action forms. */}
+          {ticket && loadState === "ready" && (
+            <div className="mt-6 min-w-0 w-full" data-chat-action-panel>
+              <IntentActionPanel key={ticket.id} ticketId={ticket.id} revision={eventRevision} />
+            </div>
+          )}
+
           {/* Natural Frosted Glass Thinking Indicator */}
           {loadState === "ready" && (isSending || isProcessing) && (
             <div
@@ -751,9 +759,6 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               <span className="flex-1">{sendError}</span>
             </div>
           )}
-
-          {/* Selected catalog actions have one authoritative Node UI. */}
-          {ticket && <IntentActionPanel key={ticket.id} ticketId={ticket.id} revision={eventRevision} />}
 
           <ChatComposer
             onSend={send}
