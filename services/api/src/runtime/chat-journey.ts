@@ -136,21 +136,47 @@ export class ChatJourney {
           "SELECT id,ticket_id,payload,sequence::text FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2 AND event_type IN ('chat.lead_quote.proposed','chat.purchase_payment.proposed') ORDER BY sequence DESC LIMIT 1",
           [scope.agentId,ticketId],
         )).rows[0]??null;
+      // Exact, scope-specific consent is unambiguous; a short "yes" is not.
+      // Use finite denial codes to make failures diagnosable without logging
+      // contact details, chat content, or proposal payloads.
+      const denied=(code:string):null=>{
+        if(exactKind)throw new PersistenceError("CONFLICT","CHAT_APPROVAL_"+code);
+        return null;
+      };
       const p=asProposal(row);
-      if(!p|| (exactKind&&p.kind!==exactKind))return null;
+      if(!p || (exactKind&&p.kind!==exactKind))return denied("PROPOSAL_MISSING");
       const kind=p.kind;
+      const source=await client.query<{id:string;message_sequence:string}>(
+        "SELECT id,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 AND role='customer'",
+        [scope.agentId,ticketId,sourceMessageId],
+      );
+      const customer=source.rows[0];
+      if(!customer)return denied("SOURCE_MISSING");
+      // Match a *displayed* server-authored proposal, rather than assuming
+      // the last two messages are always customer + proposal. Asynchronous
+      // verified lifecycle notices may be inserted between those messages.
+      const visible=await client.query<{id:string;content:string;message_sequence:string}>(
+        "SELECT id,content,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND message_sequence<$3::bigint AND position($4 IN content)>0 AND position($5 IN content)>0 ORDER BY message_sequence DESC LIMIT 1",
+        [scope.agentId,ticketId,customer.message_sequence,
+          "Proposal reference: "+p.id,
+          kind==="lead_quote"?LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL],
+      );
+      const displayed=visible.rows[0];
+      if(!displayed)return denied("NOT_DISPLAYED");
+      const intervening=await client.query<{role:string;content:string}>(
+        "SELECT role,content FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND message_sequence>$3::bigint AND message_sequence<$4::bigint ORDER BY message_sequence",
+        [scope.agentId,ticketId,displayed.message_sequence,customer.message_sequence],
+      );
+      // No customer can amend the proposal or ask an unrelated question
+      // between proposal display and approval. For contextual short assent,
+      // even an intervening assistant notice makes "yes" ambiguous.
+      if(intervening.rows.some(m=>m.role==="customer"))
+        return denied("CUSTOMER_INTERVENED");
+      if(intervening.rows.some(m=>m.role==="assistant"&&
+        (isContextualApproval(text)||m.content.includes("Proposal reference: "))))
+        return denied("AMBIGUOUS_ASSISTANT");
       const previous=await latestEvent(client,scope.agentId,ticketId,"chat."+kind+".consented");
       if(previous && previous.payload.proposalId===p.id)return kind;
-      const messages=await client.query<{id:string;role:string;content:string;message_sequence:string}>( 
-        "SELECT id,role,content,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 ORDER BY message_sequence DESC LIMIT 2",
-        [scope.agentId,ticketId],
-      );
-      const [customer,assistant]=messages.rows;
-      if(customer?.id!==sourceMessageId||customer.role!=="customer"||
-         assistant?.role!=="assistant"||
-         !assistant.content.includes("Proposal reference: "+p.id)||
-         !assistant.content.includes(kind==="lead_quote"?LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL))
-        return null;
       // Prevent acceptance of an expired proposal after facts, price, or
       // quotation changed. The sequenced next customer message must be approval.
       if(kind==="lead_quote"){
