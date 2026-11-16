@@ -10,6 +10,7 @@ import { createHash } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, workerTicketScope, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, type LeadFields } from "./lead-operations.js";
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
@@ -377,8 +378,16 @@ export class ChatJourney {
               email:x.testEmail,firstName,countryCode:"AE",
               consent:true,consentText:PAYMENT_CONSENT,
             });
-            // A private challenge ID is available through chat-journey status.
-            // Never expose the code itself in a message or Foundry prompt.
+            // Only status/challenge ID is exposed to the browser; code stays
+            // exclusively in n8n's private mock table and an HMAC in Node.
+            try {
+              await new TicketMessageRepository(this.db).createAssistantMessage(
+                scope,item.ticket_id,lifecycleNoticeId("otp.mock_recorded",item.proposal_id),
+                "Your synthetic test OTP has been recorded privately. "+
+                "Enter it using the secure code input in this chat (not a normal message). "+
+                "It expires after five minutes; no payment has been made.",[],
+              );
+            } catch { /* Dispatch remains authoritative if chat notice fails. */ }
             log({ticketId:item.ticket_id},"Synthetic OTP recorded for secure in-chat entry");
           }
         }catch(error){
