@@ -19,8 +19,16 @@
 | 04-mockgateway-payment-verify.json | Authenticated 2Checkout mock GET order status | /webhook/ancfz/payment-verify | Inactive |
 | 05-mock-otp-table.json | LOCAL synthetic OTP delivery to n8n Data Table | /webhook/ancfz/otp-email | Inactive |
 | 06-mock-otp-prune.json | LOCAL expired test-code cleanup | Scheduled | Inactive |
+| 07-licence-renewal-lookup.json | Read-only exact lookup against ANCFZ_POC_LICENCES n8n Data Table | /webhook/ancfz/renewal-lookup | Inactive |
 
 The new 2Checkout files intentionally retain the original file paths and fixed workflow/credential IDs for compatible upgrades. The two delivery workflows share the same OTP URL; **only one can be active**.
+
+## Synthetic licence renewal setup
+
+Follow [the dedicated renewal guide](../../../docs/ancfz-licence-renewal.md)
+to create the synthetic Data Table, import the new workflow and publish
+explicitly approved TEST renewal prices. The existing PDF, payment and OTP
+workflow definitions are reused; no n8n credential or volume is reset.
 
 ## Existing owner installation
 
