@@ -7,6 +7,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
 import { assertCatalogActionRequirementsTx } from "./intent-action-operations.js";
+import {quoteDetails,quoteRequirementsTx} from "./quote-proposal.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 
 export const QUOTATION_ACKNOWLEDGMENT =
@@ -31,7 +32,7 @@ export interface QuoteView {
 }
 
 interface PriceRow {
-  offering_id:string; price_id:string; offering_key:string; label:string;
+  offering_id:string; price_id:string; offering_key:string; label:string;description:string;
   currency:string; amount:string; revision:number; conditions:string|null;
 }
 interface QuoteRow {
@@ -114,7 +115,7 @@ async function pricedOptions(
   key?:string,
 ):Promise<PriceRow[]> {
   const result=await client.query<PriceRow>(
-    `SELECT o.id AS offering_id,p.id AS price_id,o.offering_key,o.label,
+    `SELECT o.id AS offering_id,p.id AS price_id,o.offering_key,o.label,o.description,
        p.currency,p.amount::text AS amount,p.revision,p.conditions
      FROM tickets t
      JOIN offering_catalog_versions cv ON cv.agent_id=t.agent_id
@@ -223,11 +224,15 @@ export class QuotationOperations {
         throw new PersistenceError("CONFLICT","Invalid authoritative price");
       const quotationId=randomUUID();
       const documentNumber="ANCFZ-TEST-Q-"+quotationId;
+      // Embed a durable scope snapshot in the authorized outbox. The PDF must
+      // never reinterpret later mutable facts or a newly published catalog.
+      const proposal=quoteDetails(chosen.description,
+        await quoteRequirementsTx(client,scope.agentId,ticketId),chosen.conditions);
       const payload={
         agentKey:"ancfz",ticketId,documentType:"quotation" as const,
         documentNumber,customerName:input.customerName,
         currency:chosen.currency.trim(),
-        lines:[{label:chosen.label,amount}],total:amount,
+        lines:[{label:chosen.label,amount}],total:amount,proposal,
       };
       const outbox=await client.query<{id:string}>(
         "INSERT INTO event_outbox(agent_id,ticket_id,event_type,payload,idempotency_key) VALUES($1,$2,'ancfz_render_quote',$3::jsonb,$4) RETURNING id",

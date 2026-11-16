@@ -38,6 +38,44 @@ The previous merchant account endpoint under /api/v1/public/demo/base/ancfz-f6i0
 
 The docs show a USD example. ANCFZ quotations use AED: prove merchant AED compatibility and confirm whether GET accepts RefNo before activating payment dispatch.
 
+## Updating the detailed quotation proposal (existing n8n installation)
+
+`02-render-pdf.json` now renders the source-derived **package description,
+customer requirements, published terms, exclusions, and next steps** for
+quotations. Its existing invoice branch remains restricted to independently
+verified TEST payments.
+
+**Pulling Git or rebuilding containers does not update a workflow already
+stored in n8n.** For a local development instance with an existing configured
+PDF workflow:
+
+1. Back up the existing `ANCFZ | PDF Quotation or Invoice` workflow using
+   the authenticated n8n UI's Export command. Keep the backup private.
+2. Deactivate the workflow temporarily; do not reset its credentials or
+   replace the n8n data volume.
+3. From the repository root in PowerShell, copy the reviewed JavaScript for
+   only the `Prepare Escaped HTML` Code node:
+
+   ```powershell
+   $workflow = Get-Content '.\infra\n8n\ancfz\02-render-pdf.json' -Raw | ConvertFrom-Json
+   ($workflow.nodes | Where-Object { $_.name -eq 'Prepare Escaped HTML' }).parameters.jsCode | Set-Clipboard
+   ```
+
+4. Paste this into the existing `Prepare Escaped HTML` Code node, save, and
+   reactivate that same workflow. **Do not reimport credential templates,
+   change workflow IDs/webhook paths, or update payment gateway workflows.**
+5. Validate the local source and test a **new** synthetic quotation:
+
+   ```powershell
+   node scripts/check-ancfz-billing-workflows.mjs
+   node scripts/check-p4-quotation.mjs
+   ```
+
+   The second command expects a compiled Node API (`npm run build` from the
+   API workspace). Offline tests do not validate the actual live n8n workflow.
+   Confirm the generated PDF shows requirements and published package scope.
+   Existing verified quotation PDFs are immutable and are not regenerated.
+
 ## Auth and business boundaries
 
 - n8n webhooks require a private Header Auth credential with **X-ANCFZ-Workflow-Key** matching Node's ANCFZ_N8N_WEBHOOK_SECRET. All callbacks are internal Docker backend-only.

@@ -16,6 +16,34 @@ Only the authenticated ticket owner can upload required documents and
 explicitly confirm purchase; only Node can initiate an OTP, validate it,
 enqueue an order and independently verify provider evidence.
 
+## Detailed quotation proposal (P4)
+
+Before requesting the combined Salesforce/quotation authorization, Sara presents a
+**non-binding, itemized proposal** containing the selected offering name/key,
+exact price and term, the offering's published description, the customer's
+persisted non-disputed business requirements, current price conditions, and
+explicit limits. A customer's workspace preference is **not** an included,
+priced desk/office upgrade unless the catalog description or conditions say so.
+The package's published description, rather than model prose, defines what may
+be described as included. No promise of licensing, visas, banking, or other
+regulatory approval is inferred.
+
+At quotation dispatch, Node snapshots these details from the ticket-pinned
+offering revision and source-linked ticket facts into the authorized quote
+outbox. The n8n Gotenberg renderer uses this trusted snapshot to include
+**Package scope**, **Customer requirements**, **Published price conditions**,
+**Scope/limitations** and **Next steps** within the quotation PDF, in addition
+to the price line and total. The confirmed quotation message also summarizes
+these details and links to the owner-only PDF.
+
+The quotation remains non-binding and separate from purchase consent, OCR,
+synthetic OTP and payment verification. This change does not overwrite PDFs
+previously stored in PostgreSQL: it applies to **newly generated quotations**.
+No migration is needed. On an already-seeded n8n instance, update only its
+existing inactive *Prepare Escaped HTML* code node using the versioned source
+`infra/n8n/ancfz/02-render-pdf.json`; see the workflow README. A Docker
+image rebuild alone does not rewrite saved n8n workflows.
+
 ## Sequence
 
 1. Model selects an active supported `company_formation` ticket intent.

@@ -16,6 +16,8 @@ import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } f
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
 import { PAYMENT_CONSENT, paymentEnabled } from "./payment-evidence.js";
+import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
+  type QuoteProposalDetails} from "./quote-proposal.js";
 
 export const LEAD_QUOTE_APPROVAL =
   "I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.";
@@ -26,7 +28,7 @@ type ProposalKind="lead_quote"|"purchase_payment";
 type LeadQuoteData={
   lead:LeadFields; offeringKey:string;priceRevision:number;amount:string;
   currency:string;visaCount:number;termYears:number;officePreference:string;
-  conditions:string|null;
+  conditions:string|null;offeringLabel:string;proposal:QuoteProposalDetails;
 };
 type PurchaseData={
   quotationId:string;amount:string;currency:string;billingName:string;testEmail:string;
@@ -34,7 +36,8 @@ type PurchaseData={
 type ProposalPayload={kind:ProposalKind;data:LeadQuoteData|PurchaseData;fingerprint:string};
 type EventRow={id:string;ticket_id:string;payload:Record<string,unknown>;sequence:string};
 type FactRow={fact_key:string;value:unknown;verification_status:string};
-type OfferingRow={offering_key:string;amount:string;currency:string;revision:number;conditions:string|null};
+type OfferingRow={offering_key:string;label:string;description:string;
+  amount:string;currency:string;revision:number;conditions:string|null};
 type Base={kind:ProposalKind;id:string;payload:ProposalPayload};
 
 const field=(facts:Map<string,unknown>,keys:string[]):string=>{
@@ -77,10 +80,15 @@ function proposalCopy(p:Base):string {
       "Customer: "+x.lead.name+" | Company: "+x.lead.company,
       "Contact: "+x.lead.email+" | "+x.lead.phone,
       "Activity: "+x.lead.description.split(";")[0],
-      "Package: "+x.visaCount+" visa(s), "+x.termYears+" year(s) — "+x.currency+" "+x.amount,
-      "Office preference: "+x.officePreference+" (not included unless confirmed in the published package conditions).",
-      x.conditions?"Catalog conditions: "+x.conditions:"",
-      "This is a non-binding test quotation. I will create one Salesforce enquiry and prepare this exact package only after your authorization.",
+      "Selected package: "+x.offeringLabel+" ("+x.offeringKey+")",
+      "Quoted total: "+x.currency+" "+x.amount+
+        " | "+x.visaCount+" requested visa(s), "+x.termYears+" year(s)",
+      quoteDetailsMarkdown(x.proposal),
+      "Next steps: after the quotation is independently verified, the sandbox"+
+        " purchase flow requests a synthetic passport and Emirates ID."+
+        " Identity uploads, payment details and OTP do not belong in chat text.",
+      "This is a non-binding test quotation. I will create one Salesforce enquiry"+
+        " and prepare this exact package only after your authorization.",
       'To approve both actions, reply: "'+LEAD_QUOTE_APPROVAL+'"',
     ].filter(Boolean).join("\n\n");
   }
@@ -251,17 +259,19 @@ export class ChatJourney {
       !/^\+?[0-9 ()-]{7,40}$/.test(phone))return null;
     const key="visa_"+visaCount+"_y"+termYears;
     const option=await client.query<OfferingRow>(
-      "SELECT o.offering_key,p.amount::text,p.currency,p.revision,p.conditions FROM tickets t JOIN offering_catalog_versions cv ON cv.agent_id=t.agent_id AND cv.id=t.offering_catalog_version_id AND cv.status IN ('published','retired') JOIN offerings o ON o.agent_id=t.agent_id AND o.catalog_version_id=cv.id JOIN LATERAL (SELECT pr.currency,pr.amount,pr.revision,pr.conditions FROM offering_price_revisions pr WHERE pr.agent_id=o.agent_id AND pr.offering_id=o.id AND pr.effective_from<=now() AND (pr.effective_to IS NULL OR pr.effective_to>now()) ORDER BY pr.revision DESC LIMIT 1) p ON true WHERE t.agent_id=$1 AND t.id=$2 AND o.offering_key=$3 AND (o.intent_key=$4 OR ($4 IN ('quotation_request','package_comparison') AND o.intent_key IN ('company_formation','package_comparison'))) LIMIT 1",
+      "SELECT o.offering_key,o.label,o.description,p.amount::text,p.currency,p.revision,p.conditions FROM tickets t JOIN offering_catalog_versions cv ON cv.agent_id=t.agent_id AND cv.id=t.offering_catalog_version_id AND cv.status IN ('published','retired') JOIN offerings o ON o.agent_id=t.agent_id AND o.catalog_version_id=cv.id JOIN LATERAL (SELECT pr.currency,pr.amount,pr.revision,pr.conditions FROM offering_price_revisions pr WHERE pr.agent_id=o.agent_id AND pr.offering_id=o.id AND pr.effective_from<=now() AND (pr.effective_to IS NULL OR pr.effective_to>now()) ORDER BY pr.revision DESC LIMIT 1) p ON true WHERE t.agent_id=$1 AND t.id=$2 AND o.offering_key=$3 AND (o.intent_key=$4 OR ($4 IN ('quotation_request','package_comparison') AND o.intent_key IN ('company_formation','package_comparison'))) LIMIT 1",
       [agentId,ticketId,key,current.intent_key],
     );
     const price=option.rows[0];
     if(!price||!Number.isFinite(Number(price.amount))||Number(price.amount)<=0)return null;
     const description=[activity,"Visa count: "+visaCount,"Term years: "+termYears,
       "Office requested: "+officePreference].join("; ").slice(0,4000);
+    const requirementsSnapshot=await quoteRequirementsTx(client,agentId,ticketId);
     return {lead:{name,company,phone,email:email.toLowerCase(),description},
-      offeringKey:key,priceRevision:price.revision,
+      offeringKey:key,offeringLabel:price.label,priceRevision:price.revision,
       amount:price.amount,currency:price.currency.trim(),
-      visaCount,termYears,officePreference,conditions:price.conditions};
+      visaCount,termYears,officePreference,conditions:price.conditions,
+      proposal:quoteDetails(price.description,requirementsSnapshot,price.conditions)};
   }
 
   private async stage(scope:TicketScope,ticketId:string,kind:ProposalKind,

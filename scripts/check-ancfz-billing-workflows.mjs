@@ -29,6 +29,17 @@ const quote={
   customerName:"Test <script>alert(1)</script>",
   currency:"AED",lines:[{label:"Package <script>alert(2)</script>",amount:425.25}],total:425.25,
 };
+// Quotation must explain the full source-derived scope and customer requests
+// without treating workspace preferences or regulatory approvals as inclusions.
+quote.proposal={
+  packageDescription:"Licence, lease agreement and approved catalog services <script>bad()</script>",
+  priceConditions:"Non-binding test conditions; office upgrades not priced",
+  requirements:[
+    {label:"Business activity",value:"Software development"},
+    {label:"Visa count",value:"2"},
+    {label:"Workspace preference",value:"Private office <script>not included</script>"},
+  ],
+};
 const prepare=code(pdf,"Prepare Escaped HTML");
 const quoteRows=await prepare(input(quote),()=>{},Buffer,URL);
 assert.equal(quoteRows.length,1);
@@ -37,6 +48,21 @@ assert(html.includes("&lt;script&gt;alert(2)&lt;/script&gt;"));
 assert(html.includes("&lt;script&gt;alert(1)&lt;/script&gt;"));
 assert(!html.includes("<script>"));
 assert(html.includes("QUOTATION"));
+assert(html.includes("Published package scope"));
+assert(html.includes("Customer requirements for this quotation"));
+assert(html.includes("Published price conditions"));
+assert(html.includes("Scope and exclusions"));
+assert(html.includes("Software development"));
+assert(html.includes("Private office &lt;script&gt;not included&lt;/script&gt;"));
+assert(!html.includes("<script>"));
+assert(html.includes("not priced inclusions unless"));
+assert(html.includes("development sandbox"));
+await assert.rejects(prepare(input({
+  ...quote,proposal:{...quote.proposal,requirements:[
+    {label:"Invalid",value:"x".repeat(401)},
+  ]},
+}),()=>{},Buffer,URL),/Invalid quoted requirement/);
+
 assert(!html.includes("TEST PAYMENT INVOICE"));
 await assert.rejects(prepare(input({...quote,total:1}),()=>{},Buffer,URL),/Total mismatch/);
 await assert.rejects(prepare(input({...quote,lines:[]}),()=>{},Buffer,URL),/Invalid lines/);
@@ -59,6 +85,9 @@ const accepted=await prepare(input({...invoice,paymentVerified:true,quotationId,
 const invoiceHtml=Buffer.from(accepted[0].binary.html.data,"base64").toString("utf8");
 assert(invoiceHtml.includes("TEST PAYMENT INVOICE"));
 assert(invoiceHtml.includes("Not proof of real funds"));
+assert(!invoiceHtml.includes("Customer requirements for this quotation"));
+assert(!invoiceHtml.includes("Published package scope"));
+
 const gotenberg=pdf.nodes.find(x=>x.name==="Gotenberg Private PDF Renderer");
 assert.equal(gotenberg?.parameters?.url,"http://gotenberg:3000/forms/chromium/convert/html");
 assert.equal(gotenberg?.parameters?.bodyParameters?.parameters?.[0]?.name,"files");
