@@ -74,24 +74,27 @@ async function activeIntent(client:PoolClient,agentId:string,ticketId:string):Pr
   );
   return found.rows[0]??null;
 }
-async function actionRequirements(client:PoolClient,agentId:string,ticketId:string,intentId:string,action:string){
-  const reqs=await client.query<RequirementRow>(
-    `SELECT requirement_key,label,required_for FROM intent_requirements
-      WHERE agent_id=$1 AND intent_id=$2 AND $3=ANY(required_for)
-      ORDER BY requirement_key`,[agentId,intentId,action],
-  );
-  const facts=await client.query<FactRow>(
+async function actionRequirements(client:PoolClient,agentId:string,ticketId:string,intentId:string,
+  action:string,preloaded?:{requirements:RequirementRow[];facts:FactRow[]}){
+  const reqs=preloaded
+    ?preloaded.requirements.filter(r=>r.required_for.includes(action))
+    :(await client.query<RequirementRow>(
+      `SELECT requirement_key,label,required_for FROM intent_requirements
+        WHERE agent_id=$1 AND intent_id=$2 AND $3=ANY(required_for)
+        ORDER BY requirement_key`,[agentId,intentId,action],
+    )).rows;
+  const facts=preloaded?.facts??(await client.query<FactRow>(
     `SELECT fact_key,value,verification_status,source_message_id
       FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2`,[agentId,ticketId],
-  );
-  const byKey=new Map(facts.rows.map(f=>[f.fact_key,f]));
-  const requirements=reqs.rows.map(r=>{
+  )).rows;
+  const byKey=new Map(facts.map(f=>[f.fact_key,f]));
+  const requirements=reqs.map(r=>{
     const fact=byKey.get(r.requirement_key);
     return {key:r.requirement_key,label:r.label,
       present:fact!==undefined && fact.verification_status!=="disputed"&&availableValue(fact.value)};
   });
   return {requirements,missing:requirements.filter(x=>!x.present).map(x=>x.key),
-    sourceFacts:facts.rows};
+    sourceFacts:facts};
 }
 /**
  * Enforce the same catalog prerequisites on direct HTTP calls that the
@@ -125,12 +128,24 @@ export class IntentActionOperations {
       );
       const byAction=new Map(requests.rows.map(x=>[x.action_key,x]));
       const identity=await identityDocumentReadinessTx(client,scope.agentId,ticketId,intent.id);
+      // Load ticket facts and catalog requirements once, not once per action.
+      const allRequirements=await client.query<RequirementRow>(
+        `SELECT requirement_key,label,required_for FROM intent_requirements
+          WHERE agent_id=$1 AND intent_id=$2 ORDER BY requirement_key`,
+        [scope.agentId,intent.id],
+      );
+      const allFacts=await client.query<FactRow>(
+        `SELECT fact_key,value,verification_status,source_message_id
+          FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2`,
+        [scope.agentId,ticketId],
+      );
+      const preloaded={requirements:allRequirements.rows,facts:allFacts.rows};
       const result=[];
       const allowedActions=uniqueAllowedActions(intent.allowed_actions);
       for(const action of allowedActions){
         const kind=classifyAction(action);
         if(!kind)continue;
-        const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action);
+        const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action,preloaded);
         const missing=isServiceAction(action)
           ? [...facts.missing,...identity.missing]:facts.missing;
         result.push({actionKey:action,label:isServiceAction(action)?
