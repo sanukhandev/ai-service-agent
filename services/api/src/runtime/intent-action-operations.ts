@@ -75,7 +75,8 @@ async function activeIntent(client:PoolClient,agentId:string,ticketId:string):Pr
   return found.rows[0]??null;
 }
 async function actionRequirements(client:PoolClient,agentId:string,ticketId:string,intentId:string,
-  action:string,preloaded?:{requirements:RequirementRow[];facts:FactRow[]}){
+  action:string,preloaded?:{requirements:RequirementRow[];facts:FactRow[]},
+  intentKey?:string){
   const reqs=preloaded
     ?preloaded.requirements.filter(r=>r.required_for.includes(action))
     :(await client.query<RequirementRow>(
@@ -88,10 +89,23 @@ async function actionRequirements(client:PoolClient,agentId:string,ticketId:stri
       FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2`,[agentId,ticketId],
   )).rows;
   const byKey=new Map(facts.map(f=>[f.fact_key,f]));
+  // Licence reference and term come from a separately confirmed, scoped
+  // n8n lookup snapshot, never from free-form unverified customer assertions.
+  let renewalConfirmed=false;
+  if(intentKey==="license_renewal"&&["create_lead","generate_quote"].includes(action)){
+    const matched=await client.query<{confirmed:boolean}>(
+      `SELECT state='confirmed' AS confirmed FROM ticket_licence_renewals
+       WHERE agent_id=$1 AND ticket_id=$2`,[agentId,ticketId],
+    );
+    renewalConfirmed=matched.rows[0]?.confirmed===true;
+  }
   const requirements=reqs.map(r=>{
     const fact=byKey.get(r.requirement_key);
+    const fromRenewal=renewalConfirmed&&
+      ["existing_license_reference","term_years"].includes(r.requirement_key);
     return {key:r.requirement_key,label:r.label,
-      present:fact!==undefined && fact.verification_status!=="disputed"&&availableValue(fact.value)};
+      present:fromRenewal||
+        (fact!==undefined&&fact.verification_status!=="disputed"&&availableValue(fact.value))};
   });
   return {requirements,missing:requirements.filter(x=>!x.present).map(x=>x.key),
     sourceFacts:facts};
@@ -107,7 +121,7 @@ export async function assertCatalogActionRequirementsTx(
   const intent=await activeIntent(client,agentId,ticketId);
   if(!intent||!intent.allowed_actions.includes(action))
     throw new PersistenceError("CONFLICT","The selected intent does not authorize this action");
-  const {missing}=await actionRequirements(client,agentId,ticketId,intent.id,action);
+  const {missing}=await actionRequirements(client,agentId,ticketId,intent.id,action,undefined,intent.intent_key);
   if(missing.length)
     throw new PersistenceError("CONFLICT",
       "Collect the required "+action+" information in the ticket before proceeding");
