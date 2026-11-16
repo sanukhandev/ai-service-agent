@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { ChatJourney } from "../services/api/dist/runtime/chat-journey.js";
+import {quoteDetails,quoteRequirements} from "../services/api/dist/runtime/quote-proposal.js";
 import { LeadOperations } from "../services/api/dist/runtime/lead-operations.js";
 import { QuotationOperations } from "../services/api/dist/runtime/quotation-operations.js";
 import { PurchaseOperations } from "../services/api/dist/runtime/purchase-operations.js";
@@ -29,9 +30,16 @@ const lead={
   phone:facts.customer_phone,email:facts.customer_email,
   description:"Software solutions; Visa count: 1; Term years: 1; Office requested: flexi_desk",
 };
-const leadQuoteData={lead,offeringKey:"visa_1_y1",priceRevision:1,
+const requirementRows=Object.entries(facts)
+  .filter(([k])=>!k.startsWith("customer_")||k==="customer_email")
+  .map(([requirement_key,value])=>({requirement_key,label:requirement_key,
+    value,verification_status:"customer_stated"}));
+const proposal=quoteDetails("Licence and incorporation documents.",
+  quoteRequirements(requirementRows),"Desk upgrade not priced");
+const leadQuoteData={lead,offeringKey:"visa_1_y1",
+  offeringLabel:"1 Visa — 1 Year",priceRevision:1,
   amount:"7500.00",currency:"AED",visaCount:1,termYears:1,
-  officePreference:"flexi_desk",conditions:"Desk upgrade not priced"};
+  officePreference:"flexi_desk",conditions:"Desk upgrade not priced",proposal};
 const purchaseData={
   quotationId,amount:"7500.00",currency:"AED",
   billingName:"Test Customer",testEmail:"billing@example.invalid",
@@ -59,9 +67,12 @@ const query=async(sql,params=[])=>{
   if(sql.includes("SELECT DISTINCT r.requirement_key"))
     return {rows:Object.keys(facts).filter(k=>!k.startsWith("customer_") ||
       k==="customer_email").map(requirement_key=>({requirement_key}))};
-  if(sql.includes("SELECT o.offering_key,p.amount::text"))
-    return {rows:[{offering_key:"visa_1_y1",revision:1,amount:"7500.00",
-      currency:"AED",conditions:"Desk upgrade not priced"}]};
+  if(sql.includes("SELECT req.requirement_key,req.label,tf.value"))
+    return {rows:requirementRows};
+  if(sql.includes("SELECT o.offering_key,o.label,o.description,p.amount::text"))
+    return {rows:[{offering_key:"visa_1_y1",label:"1 Visa — 1 Year",
+      description:"Licence and incorporation documents.",revision:1,
+      amount:"7500.00",currency:"AED",conditions:"Desk upgrade not priced"}]};
   if(sql.includes("SELECT id,ticket_id,payload,sequence::text FROM ticket_events"))
     return {rows:otpMarker?[otpMarker]:[]};
   if(sql.includes("SELECT 1 FROM ticket_payment_otps"))
