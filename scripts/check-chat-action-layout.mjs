@@ -1,0 +1,48 @@
+#!/usr/bin/env node
+/** Offline regression for duplicated Salesforce buttons and composer overlap.
+ * Requires npm install + API build; no browser or Foundry credentials.
+ */
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import ts from "typescript";
+import { uniqueAllowedActions } from "../services/api/dist/runtime/intent-action-operations.js";
+
+const repeated=["create_lead","create_lead","generate_quote","create_lead","create_support_request"];
+assert.deepEqual(uniqueAllowedActions(repeated),[
+  "create_lead","generate_quote","create_support_request",
+]);
+assert.deepEqual(repeated,["create_lead","create_lead","generate_quote","create_lead","create_support_request"],
+  "Catalog normalization must not mutate the published configuration");
+
+const helperSource=readFileSync("apps/web/lib/unique-actions.ts","utf8");
+const compiled=ts.transpileModule(helperSource,{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS},
+}).outputText;
+const exported={};
+new Function("exports",compiled)(exported);
+const actions=[
+  {actionKey:"create_lead",kind:"salesforce_lead"},
+  {actionKey:"create_lead",kind:"salesforce_lead"},
+  {actionKey:"generate_quote",kind:"quotation"},
+  {actionKey:"create_support_request",kind:"ticket_request"},
+  {actionKey:"create_lead",kind:"salesforce_lead"},
+];
+assert.deepEqual(exported.uniqueActionsByKey(actions).map(a=>a.actionKey),[
+  "create_lead","generate_quote","create_support_request",
+]);
+assert.equal(actions.length,5,"UI normalization must not mutate the source array");
+
+const panel=readFileSync("apps/web/components/intent-action-panel.tsx","utf8");
+assert.match(panel,/uniqueActionsByKey\(catalog\.actions\)/);
+const chat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
+const transcriptStart=chat.indexOf("ref={transcriptRef}");
+const panelPosition=chat.indexOf("<IntentActionPanel");
+const transcriptEnd=chat.indexOf("</section>",transcriptStart);
+const footerStart=chat.indexOf("<footer");
+assert.ok(transcriptStart>=0 && transcriptEnd>transcriptStart);
+assert.ok(panelPosition>transcriptStart && panelPosition<transcriptEnd,
+  "Action controls must scroll in the transcript, never expand the fixed composer footer");
+assert.ok(footerStart>transcriptEnd);
+assert.equal((chat.match(/<IntentActionPanel\b/g)??[]).length,1,
+  "Only one action panel may be mounted for a ticket");
+console.log("Chat action UI PASS: deduplicated catalog actions and scrollable panel outside composer");
