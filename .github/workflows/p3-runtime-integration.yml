@@ -45,6 +45,8 @@ jobs:
         run: node scripts/check-sse-lifecycle-notifications.mjs
       - name: Validate bounded multi-ticket worker concurrency
         run: node scripts/check-turn-worker-concurrency.mjs
+      - name: Validate Foundry per-request rate-limit recovery without tool replay
+        run: node scripts/check-foundry-rate-control.mjs
       - name: Check action deduplication and composer layout
         run: node scripts/check-chat-action-layout.mjs
       - name: Check natural workflow handoff through sandbox invoice
