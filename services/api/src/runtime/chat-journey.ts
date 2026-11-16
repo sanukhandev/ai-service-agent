@@ -240,13 +240,49 @@ export class ChatJourney {
       if(leads.some(l=>l.operation==="ancfz_salesforce_lead"))return null;
       const data=await this.db.withAgent(scope.agentId,async client=>
         this.leadQuoteData(client,scope.agentId,ticketId));
-      if(!data)return null;
+      if(!data){
+        const current=await this.db.withAgent(scope.agentId,async client=>{
+          const allowed=await client.query<{actions:string[]}>(
+            "SELECT i.allowed_actions AS actions FROM tickets t JOIN ticket_intents ti ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id AND ti.status='active' JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id WHERE t.agent_id=$1 AND t.id=$2 AND i.catalog_version_id=t.intent_catalog_version_id LIMIT 1",
+            [scope.agentId,ticketId],
+          );
+          if(!allowed.rows[0]?.actions.includes("create_lead")||
+             !allowed.rows[0]?.actions.includes("generate_quote"))return null;
+          const facts=await client.query<FactRow>(
+            "SELECT fact_key,value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2",
+            [scope.agentId,ticketId]);
+          return new Map(facts.rows.filter(x=>x.verification_status!=="disputed")
+            .map(x=>[x.fact_key,x.value] as [string,unknown]));
+        });
+        if(!current)return null;
+        const questions:[string[],string][]=[
+          [["business_activity"],"What business activity will your company perform?"],
+          [["preferred_company_name","company_name"],"What company name would you prefer?"],
+          [["customer_name"],"What full name should I use for the Salesforce enquiry?"],
+          [["customer_phone"],"What contact phone number should ANCFZ use?"],
+          [["customer_email","email"],"What email address should ANCFZ use for your enquiry?"],
+          [["visa_count"],"How many visas do you need (0–10)?"],
+          [["term_years"],"How many years should the licence cover (1–5)?"],
+          [["office_preference"],"What is your office preference: flexi-desk, shared office, or private office?"],
+        ];
+        const missing=questions.find(([keys])=>keys.every(k=>{
+          const v=current.get(k);return v===undefined||v===null||v==="";
+        }));
+        return missing?missing[1]:
+          "There is no exact published test offering for those requirements, or a value is invalid. I won't substitute another visa count or price. Please correct the package details or request staff review.";
+      }
       return this.stage(scope,ticketId,"lead_quote",data);
     }
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
        (requested!=="purchase_quotation"&&requested!=="invoice"))return null;
     const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
-    if(!purchase.supported||purchase.confirmed||purchase.missing.length||
+    const eligiblePurchase=await this.db.withAgent(scope.agentId,async client=>{
+      const r=await client.query<{actions:string[]}>(
+        "SELECT i.allowed_actions AS actions FROM tickets t JOIN ticket_intents ti ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id AND ti.status='active' JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id AND i.catalog_version_id=t.intent_catalog_version_id WHERE t.agent_id=$1 AND t.id=$2 LIMIT 1",
+        [scope.agentId,ticketId]);
+      return r.rows[0]?.actions.includes("purchase_quotation")===true;
+    });
+    if(!eligiblePurchase||!purchase.supported||purchase.confirmed||purchase.missing.length||
        !purchase.quotationId||!purchase.amount||purchase.currency!=="AED"||
        !purchase.billingName)return null;
     const testEmail=await this.db.withAgent(scope.agentId,async client=>{
@@ -282,6 +318,10 @@ export class ChatJourney {
         try{
           if(item.kind==="lead_quote"){
             const x=item.proposal.data as LeadQuoteData;
+            const current=await this.db.withAgent(agentId,async client=>
+              this.leadQuoteData(client,agentId,item.ticket_id));
+            if(!current||fingerprint(current)!==item.proposal.fingerprint)
+              continue; // Never submit a stale chat proposal after corrections.
             const leads=await new LeadOperations(this.db).list(scope,item.ticket_id);
             const lead=leads.find(l=>l.operation==="ancfz_salesforce_lead");
             if(!lead){
@@ -337,6 +377,9 @@ export class ChatJourney {
               email:x.testEmail,firstName,countryCode:"AE",
               consent:true,consentText:PAYMENT_CONSENT,
             });
+            // A private challenge ID is available through chat-journey status.
+            // Never expose the code itself in a message or Foundry prompt.
+            log({ticketId:item.ticket_id},"Synthetic OTP recorded for secure in-chat entry");
           }
         }catch(error){
           log({ticketId:item.ticket_id,code:(error as Error).name},
