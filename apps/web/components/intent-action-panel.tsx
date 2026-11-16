@@ -85,16 +85,13 @@ export function IntentActionPanel({ticketId,revision}:{ticketId:string;revision:
 
     {actions.map(action=>{
       if(action.kind==="salesforce_lead"||action.kind==="quotation"){
+        // Sara asks missing fields one at a time in chat. Show the approval
+        // control only when the authoritative Node catalog reports readiness.
+        if(!action.ready)return null;
         return <div key={catalog.intentKey+":"+action.actionKey} className="space-y-2">
-          {action.missing.length>0&&<p role="status"
-            className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">
-            To proceed with {action.label}, tell Sara the missing details:
-            {" "+action.requirements.filter(r=>!r.present).map(r=>r.label).join(", ")}.
-            These must be saved to your ticket before the action can be authorized.
-          </p>}
-          {action.ready&&(action.kind==="salesforce_lead"
+          {action.kind==="salesforce_lead"
             ?<LeadSubmission ticketId={ticketId} revision={revision}/>
-            :<QuotationRequest ticketId={ticketId} revision={revision}/>)}
+            :<QuotationRequest ticketId={ticketId} revision={revision}/>}
         </div>;
       }
       if(action.kind==="purchase")return <PaymentCheckout key={catalog.intentKey+":"+action.actionKey} ticketId={ticketId} revision={revision}/>;
