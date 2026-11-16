@@ -72,7 +72,7 @@ export function parseIdentityResult(
     .filter((value):value is string=>Boolean(value))
     .map(normalizeBillingName);
   const fullName=candidates.find(validFullName)??null;
-  if(!fullName && !(kind==="passport"&&allowUnnamedPassport))
+  if(!fullName && !(kind==="passport"&&allowUnnamedPassport&&allowUnnamedSyntheticPassport()))
     throw new PersistenceError("CONFLICT",kind+" document did not yield a reliable full name");
   const number=field(fields,kind==="passport"
     ? ["DocumentNumber","PassportNumber"]
