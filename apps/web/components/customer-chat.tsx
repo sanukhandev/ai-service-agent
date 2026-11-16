@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatComposer } from "./chat-composer";
+import { ChatJourneyControls } from "./chat-journey-controls";
 import { MessageBubble } from "./chat-message";
 import {
   AlertCircleIcon,
@@ -143,6 +144,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
+  const [journeyRevision, setJourneyRevision] = useState(0);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
   const [showLatest, setShowLatest] = useState(false);
@@ -227,6 +229,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
   const handleEvent = useCallback(
     (event: TicketEvent) => {
+      if(!["assistant.processing","agent.processing","agent.response.started"].includes(event.name)){
+        setJourneyRevision(value=>value+1);
+      }
       const incomingMessage = messageFromEvent(event.data);
       const incomingTicket = ticketFromEvent(event.data);
       if (
@@ -293,6 +298,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
   const stream = useTicketEvents(ticket?.id ?? null, handleEvent, () => {
     void refresh();
+    setJourneyRevision(value=>value+1);
   });
 
   const loadOlder = useCallback(async () => {
@@ -322,6 +328,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     if(!ticket || loadState!=="ready" || stream==="connected")return;
     const timer=setInterval(()=>{
       void refresh();
+      setJourneyRevision(value=>value+1);
     },10000);
     return ()=>clearInterval(timer);
   },[ticket?.id,loadState,stream,refresh]);
@@ -639,6 +646,13 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
                 <MessageBubble message={message} ticketId={ticket?.id} key={message.id} />
               ))}
             </ol>
+          )}
+
+          {/* Secure ticket-owned attachments and OTP input live in the thread;
+              no legacy Available Actions forms or non-chat dashboard. */}
+          {ticket && loadState==="ready" && (
+            <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
+              revision={journeyRevision} />
           )}
 
           {/* Natural Frosted Glass Thinking Indicator */}
