@@ -28,6 +28,7 @@ type ProposalKind="lead_quote"|"purchase_payment";
 type LeadQuoteData={
   lead:LeadFields; offeringKey:string;priceRevision:number;amount:string;
   currency:string;visaCount:number;termYears:number;officePreference:string;
+  renewal?:{licenceNumber:string;expiresOn:string;sourceFingerprint:string};
   conditions:string|null;offeringLabel:string;proposal:QuoteProposalDetails;
 };
 type PurchaseData={
@@ -82,7 +83,8 @@ function proposalCopy(p:Base):string {
       "Activity: "+x.lead.description.split(";")[0],
       "Selected package: "+x.offeringLabel+" ("+x.offeringKey+")",
       "Quoted total: "+x.currency+" "+x.amount+
-        " | "+x.visaCount+" requested visa(s), "+x.termYears+" year(s)",
+        (x.renewal?" | Licence renewal for "+x.termYears+" year(s)":
+          " | "+x.visaCount+" requested visa(s), "+x.termYears+" year(s)"),
       quoteDetailsMarkdown(x.proposal),
       "Next steps: after the quotation is independently verified, the sandbox"+
         " purchase flow requests a synthetic passport and Emirates ID."+
@@ -231,6 +233,8 @@ export class ChatJourney {
     );
     const f=new Map(rows.rows.filter(x=>x.verification_status!=="disputed")
       .map(x=>[x.fact_key,x.value] as [string,unknown]));
+    if(current.intent_key==="license_renewal")
+      return this.renewalLeadQuoteData(client,agentId,ticketId,f);
     // A complete contact/price snapshot is not enough: the existing Node
     // Lead and Quote services also enforce catalog prerequisites. Check them
     // before offering consent, otherwise a customer can approve an action
@@ -272,6 +276,65 @@ export class ChatJourney {
       amount:price.amount,currency:price.currency.trim(),
       visaCount,termYears,officePreference,conditions:price.conditions,
       proposal:quoteDetails(price.description,requirementsSnapshot,price.conditions)};
+  }
+
+  /** A renewal's price is ALWAYS an owner-published renewal offering,
+   * NEVER a new-company rate or an amount returned by the n8n Data Table. */
+  private async renewalLeadQuoteData(
+    client:import("pg").PoolClient,agentId:string,ticketId:string,
+    f:Map<string,unknown>,
+  ):Promise<LeadQuoteData|null>{
+    const contact=field(f,["customer_name"]);
+    const phone=field(f,["customer_phone"]);
+    const email=field(f,["customer_email","email"]);
+    if(!contact||!phone||!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)||
+       !/^\\+?[0-9 ()-]{7,40}$/.test(phone))return null;
+    const r=await client.query<{
+      licence_number:string;company_name:string;expires_on:string;
+      renewal_offering_key:string;renewal_term_years:number;source_fingerprint:string;
+      label:string;description:string;amount:string;currency:string;
+      revision:number;conditions:string|null;
+    }>(
+      `SELECT r.licence_number,r.company_name,r.expires_on::text,
+          r.renewal_offering_key,r.renewal_term_years,r.source_fingerprint,
+          o.label,o.description,p.amount::text,p.currency,p.revision,p.conditions
+       FROM ticket_licence_renewals r
+       JOIN tickets t ON t.agent_id=r.agent_id AND t.id=r.ticket_id
+       JOIN offering_catalog_versions cv ON cv.agent_id=t.agent_id
+         AND cv.id=t.offering_catalog_version_id AND cv.status IN ('published','retired')
+       JOIN offerings o ON o.agent_id=cv.agent_id AND o.catalog_version_id=cv.id
+         AND o.intent_key='license_renewal' AND o.offering_key=r.renewal_offering_key
+       JOIN LATERAL (SELECT pr.amount,pr.currency,pr.revision,pr.conditions
+         FROM offering_price_revisions pr
+         WHERE pr.agent_id=o.agent_id AND pr.offering_id=o.id
+         AND pr.effective_from<=now()
+         AND (pr.effective_to IS NULL OR pr.effective_to>now())
+         ORDER BY pr.revision DESC LIMIT 1) p ON true
+       WHERE r.agent_id=$1 AND r.ticket_id=$2 AND r.state='confirmed'
+         AND p.amount>0 AND p.currency='AED'
+       LIMIT 1`,[agentId,ticketId],
+    );
+    const x=r.rows[0];
+    if(!x)return null;
+    const requirements=[
+      {label:"Licence number",value:x.licence_number},
+      {label:"Licensed company",value:x.company_name},
+      {label:"Current licence expiry",value:x.expires_on},
+      {label:"Requested renewal term (years)",value:String(x.renewal_term_years)},
+      {label:"Contact person",value:contact},
+    ];
+    const proposal=quoteDetails(x.description,requirements,x.conditions);
+    return {
+      lead:{name:contact,company:x.company_name,phone,email:email.toLowerCase(),
+        description:"Existing licence renewal: "+x.licence_number+
+          "; Expiry: "+x.expires_on+"; Renewal term: "+x.renewal_term_years},
+      offeringKey:x.renewal_offering_key,offeringLabel:x.label,
+      priceRevision:x.revision,amount:x.amount,currency:x.currency.trim(),
+      visaCount:0,termYears:x.renewal_term_years,officePreference:"not applicable",
+      conditions:x.conditions,proposal,
+      renewal:{licenceNumber:x.licence_number,expiresOn:x.expires_on,
+        sourceFingerprint:x.source_fingerprint},
+    };
   }
 
   private async stage(scope:TicketScope,ticketId:string,kind:ProposalKind,
