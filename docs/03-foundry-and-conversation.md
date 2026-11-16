@@ -8,7 +8,7 @@ Use the existing, published **Sara** prompt agent on Microsoft Foundry with GPT-
 
 P1 introduces a small Foundry adapter in `services/api/src/foundry/`, using compatible `@azure/ai-projects` and `@azure/identity` versions. The local Docker runtime authenticates through **AzureCliCredential**, not a Foundry API key. The Linux Node container must have Azure CLI installed and a non-root writable `AZURE_CONFIG_DIR=/home/app/.azure`, stored on the existing private `azure-cli-auth` Docker volume. A valid CLI login can survive rebuilds; revocation/policy changes may require login again.
 
-**Current state:** the Node Dockerfile mounts the volume but does not yet install CLI or invoke Foundry. Those are P1 tasks. Do not claim a live response from a P0 health route.
+**Current runtime:** Node invokes the pinned Foundry agent with a bounded function loop. A successful P0 health check remains insufficient evidence of live Foundry availability or end-to-end workflow acceptance.
 
 ## Two tool classes
 
@@ -28,15 +28,23 @@ Microsoft documents agent function requests as **client-executed**; app code sub
 - Tool results are returned as `function_call_output` items to the same Foundry conversation; the agent may request another function or produce a final reply.
 - Bound tool rounds/calls, payload sizes and timeouts; reject duplicate IDs and unknown tools. Persist final reply and source events in Node.
 
-The loop is **partially scaffolded** but not wired to a live SDK or PostgreSQL repository yet.
+The function loop and PostgreSQL-backed ticket context are implemented; live Foundry/IQ and external provider acceptance must still be tested with valid credentials.
 
 ## Natural service-employee behaviour
 
 Sara is a team member helping a customer toward the relevant business goal, **not** a robotic FAQ list generator. Use [service-employee instructions](../services/api/prompts/sara-service-employee.md) as the versioned prompt source.
 
-Typical progression: hear a goal -> `find_intents` -> `select_ticket_intent` -> save explicit customer facts -> fetch missing requirements -> answer or ask **one relevant question** -> if customer requests action, preflight/propose -> await separate authorized approval.
+Typical progression: hear a goal -> `find_intents` -> `select_ticket_intent` -> save explicit customer facts -> fetch missing requirements -> answer or ask **one relevant question** -> if the customer explicitly requests an action, use the server-owned `ConversationActionHandoff` to ask the next missing catalog fact -> present the existing separate Node approval control. Customer requests are persisted as **intent, not consent** in `ticket_events`.
 
 For "software services, one visa, shared office", Sara should not request those again. A helpful next question is shareholder count (if necessary), not a four-field questionnaire. Price explanations can be answered immediately with verified knowledge/catalog values, while formal quotes use structured price revisions.
+
+## Customer-requested actions through sandbox invoice
+
+A company-formation conversation stays natural for FAQ/package requests. On an explicit quotation, lead, purchase, PDF or invoice request, Node persists a durable non-authorizing request event. After the Foundry turn and any `record_ticket_facts` calls, Node re-reads the ticket's **pinned** requirements and verified operation state to select exactly one missing question or next customer-authorized control. The dialogue is not a fixed questionnaire, and unrelated questions remain answerable.
+
+The supported POC business path is: **verified Salesforce lead → acknowledged quotation/PDF → private OCR document intake → purchase consent → synthetic OTP → sandbox gateway verification → verified test invoice**. The model may explain status but must not execute operations, mark payments complete, or expose the invoice before independent evidence.
+
+Customer chat hides Foundry IQ citation chips and knowledge/download hyperlinks by default. Source references remain stored for audit and server verification. Quotation and invoice PDFs remain available in their **authenticated workflow sections**. Re-enable chat references only through an explicit product decision; they are not required for internal grounding.
 
 ## Source quality and token budget
 
