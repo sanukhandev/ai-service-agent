@@ -73,7 +73,7 @@ function missingFor(action:Action):{key:string;label:string}[] {
 function step(stage:string,response:string,missingCount=0):HandoffStep {
   return {stage,response,missingCount};
 }
-const cancelled=/^(?:no thanks|thanks|thank you|never mind|nevermind|stop|cancel(?: the (?:quote|quotation|request|application|purchase))?|forget (?:the|my) (?:quote|quotation|request|purchase))[.!\s]*$/i;
+const cancelled=/^(?:never mind|nevermind|stop|cancel(?: the (?:quote|quotation|request|application|purchase))?|forget (?:the|my) (?:quote|quotation|request|purchase))[.!\s]*$/i;
 
 export class ConversationActionHandoff {
   constructor(private readonly db:PersistenceDatabase){}
@@ -207,6 +207,11 @@ export function shouldUseHandoff(
   if(!after)return false;
   if(explicit)return true;
   if(/\b(?:what next|what's next|next step|continue|proceed)\b/i.test(message))return true;
-  return Boolean(before && after.missingCount<before.missingCount &&
-    !/\?/.test(message));
+  if(before && after.missingCount<before.missingCount && !/\?/.test(message))return true;
+  // If an answer did not persist, repeat the SAME authoritative missing
+  // question instead of inventing a fact or pretending the stage advanced.
+  return Boolean(before && /^(lead_facts|quote_facts)$/.test(before.stage)
+    && /^(lead_facts|quote_facts)$/.test(after.stage)
+    && !/\?/.test(message) && message.length<=150
+    && !/^(?:thanks|thank you|hello|hi|okay|ok|bye|goodbye)[.! ]*$/i.test(message.trim()));
 }
