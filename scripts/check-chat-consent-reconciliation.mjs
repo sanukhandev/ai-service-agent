@@ -98,6 +98,11 @@ async function scenario({messageText=LEAD_QUOTE_APPROVAL,notice=null,
   assert.equal(a.state.consents,1);
 }
 {
+  const a=await scenario({messageText:LEAD_QUOTE_APPROVAL.slice(0,-1)});
+  assert.equal(await a.result(),"lead_quote","A missing terminal period must not prevent exact scoped consent");
+  assert.equal(a.state.consents,1);
+}
+{
   const a=await scenario({messageText:"yes"});
   assert.equal(await a.result(),"lead_quote");
   assert.equal(a.state.consents,1);
@@ -116,7 +121,7 @@ for(const opts of [{interveningCustomer:true},{visible:false}]){
 {
   const a=await scenario({stale:true});
   await assert.rejects(a.result(),e=>e.code==="CONFLICT"&&
-    /Enquiry details or package changed/.test(e.message));
+    e.message==="CHAT_APPROVAL_SNAPSHOT_CHANGED");
   assert.equal(a.state.consents,0);
 }
 {
