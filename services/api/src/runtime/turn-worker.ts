@@ -258,7 +258,7 @@ export class TurnWorker {
       // If the customer already supplied the synthetic licence number in
       // ordinary chat, reuse it for ONE scoped read-only lookup after Foundry
       // has selected the renewal intent. No second copy/paste is required.
-      const licenceMatch=text.toUpperCase().match(/\\bANCFZ-TEST-[A-Z0-9-]{4,40}\\b/);
+      const licenceMatch=text.toUpperCase().match(/\bANCFZ-TEST-[A-Z0-9-]{4,40}\b/);
       if(licenceMatch){
         try{
           const renewals=new LicenceRenewalOperations(this.db);
