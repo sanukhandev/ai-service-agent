@@ -80,3 +80,34 @@ assert.doesNotMatch(chat,/schedulePanelRefresh|eventRevision/,
 assert.ok(chat.includes("useTicketEvents("),
   "Continue receiving verified workflow status events over SSE");
 console.log("Chat-only layout PASS: legacy action panel absent, transcript and SSE preserved");
+
+
+// The exact chat consent must not be inferred from a generic "yes",
+// unrelated customer conversation, or a mismatched purchase approval.
+const {
+  isLeadQuoteApproval,isPurchasePaymentApproval,
+  LEAD_QUOTE_APPROVAL,PURCHASE_PAYMENT_APPROVAL,
+}=await import("../services/api/dist/runtime/chat-journey.js");
+assert.equal(isLeadQuoteApproval(LEAD_QUOTE_APPROVAL),true);
+assert.equal(isLeadQuoteApproval("Yes, "+LEAD_QUOTE_APPROVAL),true);
+assert.equal(isLeadQuoteApproval("yes"),false);
+assert.equal(isLeadQuoteApproval("Please generate a quote"),false);
+assert.equal(isLeadQuoteApproval(PURCHASE_PAYMENT_APPROVAL),false);
+assert.equal(isPurchasePaymentApproval(PURCHASE_PAYMENT_APPROVAL),true);
+assert.equal(isPurchasePaymentApproval("Yes, "+PURCHASE_PAYMENT_APPROVAL),true);
+assert.equal(isPurchasePaymentApproval("yes"),false);
+assert.equal(isPurchasePaymentApproval(LEAD_QUOTE_APPROVAL),false);
+
+const backend=readFileSync("services/api/src/runtime/chat-journey.ts","utf8");
+const turnWorker=readFileSync("services/api/src/runtime/turn-worker.ts","utf8");
+const turnQueue=readFileSync("services/api/src/runtime/turn-queue.ts","utf8");
+assert.match(backend,/proposalId:p\.id,sourceMessageId/);
+assert.match(backend,/fingerprint\(current\)!==item\.proposal\.fingerprint/);
+assert.match(backend,/lead\.state!=="verified_completed"/);
+assert.match(backend,/matched=options\.options\.find/);
+assert.match(backend,/chat\.otp\.dispatch_started/);
+assert.match(backend,/verifySecureOtp/);
+assert.match(turnWorker,/chatJourney\.accept\(/);
+assert.match(turnWorker,/completeLocal\(turn/);
+assert.match(turnQueue,/async completeLocal\(/);
+console.log("Chat consent contracts PASS: exact scoped approval, snapshot and duplicate safety");
