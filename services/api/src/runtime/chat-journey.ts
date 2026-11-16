@@ -211,9 +211,9 @@ export class ChatJourney {
       // Do not re-offer an already authorized proposal, or create duplicates
       // merely because another ordinary chat message was sent.
       const approved=await latestEvent(client,scope.agentId,ticketId,"chat."+kind+".consented");
-      if(prior?.payload.fingerprint===digest)return proposalCopy(prior);
       if(approved&&prior&&approved.payload.proposalId===prior.id)
         throw new PersistenceError("CONFLICT","An authorized operation already exists in this ticket");
+      if(prior?.payload.fingerprint===digest)return proposalCopy(prior);
       const created=await appendEventTx(client,scope.agentId,ticketId,
         "chat."+kind+".proposed",{kind,data,fingerprint:digest});
       return proposalCopy({kind,id:created.id,payload:{kind,data,fingerprint:digest}});
@@ -233,6 +233,9 @@ export class ChatJourney {
     if(!active)return null;
     const quote=await new QuotationOperations(this.db).get(scope,ticketId);
     if(!quote && (requested==="create_lead"||requested==="generate_quote")){
+      const approved=await this.db.withAgent(scope.agentId,async client=>
+        latestEvent(client,scope.agentId,ticketId,"chat.lead_quote.consented"));
+      if(approved)return null;
       const leads=await new LeadOperations(this.db).list(scope,ticketId);
       if(leads.some(l=>l.operation==="ancfz_salesforce_lead"))return null;
       const data=await this.db.withAgent(scope.agentId,async client=>
@@ -379,7 +382,7 @@ export class ChatJourney {
     const x=raw as Record<string,unknown>;
     if(Object.keys(x).some(k=>!["requestId","challengeId","code"].includes(k))||
        typeof x.requestId!=="string"||typeof x.challengeId!=="string"||
-       typeof x.code!=="string"||!/^\\d{6}$/.test(x.code))
+       typeof x.code!=="string"||!/^\d{6}$/.test(x.code))
       throw new PersistenceError("INVALID_INPUT","Invalid secure OTP input");
     requireUuid(x.requestId,"requestId");requireUuid(x.challengeId,"challengeId");
     const approval=await this.db.withAgent(scope.agentId,async client=>{
