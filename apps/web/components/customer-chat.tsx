@@ -654,7 +654,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {ticket && loadState==="ready" && (
             <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
               revision={journeyRevision} conversationBusy={locked||isSending}
-              onDocumentsUpdated={()=>setOperationNotice(null)}
+              onDocumentsUpdated={()=>{setOperationNotice(null);void refresh();}}
               onContinuePurchase={()=>send(
                 "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
               )} />
