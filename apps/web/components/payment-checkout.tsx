@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PurchaseChecklist } from "./purchase-checklist";
+import { canStartSandboxCheckout } from "../lib/purchase-checkout-visibility";
 
 const consentText =
   "I authorize an ANCFZ sandbox payment for the exact quotation amount shown and understand that this is a test transaction.";
@@ -42,6 +43,7 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
   const [summary,setSummary]=useState<Summary|null>(null);
   const [purchaseReady,setPurchaseReady]=useState(false);
   const [purchaseSupported,setPurchaseSupported]=useState(false);
+  const [checkoutOpen,setCheckoutOpen]=useState(false);
   const [quote,setQuote]=useState<Quote|null>(null);
   const [challenge,setChallenge]=useState<Challenge|null>(null);
   const [firstName,setFirstName]=useState("Demo");
@@ -64,9 +66,13 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
           jsonRequest("/api/v1/tickets/"+encodeURIComponent(ticketId)+"/purchase","GET"),
         ]);
         if(!live)return;
+        const currentQuote=(quotation?.quotation??null) as Quote|null;
         setSummary(payment as Summary);
-        setQuote((quotation?.quotation??null) as Quote|null);
+        setQuote(currentQuote);
         setPurchaseSupported(purchase?.supported===true);
+        // Purchase readiness must survive a collapsed checklist and page refresh.
+        setPurchaseReady(purchase?.readyForOtp===true &&
+          typeof purchase?.quotationId==="string" && purchase.quotationId===currentQuote?.id);
       }catch{/* Existing chat displays network/owner errors elsewhere. */}
     }
     void load();
@@ -76,7 +82,16 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
   const payment=summary?.payments?.[0]??null;
   const quoteReady=quote?.state==="verified_completed" && quote.pdfAvailable;
   const ready=summary?.enabled===true && quoteReady && purchaseReady;
-  if(!quoteReady&&!payment&&!purchaseSupported)return null;
+  // Identity inputs should never appear merely because an intent was selected.
+  // A verified PDF, purchase-enabled catalog and enabled sandbox are all required.
+  const canStartCheckout=canStartSandboxCheckout(quoteReady,purchaseSupported,summary?.enabled===true);
+  if(!payment && !canStartCheckout)return null;
+  if(!payment && !checkoutOpen)return <button type="button"
+    aria-expanded={false}
+    onClick={()=>setCheckoutOpen(true)}
+    className="mb-3 rounded-lg border border-indigo-300 bg-white px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-50">
+    Continue to identity documents and sandbox checkout
+  </button>;
   async function issueOtp(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     if(!ready||!quote||busy||!consent)return;
@@ -134,7 +149,14 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
   const invoice=summary?.invoice;
   return <section className="mb-3 rounded-xl border border-indigo-200 bg-white p-4 text-sm"
     aria-label="ANCFZ sandbox payment">
-    <h2 className="font-semibold text-slate-900">ANCFZ identity documents and sandbox checkout</h2>
+    <div className="flex items-center justify-between gap-2">
+      <h2 className="font-semibold text-slate-900">ANCFZ identity documents and sandbox checkout</h2>
+      {!payment && <button type="button" aria-expanded={true}
+        onClick={()=>setCheckoutOpen(false)}
+        className="shrink-0 text-xs font-medium text-indigo-700 underline">
+        Hide
+      </button>}
+    </div>
     <p className="mt-1 text-xs text-amber-800">
       Development simulation only. No real money, card or production customer OTPs.
     </p>

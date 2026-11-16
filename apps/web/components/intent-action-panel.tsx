@@ -4,7 +4,6 @@ import { useEffect, useRef, useState } from "react";
 import { LeadSubmission } from "./lead-submission";
 import { QuotationRequest } from "./quotation-request";
 import { PaymentCheckout } from "./payment-checkout";
-import { PurchaseChecklist } from "./purchase-checklist";
 import { uniqueActionsByKey } from "../lib/unique-actions";
 
 const consentText =
@@ -21,7 +20,6 @@ type Catalog={
   intentKey:string|null;intentName?:string;
   actions:Action[];unknownActions:string[];
 };
-const noopReady=(_ready:boolean)=>{};
 export function IntentActionPanel({ticketId,revision}:{ticketId:string;revision:number}){
   const [catalog,setCatalog]=useState<Catalog|null>(null);
   const [selected,setSelected]=useState<string|null>(null);
@@ -78,11 +76,6 @@ export function IntentActionPanel({ticketId,revision}:{ticketId:string;revision:
     <p className="text-xs font-semibold text-slate-700">
       Available actions for {catalog.intentName??catalog.intentKey.replaceAll("_"," ")}
     </p>
-    {/* Passport and Emirates ID intake applies to ALL intents, even those
-        without a priced quotation or an authorized payment path. */}
-    {!actions.some(a=>a.kind==="purchase")&&
-      <PurchaseChecklist ticketId={ticketId} quote={null} onReady={noopReady} revision={revision}/>}
-
     {actions.map(action=>{
       if(action.kind==="salesforce_lead"||action.kind==="quotation"){
         // Sara asks missing fields one at a time in chat. Show the approval
