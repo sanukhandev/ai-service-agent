@@ -126,3 +126,4 @@ console.log("Chat consent contracts PASS: exact/contextual approval, immutable s
 
 await import("./check-chat-journey-state.mjs");
 await import("./check-chat-consent-reconciliation.mjs");
+await import("./check-dev-synthetic-passport.mjs");

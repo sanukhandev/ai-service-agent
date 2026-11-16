@@ -177,6 +177,13 @@ export function ChatJourneyControls({ticketId,revision}:{ticketId:string;revisio
                   }}/>
               </label>
             ))}
+            {documents.some(doc=>doc.status==="synthetic_name_unverified") && (
+              <p role="status" className="text-xs text-amber-800">
+                POC only: this synthetic passport was classified by OCR, but no reliable
+                passport holder name was extracted. The TEST invoice will use the
+                Emirates ID holder name. This is not identity verification.
+              </p>
+            )}
             {purchase.missing.length===0 && (
               <p className="text-xs text-emerald-800">
                 Required synthetic documents received. Tell Sara that you want to

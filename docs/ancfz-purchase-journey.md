@@ -29,8 +29,16 @@ enqueue an order and independently verify provider evidence.
    and only the normalized names and document-number last four characters
    are saved from the OCR output. The original bytes are persisted in `ticket_purchase_documents` with SHA256 and tenant-free
    agent/ticket-scoped RLS; raw bytes are never sent to Foundry or n8n.
-   Extraction is not identity or document-authenticity verification. If OCR
-   cannot extract both full names, the upload is rejected and purchase remains blocked.
+   Extraction is not identity or document-authenticity verification. By default, if
+   OCR cannot extract both full names, the upload is rejected and purchase remains blocked.
+   For **synthetic local development only**, `APP_ENV=development` plus
+   `ANCFZ_DEV_ACCEPT_UNNAMED_PASSPORT=true` permits a passport classified by
+   Azure OCR but missing a reliable name to be retained as
+   `extraction_status=pending`. The passport is explicitly **unverified**;
+   Emirates ID must have a reliable extracted full name, used as the TEST
+   invoice billing name. If a passport does yield a complete name, it must
+   still match the Emirates ID. No non-passport document may use the exception.
+   The flag defaults off and can never enable the exception in production.
 4. Customer confirms the exact quote and the specific
    `PURCHASE_CONSENT` wording. Node creates a durable
    `ticket_purchase_confirmations` row; documents cannot be changed after
