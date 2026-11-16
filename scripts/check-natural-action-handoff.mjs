@@ -189,7 +189,7 @@ assert.match(controls,/Continue to sandbox purchase review/);
 assert.match(controls,/await onContinuePurchase\(\)/);
 const customerChat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
 assert.match(customerChat,/onContinuePurchase=\{\(\)=>send\(/);
-assert.match(customerChat,/onDocumentsUpdated=\{\(\)=>setOperationNotice\(null\)\}/);
+assert.match(customerChat,/onDocumentsUpdated=\{\(\)=>\{setOperationNotice\(null\);void refresh\(\);\}\}/);
 assert.ok(!controls.includes('fetch(root+"/purchase/confirm"'),
   "Secure document intake cannot issue purchase consent automatically");
 
