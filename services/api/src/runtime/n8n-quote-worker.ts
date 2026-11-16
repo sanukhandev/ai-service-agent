@@ -6,6 +6,8 @@
 import { createHash } from "node:crypto";
 import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
+import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
+import { workerTicketScope } from "../repositories/types.js";
 import { quoteDispatchEnabled } from "./quotation-operations.js";
 
 interface Claim {
@@ -211,6 +213,19 @@ export class N8nQuoteWorker {
           reason:"Quotation PDF not verified; requires reconciliation",
         },
       );
+      if(pdf){
+        // Chat delivery is optional; a notification failure must never
+        // roll back independently verified quotation PDF evidence.
+        const link="/api/v1/tickets/"+claim.ticketId+"/quotations/"+
+          claim.quotationId+"/pdf";
+        await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+          client,workerTicketScope(claim.agentId,claim.ticketId),claim.ticketId,
+          lifecycleNoticeId("quotation.verified",claim.quotationId),
+          "Your non-binding ANCFZ test quotation has been verified. "+
+          "[Download quotation PDF]("+link+"). You can continue with the "+
+          "secure identity-document upload here in the conversation.",
+        );
+      }
     });
   }
 
