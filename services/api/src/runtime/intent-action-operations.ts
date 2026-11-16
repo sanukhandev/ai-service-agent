@@ -29,6 +29,13 @@ export const EXTERNAL_ACTIONS=["create_lead","generate_quote","purchase_quotatio
 export const SUPPORTED_CATALOG_ACTIONS=new Set<string>([
   ...Object.keys(SERVICE_ACTION_LABELS),...EXTERNAL_ACTIONS,
 ]);
+
+/** The published intent array may contain duplicate action names.
+ * Only expose each action once to the model and customer UI.
+ */
+export function uniqueAllowedActions(actions: readonly string[]): string[] {
+  return [...new Set(actions)];
+}
 export function isServiceAction(action:string):action is ServiceAction {
   return Object.prototype.hasOwnProperty.call(SERVICE_ACTION_LABELS,action);
 }
@@ -119,7 +126,8 @@ export class IntentActionOperations {
       const byAction=new Map(requests.rows.map(x=>[x.action_key,x]));
       const identity=await identityDocumentReadinessTx(client,scope.agentId,ticketId,intent.id);
       const result=[];
-      for(const action of intent.allowed_actions){
+      const allowedActions=uniqueAllowedActions(intent.allowed_actions);
+      for(const action of allowedActions){
         const kind=classifyAction(action);
         if(!kind)continue;
         const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action);
@@ -132,7 +140,7 @@ export class IntentActionOperations {
           request:byAction.has(action)?toView(byAction.get(action) as RequestRow):null});
       }
       return {intentKey:intent.intent_key,intentName:intent.name,
-        actions:result,unknownActions:intent.allowed_actions.filter(a=>!classifyAction(a))};
+        actions:result,unknownActions:allowedActions.filter(a=>!classifyAction(a))};
     });
   }
   async submit(scope:TicketScope,ticketId:string,action:string,raw:unknown){
