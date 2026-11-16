@@ -130,6 +130,11 @@ export class TurnWorker {
       }
       const previousResponseId=await this.queue.responseCursor(turn);
       const recent=previousResponseId ? []:await this.messages.recentMessages(scope,turn.ticketId,12);
+      // The Foundry response cursor can retain an answer that Node replaced
+      // with a safer, current-state handoff. Reconcile this in the next turn.
+      const displayHistory=requestedAction.action
+        ?await this.messages.recentMessages(scope,turn.ticketId,4):[];
+      const displayedAssistant=[...displayHistory].reverse().find(m=>m.role==="assistant")?.text??null;
       const actionRead=async()=>{
         const state=await new IntentActionOperations(this.db).catalog(scope,turn.ticketId);
         return {intentKey:state.intentKey,
@@ -149,11 +154,12 @@ export class TurnWorker {
           requestedBusinessAction:requestedAction.action,
           nextAuthorizedStep:handoffBefore?.stage??null,
           nextQuestionOrStep:handoffBefore?.response??null,
+          lastCustomerVisibleAssistantReply:displayedAssistant,
           previousSummary:stored.summary?.text ?? null,
           ...(recent.length ? {earlierMessages:recent.slice(0,-1).map(m=>({role:m.role,text:m.text}))}:{}),
         }),
         "For actionable requests, discover and select a supported intent, call get_intent_requirements with the requested operationKey, and record customer-stated facts from the latest message. Every declared operation is presented in the secure ticket UI with missing facts and an explicit consent step. A recorded service request is NOT an external bank, government or partner submission. For purchase_quotation, collect synthetic passport and Emirates ID only through the authenticated upload UI, and require a verified quote, explicit purchase consent and OTP. Never ask for identity files, OTPs or card details in chat; never claim an invoice exists until independent gateway COMPLETE verification.",
-        "Act as a concise, natural customer-service employee: normally 1–3 short sentences, answering the actual question first. For an explicitly requested formal quote or PDF, do not say PDF generation is impossible: the authorized Node workflow supports it after a verified Salesforce lead and customer approval. Follow the trusted nextAuthorizedStep/nextQuestionOrStep, ask exactly ONE outstanding customer fact at a time, and never invent or silently record missing facts. When the necessary facts are complete, explain the NEXT secure approval control. After independent payment verification, the TEST invoice is delivered through the private checkout section. Do not put knowledge source citations, reference tags or document-download links in ordinary chat replies; Node keeps grounding references internally.",
+        "If lastCustomerVisibleAssistantReply is provided, that is what the customer ACTUALLY saw; it is more authoritative for dialogue continuity than any different assistant text remembered in the model continuation. Act as a concise, natural customer-service employee: normally 1–3 short sentences, answering the actual question first. For an explicitly requested formal quote or PDF, do not say PDF generation is impossible: the authorized Node workflow supports it after a verified Salesforce lead and customer approval. Follow the trusted nextAuthorizedStep/nextQuestionOrStep, ask exactly ONE outstanding customer fact at a time, and never invent or silently record missing facts. When the necessary facts are complete, explain the NEXT secure approval control. After independent payment verification, the TEST invoice is delivered through the private checkout section. Do not put knowledge source citations, reference tags or document-download links in ordinary chat replies; Node keeps grounding references internally.",
         "Latest customer message:",text,
       ].join("\n");
       const toolRegistry=new AgentToolRegistry();
@@ -206,7 +212,8 @@ export class TurnWorker {
         this.log({turnId:turn.id,errorCode:(error as Error).name},
           "Action handoff read failed; retaining the normal Foundry response");
       }
-      await this.queue.complete(turn,responseText,citations(result.sourceReferences),
+      await this.queue.complete(turn,responseText,
+        responseText===result.text?citations(result.sourceReferences):[],
         previousResponseId,result.responseId,binding.versionId);
       this.log({agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id},"Assistant turn committed");
     } catch(error) {
