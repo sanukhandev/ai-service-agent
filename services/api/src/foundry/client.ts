@@ -8,6 +8,7 @@ import {
 } from "../agent/function-loop.js";
 import { AgentToolRegistry } from "../agent/tool-registry.js";
 import { FoundryError, classifyFoundryError } from "./errors.js";
+import { with429Backoff } from "./rate-control.js";
 import { aggregateTokenUsage, parseFoundryFrame } from "./response-adapter.js";
 import type {
   FoundryClientOptions,
@@ -15,6 +16,24 @@ import type {
   FoundryTurnResult,
   TokenUsage,
 } from "./types.js";
+
+// Reuse credentials, project transports and SDK clients across ticket turns.
+const sharedCredential = new AzureCliCredential();
+const sharedClients = new Map<string,{
+  project:AIProjectClient;
+  openai:ReturnType<AIProjectClient["getOpenAIClient"]>;
+}>();
+function sharedFoundryClient(endpoint:string){
+  let shared=sharedClients.get(endpoint);
+  if(!shared){
+    const project=new AIProjectClient(endpoint,sharedCredential);
+    shared={project,openai:project.getOpenAIClient({maxRetries:0})};
+    // A POC deployment usually has one project. Keep the small map bounded.
+    if(sharedClients.size>=8)sharedClients.delete(sharedClients.keys().next().value as string);
+    sharedClients.set(endpoint,shared);
+  }
+  return shared;
+}
 
 function required(value: string | undefined, name: string): string {
   if (!value?.trim()) throw new Error(name + " is required for the published Foundry agent");
@@ -44,6 +63,8 @@ export class FoundryClient {
   private readonly maxToolResultBytes: number;
   private readonly expectedName: string;
   private readonly expectedVersion: string;
+  private readonly rateKey: string;
+  private readonly onProviderCall: FoundryClientOptions["onProviderCall"];
 
   constructor(
     private readonly registry: AgentToolRegistry,
@@ -61,9 +82,12 @@ export class FoundryClient {
     this.maxCalls = positiveBounded(options.maxCalls, 8, 32, "maxCalls");
     this.maxToolResultBytes = positiveBounded(options.maxToolResultBytes, 12_000, 100_000, "maxToolResultBytes");
 
-    this.project = new AIProjectClient(endpoint.replace(/\/$/, ""), new AzureCliCredential());
-    // Disable SDK automatic retries: a continuation might follow tool-backed durable writes.
-    this.openai = this.project.getOpenAIClient({ maxRetries: 0 });
+    this.rateKey = endpoint + "|" + this.expectedName + "|" + this.expectedVersion;
+    this.onProviderCall = options.onProviderCall;
+    // SDK retries stay disabled; only explicit, confirmed 429s can be retried.
+    const shared = sharedFoundryClient(endpoint.replace(/\/$/, ""));
+    this.project = shared.project;
+    this.openai = shared.openai;
   }
 
   /** Diagnostic only. Requires project agent-version read permission. Never mutates Sara. */
@@ -131,6 +155,7 @@ export class FoundryClient {
       type: "agent_reference" as const,
     };
     const controller = new AbortController();
+    const deadlineAt = Date.now() + this.timeoutMs;
     const timeout = setTimeout(() => controller.abort(), this.timeoutMs);
     timeout.unref();
     const usages: TokenUsage[] = [];
@@ -138,7 +163,7 @@ export class FoundryClient {
     try {
       let parsed;
       try {
-        const first = await this.openai.responses.create(
+        const first = await with429Backoff(() => this.openai.responses.create(
           {
             input: input.message,
             ...(previousResponseId ? { previous_response_id: previousResponseId } : {}),
@@ -149,7 +174,10 @@ export class FoundryClient {
             timeout: this.timeoutMs,
             signal: controller.signal,
           },
-        );
+        ).withResponse(), {
+          key:this.rateKey,phase:"initial",signal:controller.signal,deadlineAt,
+          onObservation:this.onProviderCall,
+        });
         parsed = parseFoundryFrame(first);
       } catch (error) {
         if (controller.signal.aborted) {
@@ -170,7 +198,7 @@ export class FoundryClient {
           }
           try {
             // A previous_response_id continues exactly the response containing these call IDs.
-            const next = await this.openai.responses.create(
+            const next = await with429Backoff(() => this.openai.responses.create(
               {
                 previous_response_id: frame.traceRef,
                 input: results.map((result) => ({
@@ -185,7 +213,10 @@ export class FoundryClient {
                 timeout: this.timeoutMs,
                 signal: controller.signal,
               },
-            );
+            ).withResponse(), {
+              key:this.rateKey,phase:"continuation",signal:controller.signal,deadlineAt,
+              onObservation:this.onProviderCall,
+            });
             lastParsed = parseFoundryFrame(next);
             if (lastParsed.usage) usages.push(lastParsed.usage);
             return lastParsed.frame;
