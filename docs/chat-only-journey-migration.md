@@ -1,6 +1,6 @@
 # Chat-only customer journey transition
 
-Status: **Node conversation authorization and backend sequencing implemented on the draft PR. Secure inline chat controls and live provider acceptance remain outstanding; do not deploy this PR yet.**
+Status: **Chat-first Node authorization, safe inline synthetic documents/OTP, and backend journey sequencing implemented on draft PR #30. Code-level smoke tests run in CI; live Foundry/Salesforce/n8n/2Checkout end-to-end acceptance is still required before deployment.**
 
 ## Target interaction
 - The chat transcript and composer are the only persistent customer-facing layout. Do not render the separate `Available actions for <intent>` panel.
@@ -22,12 +22,14 @@ Status: **Node conversation authorization and backend sequencing implemented on 
 - Existing purchase document upload APIs, independent 2Checkout GET verification, and verified TEST invoice PDF endpoint remain authoritative. Verified quote and hosted-checkout links are delivered as ticket-scoped lifecycle messages.
 
 ## Rollout blockers
-This is **not yet an end-to-end usable chat-only product**. Removing the old action panel hides the existing file-upload and OTP-entry forms. Add secure inline document attachment/OTP controls to the Next.js transcript (or restore those forms) before merging/deploying. Hosted sandbox checkout remains an external site; never collect card details in chat.
+The Next.js transcript now contains `ChatJourneyControls`: secure synthetic PDF/PNG/JPEG attachment upload (1 MiB maximum), private six-digit OTP verification, quotation and invoice download, and an allowlisted hosted sandbox checkout link. The old `Available actions` panel is removed. These are secure controls **inside the conversation viewport**; never paste identity bytes, OTPs, or card data into the message composer. Hosted sandbox checkout remains an external site.
 
-Run a fresh synthetic Lead -> Quote -> identity upload -> purchase consent -> OTP -> hosted checkout -> verified payment -> TEST invoice smoke with deployed n8n/Salesforce/mocks before declaring provider success. The repository's offline CI does not prove provider availability. Keep the older unknown-outcome Salesforce ticket quarantined.
+Natural short assent such as `yes` is accepted **only** immediately after a server-generated exact proposal appears as the latest assistant message on that ticket. All actual money/price/lead operations remain on Node with mandatory provider verification. The lead/quote dispatcher now enforces full catalog fact readiness and checks the exact consented quote price revision inside the final submission transaction.
+
+Run a fresh synthetic Lead -> Quote -> identity upload -> purchase consent -> OTP -> hosted checkout -> verified payment -> TEST invoice smoke with deployed Foundry, n8n, Salesforce sandbox, OCR and 2Checkout mocks before declaring provider success. Offline CI also executes `scripts/check-chat-journey-state.mjs` for one-shot lead/quote/OTP, unknown-outcome quarantine and replay prevention, but cannot verify live credential, network or merchant behavior. Do not merge before the fresh end-to-end acceptance is captured. Keep the older unknown-outcome Salesforce ticket quarantined.
 
 ### Consent phrases
 - Salesforce + quotation: `I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.`
 - Sandbox purchase + OTP preparation: `I authorize the ANCFZ sandbox purchase and test payment for the exact quotation amount shown.`
 
-These only work immediately after a matching, newly displayed ticket-scoped proposal. A generic `yes` is deliberately insufficient.
+Exact phrases always require the immediately preceding matching ticket-scoped proposal. Short acknowledgments such as `yes`, `go ahead`, or `I approve` also work **only** when the immediately preceding assistant response displays that specific Node-generated proposal and its full scope. A free-floating `yes` never authorizes an operation.
