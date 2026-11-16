@@ -652,7 +652,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               no legacy Available Actions forms or non-chat dashboard. */}
           {ticket && loadState==="ready" && (
             <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
-              revision={journeyRevision} />
+              revision={journeyRevision} conversationBusy={locked||isSending}
+              onContinuePurchase={()=>send(
+                "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
+              )} />
           )}
 
           {/* Natural Frosted Glass Thinking Indicator */}
