@@ -198,4 +198,5 @@ assert.match(panel,/if\(!action\.ready\)return null/);
 assert.ok(!panel.includes("To proceed with {action.label}"),
   "Do not show a duplicate list of missing questions beside Sara's chat");
 console.log("Natural business action handoff PASS: missing facts, consent, lead, quotation, documents, sandbox payment, invoice and hidden chat sources");
+await import("./check-auto-document-review.mjs");
 await import("./check-verified-quote-purchase-handoff.mjs");
