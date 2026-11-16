@@ -86,7 +86,7 @@ console.log("Chat-only layout PASS: legacy action panel absent, transcript and S
 // unrelated customer conversation, or a mismatched purchase approval.
 const {
   isLeadQuoteApproval,isPurchasePaymentApproval,
-  LEAD_QUOTE_APPROVAL,PURCHASE_PAYMENT_APPROVAL,
+  LEAD_QUOTE_APPROVAL,PURCHASE_PAYMENT_APPROVAL,isContextualApproval,
 }=await import("../services/api/dist/runtime/chat-journey.js");
 assert.equal(isLeadQuoteApproval(LEAD_QUOTE_APPROVAL),true);
 assert.equal(isLeadQuoteApproval("Yes, "+LEAD_QUOTE_APPROVAL),true);
@@ -110,4 +110,16 @@ assert.match(backend,/verifySecureOtp/);
 assert.match(turnWorker,/chatJourney\.accept\(/);
 assert.match(turnWorker,/completeLocal\(turn/);
 assert.match(turnQueue,/async completeLocal\(/);
-console.log("Chat consent contracts PASS: exact scoped approval, snapshot and duplicate safety");
+assert.equal(isContextualApproval("yes"),true);
+assert.equal(isContextualApproval("go ahead"),true);
+assert.equal(isContextualApproval("i approve"),true);
+assert.equal(isContextualApproval("yes, but change to 0 visas"),false);
+assert.equal(isContextualApproval("not yet"),false);
+const inline=readFileSync("apps/web/components/chat-journey-controls.tsx","utf8");
+assert.match(chat,/<ChatJourneyControls\\b/);
+assert.match(inline,/chat-journey\/otp\/verify/);
+assert.match(inline,/purchase\/documents/);
+assert.match(inline,/autoComplete="one-time-code"/);
+assert.match(inline,/\.size>1048576/);
+assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP after chat consent");
+console.log("Chat consent contracts PASS: exact/contextual approval, immutable snapshot, secure in-chat inputs");
