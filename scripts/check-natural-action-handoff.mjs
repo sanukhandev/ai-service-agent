@@ -164,7 +164,7 @@ assert.ok(!helpers.conversationalText("See https://private.search.windows.net/do
   .includes("search.windows.net"));
 const component=readFileSync("apps/web/components/chat-message.tsx","utf8");
 assert.match(component,/SHOW_CHAT_SOURCES = process\.env\.NEXT_PUBLIC_SHOW_CHAT_SOURCES === "true"/);
-assert.match(component,/conversationalText\(message\.text\)/);
+assert.match(component,/conversationalText\(message\.text,\s*ticketId\)/);
 assert.match(component,/SHOW_CHAT_SOURCES && references\.length > 0/);
 const worker=readFileSync("services/api/src/runtime/turn-worker.ts","utf8");
 assert.match(worker,/handoff\.observe\(/);
