@@ -269,6 +269,8 @@ export class ChatJourney {
       if(leads.some(l=>l.operation==="ancfz_salesforce_lead"))return null;
       const data=await this.db.withAgent(scope.agentId,async client=>
         this.leadQuoteData(client,scope.agentId,ticketId));
+      if(!leadDispatchEnabled()||!quoteDispatchEnabled())
+        return "Salesforce or quotation generation is temporarily unavailable. I can collect the details, but no external enquiry or PDF will be submitted.";
       if(!data){
         const current=await this.db.withAgent(scope.agentId,async client=>{
           const allowed=await client.query<{actions:string[]}>(
@@ -306,6 +308,8 @@ export class ChatJourney {
     }
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
        (requested!=="purchase_quotation"&&requested!=="invoice"))return null;
+    if(!paymentEnabled())
+      return "Sandbox payments are disabled. Your verified quotation remains available; no payment order or invoice has been created.";
     const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
     const eligiblePurchase=await this.db.withAgent(scope.agentId,async client=>{
       const r=await client.query<{actions:string[]}>(
@@ -373,7 +377,7 @@ export class ChatJourney {
               requestId:item.proposal_id,customerName:x.lead.name,
               offeringKey:x.offeringKey,acknowledged:true,
               acknowledgmentText:QUOTATION_ACKNOWLEDGMENT,
-            });
+            },{amount:x.amount,currency:x.currency,priceRevision:x.priceRevision});
             continue;
           }
           if(item.kind==="purchase_payment"){
