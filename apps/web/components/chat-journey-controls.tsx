@@ -74,12 +74,18 @@ async function base64File(file:File):Promise<string>{
   });
 }
 
-export function ChatJourneyControls({ticketId,revision}:{ticketId:string;revision:number}){
+export function ChatJourneyControls({
+  ticketId,revision,onContinuePurchase,conversationBusy,
+}:{
+  ticketId:string;revision:number;
+  onContinuePurchase:()=>Promise<void>;conversationBusy:boolean;
+}){
   const [data,setData]=useState<Journey|null>(null);
   const [busy,setBusy]=useState<string|null>(null);
   const [error,setError]=useState<string|null>(null);
   const [notice,setNotice]=useState<string|null>(null);
   const [otp,setOtp]=useState("");
+  const [editingDocuments,setEditingDocuments]=useState(false);
   const otpRequest=useRef<string|null>(null);
   const root="/api/v1/tickets/"+encodeURIComponent(ticketId);
   const load=useCallback(async()=>{
@@ -102,10 +108,27 @@ export function ChatJourneyControls({ticketId,revision}:{ticketId:string;revisio
       await requestJson(root+"/purchase/documents",{
         requirementKey:key,fileName:file.name,contentType:file.type,dataBase64,
       });
-      setNotice("Synthetic document received securely. Its contents are not part of the chat transcript.");
-      await load();
+      const updated=await load();
+      if(updated.purchase.missing.length===0){
+        setEditingDocuments(false);
+        setNotice(null);
+      }else{
+        setNotice("Synthetic document received securely. Its contents are not part of the chat transcript.");
+      }
     }catch(e){setError(e instanceof Error?e.message:"Unable to upload document");}
     finally{setBusy(null);}
+  }
+
+  async function continuePurchase(){
+    if(busy!==null||conversationBusy)return;
+    setBusy("purchase");setError(null);setNotice(null);
+    try{
+      // Use the existing customer-message path. This is a REQUEST, never
+      // payment authorization, and cannot bypass the server's quote/OTP gates.
+      await onContinuePurchase();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Unable to request purchase review");
+    }finally{setBusy(null);}
   }
 
   async function verifyOtp(event:FormEvent<HTMLFormElement>){
@@ -140,6 +163,10 @@ export function ChatJourneyControls({ticketId,revision}:{ticketId:string;revisio
   const documents=purchase?.supported && !purchase.confirmed
     ? purchase.documents.filter(d=>["passport","emirates_id"].includes(d.key))
     : [];
+  const documentsComplete=Boolean(
+    purchase?.supported && !purchase.confirmed && documents.length===2 &&
+    purchase.missing.length===0 && documents.every(doc=>doc.uploaded),
+  );
   const showOtp=Boolean(
     !currentPayment && challenge?.state==="mock_recorded" &&
     challenge.quotationId===quote.id && new Date(challenge.expiresAt).getTime()>Date.now(),
@@ -156,45 +183,66 @@ export function ChatJourneyControls({ticketId,revision}:{ticketId:string;revisio
         </a>
         {purchase?.supported && documents.length>0 && (
           <div className="mt-4 space-y-3">
-            <p className="font-medium">Upload your synthetic identity documents here</p>
-            <p className="text-xs text-amber-800">
-              Development sandbox only. Never upload real identity documents on local HTTP.
-              Files go directly to a private Node endpoint, not to Sara's AI transcript.
-            </p>
-            {documents.map(doc=>(
-              <label key={doc.key} className="block rounded-lg border border-zinc-200 p-3">
-                <span className="block text-sm font-medium">{doc.label}{doc.required?" (required)":""}</span>
-                <span className="block text-xs text-zinc-600">
-                  {doc.uploaded?"Uploaded — you may replace it before purchase consent":"PDF, PNG or JPEG, max 1 MiB"}
-                </span>
-                <input className="mt-2 block w-full text-xs" type="file"
-                  accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                  disabled={busy!==null}
-                  onChange={event=>{
-                    const file=event.currentTarget.files?.[0];
-                    event.currentTarget.value="";
-                    void upload(doc.key,file);
-                  }}/>
-              </label>
-            ))}
-            {documents.some(doc=>doc.status==="synthetic_name_unverified") && (
-              <p role="status" className="text-xs text-amber-800">
-                POC only: this synthetic passport was classified by OCR, but no reliable
-                passport holder name was extracted. The TEST invoice will use the
-                Emirates ID holder name. This is not identity verification.
-              </p>
+            {documentsComplete && (
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-emerald-800" role="status">
+                  Required synthetic documents received
+                </p>
+                {documents.some(doc=>doc.status==="synthetic_name_unverified") && (
+                  <p className="text-xs text-amber-800">
+                    POC only: the synthetic passport was classified, but its holder name
+                    was not verified. The TEST invoice will use the Emirates ID name.
+                    This is not identity verification.
+                  </p>
+                )}
+                <p className="text-xs text-zinc-700">
+                  Checkout has not started. Review the exact quotation and explicitly
+                  authorize the sandbox purchase before a test OTP or payment is issued.
+                </p>
+                <button type="button" onClick={()=>{void continuePurchase();}}
+                  disabled={busy!==null||conversationBusy}
+                  className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                  {busy==="purchase"?"Requesting purchase review…":"Continue to sandbox purchase review"}
+                </button>
+                <button type="button" onClick={()=>setEditingDocuments(value=>!value)}
+                  disabled={busy!==null||conversationBusy}
+                  className="ml-3 text-xs text-zinc-700 underline disabled:opacity-40">
+                  {editingDocuments?"Hide document inputs":"Replace synthetic documents"}
+                </button>
+              </div>
             )}
-            {purchase.missing.length===0 && (
-              <p className="text-xs text-emerald-800">
-                Required synthetic documents received. Tell Sara that you want to
-                proceed with the sandbox purchase; she will show the exact amount
-                and ask for conversational consent.
-              </p>
-            )}
-            {purchase.missing.includes("identity_name_mismatch") && (
-              <p role="alert" className="text-xs text-red-700">
-                Extracted identity names do not match. Purchase and invoice are blocked.
-              </p>
+            {(!documentsComplete||editingDocuments) && (
+              <div className="space-y-3">
+                <p className="font-medium">Upload your synthetic identity documents here</p>
+                <p className="text-xs text-amber-800">
+                  Development sandbox only. Never upload real identity documents on local HTTP.
+                  Files go directly to a private Node endpoint, not to Sara's AI transcript.
+                </p>
+                {documents.map(doc=>(
+                  <label key={doc.key} className="block rounded-lg border border-zinc-200 p-3">
+                    <span className="block text-sm font-medium">
+                      {doc.label}{doc.required?" (required)":""}
+                    </span>
+                    <span className="block text-xs text-zinc-600">
+                      {doc.uploaded?"Uploaded — you may replace it before purchase consent":
+                        "PDF, PNG or JPEG, max 1 MiB"}
+                    </span>
+                    <input className="mt-2 block w-full text-xs" type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                      disabled={busy!==null||conversationBusy}
+                      onChange={event=>{
+                        const file=event.currentTarget.files?.[0];
+                        event.currentTarget.value="";
+                        void upload(doc.key,file);
+                      }}/>
+                  </label>
+                ))}
+                {purchase.missing.includes("identity_name_mismatch") && (
+                  <p role="alert" className="text-xs text-red-700">
+                    Extracted identity names do not match. Purchase and invoice are blocked.
+                  </p>
+                )}
+              </div>
             )}
           </div>
         )}
