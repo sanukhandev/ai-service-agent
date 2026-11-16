@@ -116,7 +116,7 @@ assert.equal(isContextualApproval("i approve"),true);
 assert.equal(isContextualApproval("yes, but change to 0 visas"),false);
 assert.equal(isContextualApproval("not yet"),false);
 const inline=readFileSync("apps/web/components/chat-journey-controls.tsx","utf8");
-assert.match(chat,/<ChatJourneyControls\\b/);
+assert.ok(chat.includes("<ChatJourneyControls"),"Secure chat controls must mount in transcript");
 assert.match(inline,/chat-journey\/otp\/verify/);
 assert.match(inline,/purchase\/documents/);
 assert.match(inline,/autoComplete="one-time-code"/);
