@@ -136,6 +136,10 @@ assert.ok(!cleaned.includes("source"));
 assert.ok(!cleaned.includes("Download"));
 assert.ok(!cleaned.includes("/api/v1"));
 assert.match(cleaned,/quotation is ready/);
+assert.equal(helpers.conversationalText("Visit https://ancfz.example for office hours."),
+  "Visit https://ancfz.example for office hours.");
+assert.ok(!helpers.conversationalText("See https://private.search.windows.net/download/foo.pdf")
+  .includes("search.windows.net"));
 const component=readFileSync("apps/web/components/chat-message.tsx","utf8");
 assert.match(component,/SHOW_CHAT_SOURCES = process\.env\.NEXT_PUBLIC_SHOW_CHAT_SOURCES === "true"/);
 assert.match(component,/conversationalText\(message\.text\)/);
