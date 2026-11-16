@@ -41,6 +41,10 @@ const db={
         };
         events.push(row);return {rows:[row]};
       }
+      if(sql.includes("SELECT 1 FROM ticket_messages")){
+        const exists=assistantNotices.some(x=>x.requestId===params[2]);
+        return {rowCount:exists?1:0,rows:exists?[{id:params[2]}]:[]};
+      }
       if(sql.includes("SELECT event_type,payload FROM ticket_events")){
         const latest=[...events].reverse()
           .find(x=>["purchase.review.started","customer.action.requested",
@@ -89,6 +93,10 @@ try{
   assert.match(assistantNotices[0].content,/synthetic billing email/i);
   assert.equal(await new ConversationActionHandoff(db).current(scope,ticketId),
     "purchase_quotation");
+  // Rehydrating a completed ticket must not emit duplicate events or notices.
+  assert.equal(await journey.afterDocumentsReceived(scope,ticketId),false);
+  assert.equal(events.length,1);
+  assert.equal(assistantNotices.length,1);
   assert.equal(events.some(x=>x.event_type.includes("consented")),false);
 
   purchase={...purchase,confirmed:true};
@@ -98,6 +106,10 @@ try{
 
   const api=readFileSync("services/api/src/runtime/app.ts","utf8");
   assert.match(api,/if\(!result\.duplicated\)\s*\{\s*try\s*\{\s*await chatJourney\.afterDocumentsReceived/);
+  assert.match(api,/chat-journey\/review/);
+  const ui=readFileSync("apps/web/components/chat-journey-controls.tsx","utf8");
+  assert.match(ui,/reviewIssued!==false/);
+  assert.match(ui,/root\+"\/chat-journey\/review"/);
   const props=readFileSync("services/api/src/runtime/chat-journey.ts","utf8");
   assert.match(props,/purchase\.review\.started/);
   assert.doesNotMatch(props.slice(props.indexOf("async afterDocumentsReceived"),props.indexOf("async advance")),
