@@ -22,6 +22,13 @@ assert.equal(requestedBusinessAction("can I have a PDF?",null,false),null);
 assert.equal(requestedBusinessAction("can I have the policy PDF?",null,true),null);
 assert.equal(requestedBusinessAction("please prepare an invoice"),"invoice");
 assert.equal(requestedBusinessAction("I would like to pay for the package"),"purchase_quotation");
+assert.equal(requestedBusinessAction(
+  "I want to proceed with the sandbox purchase and test checkout for my verified quotation."
+),"purchase_quotation");
+assert.equal(requestedBusinessAction(
+  "Please start payment for this verified quote"
+),"purchase_quotation");
+
 assert.equal(requestedBusinessAction("What steps are needed for licensing?"),null);
 assert.equal(requestedBusinessAction("How many visas should I choose?"),null);
 assert.equal(requestedBusinessAction("Can you send me the official knowledge article?"),null);
@@ -172,6 +179,20 @@ assert.match(worker,/handoff\.status\(/);
 assert.match(worker,/this\.queue\.complete\(turn,responseText,/);
 assert.match(worker,/lastCustomerVisibleAssistantReply:displayedAssistant/);
 assert.match(worker,/responseText===result\.text\?citations\(result\.sourceReferences\):\[\]/);
+// Complete OCR intake must collapse the file inputs and expose a deliberate
+// customer-message-driven transition. A file upload alone is never consent.
+const controls=readFileSync("apps/web/components/chat-journey-controls.tsx","utf8");
+assert.match(controls,/documentsComplete=Boolean/);
+assert.match(controls,/purchase\.missing\.length===0 && documents\.every\(doc=>doc\.uploaded\)/);
+assert.match(controls,/\(!documentsComplete\|\|editingDocuments\)/);
+assert.match(controls,/Continue to sandbox purchase review/);
+assert.match(controls,/await onContinuePurchase\(\)/);
+const customerChat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
+assert.match(customerChat,/onContinuePurchase=\{\(\)=>send\(/);
+assert.match(customerChat,/onDocumentsUpdated=\{\(\)=>setOperationNotice\(null\)\}/);
+assert.ok(!controls.includes('fetch(root+"/purchase/confirm"'),
+  "Secure document intake cannot issue purchase consent automatically");
+
 const panel=readFileSync("apps/web/components/intent-action-panel.tsx","utf8");
 assert.match(panel,/if\(!action\.ready\)return null/);
 assert.ok(!panel.includes("To proceed with {action.label}"),
