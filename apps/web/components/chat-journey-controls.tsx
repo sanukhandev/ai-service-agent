@@ -92,6 +92,7 @@ export function ChatJourneyControls({
   const load=useCallback(async()=>{
     const response=await requestJson<Journey>(root+"/chat-journey");
     setData(response);
+    return response;
   },[root]);
   useEffect(()=>{
     let live=true;
