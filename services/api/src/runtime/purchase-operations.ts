@@ -7,7 +7,7 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
-import { extractIdentityDocument, nameKey, type ExtractedIdentity, type IdentityKind } from "./identity-extractor.js";
+import { extractIdentityDocument, nameKey, allowUnnamedSyntheticPassport, type ExtractedIdentity, type IdentityKind } from "./identity-extractor.js";
 
 export const PURCHASE_CONSENT =
   "I confirm that I want to proceed with this ANCFZ sandbox purchase for the exact approved quotation amount and that the required test documents have been submitted.";
@@ -17,7 +17,7 @@ type PurchaseQuote={id:string|null;intent_id:string;intent_key:string;amount:str
 type DocRow={id:string|null;requirement_key:string;label:string;guidance:string|null;
   required:boolean;sort_order:number;file_name:string|null;content_type:string|null;
   state:string|null;created_at:Date|null;extracted_full_name:string|null;
-  extraction_status:string|null};
+  extraction_status:string|null;extraction_model:string|null};
 export type PurchaseStatus={
   supported:boolean;intentKey:string|null;quotationId:string|null;amount:string|null;currency:string|null;
   requirements:Array<{key:string;label:string;guidance:string|null;required:boolean;
@@ -59,7 +59,7 @@ async function getRequirements(client:PoolClient,agentId:string,ticketId:string,
   const r=await client.query<DocRow>(
     `SELECT d.id AS id,r.requirement_key,r.label,r.guidance,r.required,r.sort_order,
        d.file_name,d.content_type,d.state,d.created_at,
-       d.extracted_full_name,d.extraction_status
+       d.extracted_full_name,d.extraction_status,d.extraction_model
      FROM intent_document_requirements r
      LEFT JOIN ticket_purchase_documents d
        ON d.agent_id=r.agent_id AND d.ticket_id=$2
@@ -106,26 +106,39 @@ function validateBase64(b:unknown,contentType:unknown):Buffer{
      (contentType==="image/jpeg" && jpg))return bytes;
   throw new PersistenceError("INVALID_INPUT","File signature does not match PDF, PNG or JPEG content type");
 }
+/** Accept a classified synthetic passport without a name only for local POC. */
+function unnamedSyntheticPassport(d:DocRow):boolean{
+  return allowUnnamedSyntheticPassport() && d.requirement_key==="passport" &&
+    d.state==="received" && d.extraction_status==="pending" &&
+    d.extraction_model==="prebuilt-idDocument" && !d.extracted_full_name;
+}
+function documentReady(d:DocRow):boolean{
+  return d.state==="received" &&
+    ((d.extraction_status==="extracted" && Boolean(d.extracted_full_name)) ||
+      unnamedSyntheticPassport(d));
+}
 function extractedBillingName(docs:DocRow[]):string{
   const allowed=new Set(["passport","emirates_id"]);
   if(docs.length!==2||docs.some(d=>!allowed.has(d.requirement_key)))
     throw new PersistenceError("CONFLICT","This POC accepts only passport and Emirates ID");
   const passport=docs.find(d=>d.requirement_key==="passport");
   const emirates=docs.find(d=>d.requirement_key==="emirates_id");
-  if(!passport||!emirates||[passport,emirates].some(d=>
-    d.state!=="received"||d.extraction_status!=="extracted"||
-    !d.extracted_full_name))
+  if(!passport||!emirates||!documentReady(passport)||
+     emirates.state!=="received"||emirates.extraction_status!=="extracted"||
+     !emirates.extracted_full_name)
     throw new PersistenceError("CONFLICT","Both ID documents must be read before purchase");
-  if(nameKey(passport.extracted_full_name as string)!==nameKey(emirates.extracted_full_name as string))
+  if(passport.extracted_full_name &&
+     nameKey(passport.extracted_full_name)!==nameKey(emirates.extracted_full_name))
     throw new PersistenceError("CONFLICT","Passport and Emirates ID holder names differ; request review");
-  return passport.extracted_full_name as string;
+  // The fallback is explicitly synthetic and does NOT claim the passport
+  // name was extracted. The TEST invoice uses the Emirates ID name.
+  return passport.extracted_full_name ?? emirates.extracted_full_name;
 }
 export async function identityDocumentReadinessTx(
  client:PoolClient,agentId:string,ticketId:string,intentId:string,
 ):Promise<{ready:boolean;missing:string[]}>{
   const docs=await getRequirements(client,agentId,ticketId,intentId);
-  const missing=docs.filter(d=>d.required&&
-    (d.state!=="received"||d.extraction_status!=="extracted")).map(d=>d.requirement_key);
+  const missing=docs.filter(d=>d.required&&!documentReady(d)).map(d=>d.requirement_key);
   if(missing.length)return {ready:false,missing};
   try{extractedBillingName(docs);return {ready:true,missing:[]};}
   catch{return {ready:false,missing:["identity_name_mismatch"]};}
@@ -172,15 +185,15 @@ export class PurchaseOperations {
         requirements:[],confirmed:false,readyForOtp:false,missing:[],billingName:null,persona:branding};
       const documents=await getRequirements(client,scope.agentId,ticketId,q.intent_id);
       const confirmed=await confirmation(client,scope.agentId,ticketId,q);
-      const missing=documents.filter(d=>d.required&&
-        (d.state!=="received"||d.extraction_status!=="extracted")).map(d=>d.requirement_key);
+      const missing=documents.filter(d=>d.required&&!documentReady(d)).map(d=>d.requirement_key);
       let billingName:string|null=null;
       try{billingName=extractedBillingName(documents);}catch{/* Keep checklist pending on mismatch. */}
       if(!billingName && missing.length===0)missing.push("identity_name_mismatch");
       const reqs=documents.map(d=>({
         key:d.requirement_key,label:d.label,guidance:d.guidance,required:d.required,
-        uploaded:d.state==="received"&&d.extraction_status==="extracted",fileName:d.file_name??null,
-        documentId:d.state==="received"?d.id:null,status:d.state??"missing",
+        uploaded:documentReady(d),fileName:d.file_name??null,
+        documentId:d.state==="received"?d.id:null,
+        status:unnamedSyntheticPassport(d)?"synthetic_name_unverified":d.state??"missing",
       }));
       return {supported:true,intentKey:q.intent_key,quotationId:q.id??null,
         amount:q.amount??null,currency:q.currency?.trim()??null,
@@ -243,10 +256,11 @@ export class PurchaseOperations {
           `UPDATE ticket_purchase_documents
              SET file_name=$4,content_type=$5,bytes=$6,sha256=$7,
                  extracted_full_name=$8,document_number_last4=$9,
-                 extraction_model=$10,extraction_status='extracted',replaced_at=now()
+                 extraction_model=$10,extraction_status=$11,replaced_at=now()
            WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
           [scope.agentId,ticketId,previous.id,v.fileName,v.contentType,bytes,digest,
-            extracted.fullName,extracted.documentNumberLast4,extracted.model],
+            extracted.fullName,extracted.documentNumberLast4,extracted.model,
+            extracted.fullName?"extracted":"pending"],
         );
         // Audit both hashes without retaining outdated private document bytes.
         await appendEventTx(client,scope.agentId,ticketId,"purchase.document.replaced",{
@@ -260,9 +274,10 @@ export class PurchaseOperations {
         `INSERT INTO ticket_purchase_documents(
           id,agent_id,ticket_id,intent_id,requirement_id,file_name,content_type,bytes,sha256,
           extracted_full_name,document_number_last4,extraction_model,extraction_status)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'extracted')`,
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
         [documentId,scope.agentId,ticketId,q.intent_id,reqId,v.fileName,v.contentType,bytes,digest,
-          extracted.fullName,extracted.documentNumberLast4,extracted.model],
+          extracted.fullName,extracted.documentNumberLast4,extracted.model,
+          extracted.fullName?"extracted":"pending"],
       );
       await appendEventTx(client,scope.agentId,ticketId,"purchase.document.received",{
         documentId,requirementKey:v.requirementKey,sha256:digest});
