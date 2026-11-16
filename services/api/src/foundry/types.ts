@@ -1,4 +1,5 @@
 import type { TrustedToolContext } from "../agent/tool-registry.js";
+import type { FoundryCallObservation } from "./rate-control.js";
 
 /** Previous response ID is loaded from the *authorized ticket*, never from model output. */
 export interface FoundryConversationContext {
@@ -29,6 +30,7 @@ export interface TokenUsage {
   readonly outputTokens: number;
   readonly totalTokens: number;
   readonly cachedInputTokens?: number;
+  readonly reasoningTokens?: number;
 }
 
 export interface FoundryTurnResult {
@@ -37,6 +39,8 @@ export interface FoundryTurnResult {
   readonly sourceReferences: readonly SourceReference[];
   readonly responseId?: string;
   readonly usage?: TokenUsage;
+  readonly toolRoundCount?: number;
+  readonly toolCallCount?: number;
 }
 
 export interface FoundryClientOptions {
@@ -48,4 +52,5 @@ export interface FoundryClientOptions {
   readonly maxRounds?: number;
   readonly maxCalls?: number;
   readonly maxToolResultBytes?: number;
+  readonly onProviderCall?: (metric: FoundryCallObservation) => void;
 }

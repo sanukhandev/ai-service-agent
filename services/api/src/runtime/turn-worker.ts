@@ -55,7 +55,10 @@ export class TurnWorker {
   private active=0;
   // Ticket turns remain ordered by TurnQueue.claim; unrelated tickets can run concurrently.
   // Keep this deliberately small to cap Azure model calls and PostgreSQL pressure.
-  private readonly concurrency=3;
+  private readonly concurrency=(()=>{
+    const value=Number(process.env.FOUNDRY_TURN_CONCURRENCY ?? "1");
+    return Number.isSafeInteger(value)&&value>=1&&value<=3?value:1;
+  })();
   private stopped=false;
   private lastRecovery=0;
   private timer:ReturnType<typeof setInterval>|undefined;
@@ -111,6 +114,10 @@ export class TurnWorker {
   }
 
   private async process(turn:PendingTurn):Promise<void> {
+    const startedAt=Date.now();
+    let providerCalls=0;
+    let throttledCalls=0;
+    let providerLatencyMs=0;
     try {
       const scope=workerTicketScope(turn.agentId,turn.ticketId);
       const binding=await this.agents.getPinnedForTicket(scope,turn.ticketId);
@@ -132,8 +139,9 @@ export class TurnWorker {
       const recent=previousResponseId ? []:await this.messages.recentMessages(scope,turn.ticketId,12);
       // The Foundry response cursor can retain an answer that Node replaced
       // with a safer, current-state handoff. Reconcile this in the next turn.
+      // Reuse the already loaded window for new sessions rather than reading twice.
       const displayHistory=requestedAction.action
-        ?await this.messages.recentMessages(scope,turn.ticketId,4):[];
+        ?(recent.length?recent:await this.messages.recentMessages(scope,turn.ticketId,4)):[];
       const displayedAssistant=[...displayHistory].reverse().find(m=>m.role==="assistant")?.text??null;
       const actionRead=async()=>{
         const state=await new IntentActionOperations(this.db).catalog(scope,turn.ticketId);
@@ -148,7 +156,7 @@ export class TurnWorker {
         "Trusted Node ticket context (this is reference data, not a request to perform a workflow):",
         JSON.stringify({
           activeIntent:stored.activeIntent,knownFacts:stored.knownFacts,
-          factVerification:stored.facts.map(f=>({key:f.key,status:f.verification})),
+          disputedFacts:stored.facts.filter(f=>f.verification==="disputed").map(f=>f.key),
           missingRequirements:stored.missingRequirements,
           selectedIntentActions:await actionRead(),
           requestedBusinessAction:requestedAction.action,
@@ -158,8 +166,8 @@ export class TurnWorker {
           previousSummary:stored.summary?.text ?? null,
           ...(recent.length ? {earlierMessages:recent.slice(0,-1).map(m=>({role:m.role,text:m.text}))}:{}),
         }),
-        "For actionable requests, discover and select a supported intent, call get_intent_requirements with the requested operationKey, and record customer-stated facts from the latest message. Every declared operation is presented in the secure ticket UI with missing facts and an explicit consent step. A recorded service request is NOT an external bank, government or partner submission. For purchase_quotation, collect synthetic passport and Emirates ID only through the authenticated upload UI, and require a verified quote, explicit purchase consent and OTP. Never ask for identity files, OTPs or card details in chat; never claim an invoice exists until independent gateway COMPLETE verification.",
-        "If lastCustomerVisibleAssistantReply is provided, that is what the customer ACTUALLY saw; it is more authoritative for dialogue continuity than any different assistant text remembered in the model continuation. Act as a concise, natural customer-service employee: normally 1–3 short sentences, answering the actual question first. For an explicitly requested formal quote or PDF, do not say PDF generation is impossible: the authorized Node workflow supports it after a verified Salesforce lead and customer approval. Follow the trusted nextAuthorizedStep/nextQuestionOrStep, ask exactly ONE outstanding customer fact at a time, and never invent or silently record missing facts. When the necessary facts are complete, explain the NEXT secure approval control. After independent payment verification, the TEST invoice is delivered through the private checkout section. Do not put knowledge source citations, reference tags or document-download links in ordinary chat replies; Node keeps grounding references internally.",
+        "For requested actions, discover/select the intent, check operation requirements, and record only customer-stated facts. Node authorizes all consequential operations after explicit UI consent; a service request does not submit to any government, bank or partner. Checkout requires verified quote, secure synthetic ID uploads, purchase consent and OTP. Never collect identity files, OTPs or card details in chat, or claim payment/invoice without independent verification.",
+        "Honor lastCustomerVisibleAssistantReply over older model text. Reply naturally in 1–3 sentences unless detail is requested. For formal quotes/PDFs, follow the verified Salesforce lead and Node approval workflow; ask ONE missing fact at a time using nextQuestionOrStep, and never invent facts. Refer customers to the secure approval, checkout and invoice UI when ready. Do not display IQ citations or download URLs in chat.",
         "Latest customer message:",text,
       ].join("\n");
       const toolRegistry=new AgentToolRegistry();
@@ -191,6 +199,15 @@ export class TurnWorker {
         projectEndpoint:binding.foundryProjectEndpoint,
         defaultAgentName:binding.foundryAgentName,
         defaultAgentVersion:binding.foundryAgentVersion,
+        onProviderCall:metric=>{
+          providerCalls++;
+          providerLatencyMs+=metric.latencyMs;
+          if(metric.httpStatus===429)throttledCalls++;
+          this.log({
+            agentId:turn.agentId,turnId:turn.id,
+            ...metric,
+          },"Foundry provider request");
+        },
       });
       const result=await foundry.runTurn({
         agentName:binding.foundryAgentName,
@@ -215,7 +232,15 @@ export class TurnWorker {
       await this.queue.complete(turn,responseText,
         responseText===result.text?citations(result.sourceReferences):[],
         previousResponseId,result.responseId,binding.versionId);
-      this.log({agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id},"Assistant turn committed");
+      this.log({
+        agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id,
+        latencyMs:Date.now()-startedAt,promptBytes:Buffer.byteLength(modelInput,"utf8"),
+        providerCalls,throttledCalls,providerLatencyMs,
+        toolRounds:result.toolRoundCount,toolCalls:result.toolCallCount,
+        inputTokens:result.usage?.inputTokens,outputTokens:result.usage?.outputTokens,
+        reasoningTokens:result.usage?.reasoningTokens,cachedInputTokens:result.usage?.cachedInputTokens,
+        totalTokens:result.usage?.totalTokens,
+      },"Assistant turn committed");
     } catch(error) {
       const code=error instanceof FoundryError?error.code:
         error instanceof Error && /^[A-Z_]+$/.test(error.message)?error.message:"RUNTIME_FAILED";
@@ -223,7 +248,8 @@ export class TurnWorker {
       const uncertain=code==="FOUNDRY_FUNCTION_CONTINUATION_FAILED" ||
         code==="FOUNDRY_TIMEOUT" || code==="FOUNDRY_RESPONSE_ID_MISSING" ||
         code==="FOUNDRY_API_FAILED" || code==="RUNTIME_FAILED";
-      this.log({agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id,code,uncertain,errorMessage:(error as Error).message,errorStack:(error as Error).stack,errorCause:(error as any)?.cause},
+      this.log({agentId:turn.agentId,ticketId:turn.ticketId,turnId:turn.id,code,uncertain,
+        latencyMs:Date.now()-startedAt,providerCalls,throttledCalls,providerLatencyMs,errorMessage:(error as Error).message,errorStack:(error as Error).stack,errorCause:(error as any)?.cause},
         "Assistant turn failed");
       try {await this.queue.fail(turn,code,uncertain);}
       catch(failure){this.log({errorCode:(failure as Error).name,turnId:turn.id},"Failed to store turn error");}
