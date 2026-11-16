@@ -387,9 +387,9 @@ export class ChatJourney {
     // The action cursor must survive refresh and the next customer's billing
     // email answer. Uploads are not approvals; the separate quoted purchase
     // proposal still requires an exact, displayed conversational consent.
-    await this.db.withAgent(scope.agentId,async client=>{
+    const reviewEvent=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
-      await appendEventTx(client,scope.agentId,ticketId,"purchase.review.started",{
+      return appendEventTx(client,scope.agentId,ticketId,"purchase.review.started",{
         actionKey:"purchase_quotation",sourceDocumentId,
         quotationId:purchase.quotationId,
       });
@@ -397,7 +397,7 @@ export class ChatJourney {
     const review=await this.prepare(scope,ticketId,"purchase_quotation");
     if(!review)return false;
     await new TicketMessageRepository(this.db).createAssistantMessage(
-      scope,ticketId,lifecycleNoticeId("purchase.review.upload",sourceDocumentId),
+      scope,ticketId,lifecycleNoticeId("purchase.review.upload",reviewEvent.id),
       review,[],
     );
     return true;
