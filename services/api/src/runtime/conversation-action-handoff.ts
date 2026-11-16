@@ -30,13 +30,19 @@ export function requestedBusinessAction(
   message:string,previous:RequestedBusinessAction|null=null,quotePdfSupported=false,
 ):RequestedBusinessAction|null {
   const text=message.trim().toLowerCase();
-  const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
+  // "How can I get a quotation?" is a question about the process, not
+  // authorization or even a request to start a formal quote.
+  const informational=/\b(?:explain|understand|meaning|definition|requirements?|procedure|process|steps|options|information|overview|tell me about|want to know)\b/i;
+  const explicitSubmission=/\b(?:send|share|prepare|generate|create|produce|issue|submit|download)\b/i;
+  if((/^(?:what|why|how|when|where|which)\b/i.test(text) ||
+      informational.test(text)) && !explicitSubmission.test(text))return null;
+  const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:i'd|i would) like\b)/i;
   if(!request.test(text))return null;
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
   if(/\bpdf\b/i.test(text) &&
     (previous==="generate_quote" || (quotePdfSupported &&
-      !/\b(?:source|reference|policy|regulation|knowledge article|passport)\b/i.test(text))))
+      !/\b(?:source|reference|policy|regulation|requirements?|steps|procedure|knowledge article|passport)\b/i.test(text))))
     return "generate_quote";
   if(/\b(?:checkout|purchase|buy|pay(?:ment)?)\b/i.test(text))return "purchase_quotation";
   if(/\b(?:salesforce lead|crm lead|salesforce follow.up)\b/i.test(text))return "create_lead";
