@@ -11,6 +11,7 @@
 | [Foundry and conversation](03-foundry-and-conversation.md) | Direct JavaScript SDK, function loops and RAG |
 | [Data model](04-data-model.md) | PostgreSQL and agent-scoped isolation |
 | [ANCFZ POC purchase journey](ancfz-purchase-journey.md) | Universal passport/Emirates ID intake, OCR-derived invoice name, purchase authorization and sandbox payment |
+| [ANCFZ synthetic licence renewal](ancfz-licence-renewal.md) | Read-only n8n Data Table lookup, explicit confirmation, owner-priced renewal quote, sandbox checkout, TEST invoice and staff fulfilment |
 | [Tools and workflows](05-tools-actions-workflows.md) | Read functions, proposals and n8n |
 | [Security and privacy](06-security-and-privacy.md) | Identity, PII, consent and credentials |
 | [Docker and Nginx](07-docker-and-deployment.md) | One public port, local Azure CLI volume |
