@@ -141,4 +141,10 @@ const worker=readFileSync("services/api/src/runtime/turn-worker.ts","utf8");
 assert.match(worker,/handoff\.observe\(/);
 assert.match(worker,/handoff\.status\(/);
 assert.match(worker,/this\.queue\.complete\(turn,responseText,/);
+assert.match(worker,/lastCustomerVisibleAssistantReply:displayedAssistant/);
+assert.match(worker,/responseText===result\.text\?citations\(result\.sourceReferences\):\[\]/);
+const panel=readFileSync("apps/web/components/intent-action-panel.tsx","utf8");
+assert.match(panel,/if\(!action\.ready\)return null/);
+assert.ok(!panel.includes("To proceed with {action.label}"),
+  "Do not show a duplicate list of missing questions beside Sara's chat");
 console.log("Natural business action handoff PASS: missing facts, consent, lead, quotation, documents, sandbox payment, invoice and hidden chat sources");
