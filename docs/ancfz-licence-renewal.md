@@ -122,7 +122,7 @@ service before deploying new API code:
 git switch main
 git pull --ff-only origin main
 docker compose up -d postgres
-docker compose run --rm db-migrate
+docker compose run --rm migrate
 ```
 
 Check the actual service name in `docker compose config --services`
