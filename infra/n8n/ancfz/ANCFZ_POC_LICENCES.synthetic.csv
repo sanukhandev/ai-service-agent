@@ -1,0 +1,4 @@
+licenceNumber,companyName,licenceStatus,expiresOn,offeringKey,termYears
+ANCFZ-TEST-0001,Example Synthetic Consulting LLC,active,2027-06-30,renewal_standard_y1,1
+ANCFZ-TEST-0002,Sample Software Solutions FZE,expired,2026-09-30,renewal_standard_y2,2
+ANCFZ-TEST-0003,Cancelled Sample Trading LLC,cancelled,2026-05-31,renewal_standard_y1,1
