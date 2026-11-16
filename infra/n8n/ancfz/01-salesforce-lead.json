@@ -10,6 +10,7 @@
   "nodes": [
     {
       "id": "webhook",
+      "webhookId": "45be0ca8-3709-4ea8-a2c9-14651dfd9303",
       "name": "Receive Authorized Lead",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
