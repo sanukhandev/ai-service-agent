@@ -75,10 +75,11 @@ async function base64File(file:File):Promise<string>{
 }
 
 export function ChatJourneyControls({
-  ticketId,revision,onContinuePurchase,conversationBusy,
+  ticketId,revision,onContinuePurchase,onDocumentsUpdated,conversationBusy,
 }:{
   ticketId:string;revision:number;
-  onContinuePurchase:()=>Promise<void>;conversationBusy:boolean;
+  onContinuePurchase:()=>Promise<void>;onDocumentsUpdated:()=>void;
+  conversationBusy:boolean;
 }){
   const [data,setData]=useState<Journey|null>(null);
   const [busy,setBusy]=useState<string|null>(null);
@@ -109,6 +110,7 @@ export function ChatJourneyControls({
         requirementKey:key,fileName:file.name,contentType:file.type,dataBase64,
       });
       const updated=await load();
+      onDocumentsUpdated();
       if(updated.purchase.missing.length===0){
         setEditingDocuments(false);
         setNotice(null);
