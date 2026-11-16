@@ -36,7 +36,7 @@ export function requestedBusinessAction(
   const explicitSubmission=/\b(?:send|share|prepare|generate|create|produce|issue|submit|download)\b/i;
   if(/^(?:what|why|how|when|where|which)\b/i.test(text))return null;
   if(informational.test(text) && !explicitSubmission.test(text))return null;
-  const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
+  const request=/(?:\bhelp me\b|\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
   if(!request.test(text))return null;
   // An explicit request to set up a company is a transactional enquiry,
   // even when the customer hasn't used "quotation" yet. No side effect occurs
