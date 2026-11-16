@@ -22,6 +22,10 @@ assert.equal(requestedBusinessAction("I would like to pay for the package"),"pur
 assert.equal(requestedBusinessAction("What steps are needed for licensing?"),null);
 assert.equal(requestedBusinessAction("How many visas should I choose?"),null);
 assert.equal(requestedBusinessAction("Can you send me the official knowledge article?"),null);
+assert.equal(requestedBusinessAction("Can you explain the quotation requirements?"),null);
+assert.equal(requestedBusinessAction("How can I generate a formal quotation?"),null);
+assert.equal(requestedBusinessAction("I want to know the payment options"),null);
+assert.equal(requestedBusinessAction("Please send me a formal quotation"),"generate_quote");
 assert.equal(nextQuestion([
   {key:"customer_email",label:"Email?"},{key:"preferred_company_name",label:"Company name?"}
 ]),"What company name would you like to register?");
