@@ -13,7 +13,7 @@ import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ConversationActionHandoff, shouldUseHandoff } from "./conversation-action-handoff.js";
-import { ChatJourney, LEAD_QUOTE_APPROVAL, PURCHASE_PAYMENT_APPROVAL } from "./chat-journey.js";
+import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -135,6 +135,17 @@ export class TurnWorker {
         this.log({turnId:turn.id,errorCode:(error as Error).name},
           "Conversational approval rejected; no business action authorized");
       }
+      if(acceptedChatAction){
+        await this.queue.completeLocal(turn,acceptedChatAction==="lead_quote"
+          ? "Your explicit authorization for the reviewed Salesforce enquiry and quotation is recorded. I will submit the enquiry once and generate the exact quotation only after Salesforce verifies the lead. I will not retry uncertain submissions."
+          : "Your exact-amount sandbox purchase and test-payment authorization is recorded. I will validate the secure documents and arrange the synthetic OTP. Never send an OTP or card data in an ordinary chat message.");
+        return;
+      }
+      if(isLeadQuoteApproval(text)||isPurchasePaymentApproval(text)){
+        await this.queue.completeLocal(turn,
+          "I could not match that authorization to the latest reviewed proposal. No action was authorized. Please ask me to show the current proposal again.");
+        return;
+      }
       const handoff=new ConversationActionHandoff(this.db);
       // Record the customer's REQUEST only. Never turn speech into action consent.
       let requestedAction:Awaited<ReturnType<typeof handoff.observe>>={action:null,explicit:false};
@@ -240,20 +251,12 @@ export class TurnWorker {
         this.log({turnId:turn.id,errorCode:(error as Error).name},
           "Action handoff read failed; retaining the normal Foundry response");
       }
-      if(acceptedChatAction) {
-        responseText=acceptedChatAction==="lead_quote"
-          ? "Your explicit authorization for the reviewed Salesforce enquiry and quotation is recorded. I will submit the enquiry once and generate the exact quotation only after Salesforce verifies the lead. I will not retry uncertain submissions."
-          : "Your exact-amount sandbox purchase and test-payment authorization is recorded. I will validate the secure documents and arrange the synthetic OTP. Please never send an OTP or payment-card data in a normal chat message.";
-      } else if(text.trim()===LEAD_QUOTE_APPROVAL || text.trim()===PURCHASE_PAYMENT_APPROVAL) {
-        responseText="I could not match that approval to the latest reviewed proposal. No action was authorized. Please ask me to show the current proposal again.";
-      } else {
-        try {
-          const proposal=await chatJourney.prepare(scope,turn.ticketId,requestedAction.action);
-          if(proposal)responseText=proposal;
-        }catch(error){
-          this.log({turnId:turn.id,errorCode:(error as Error).name},
-            "Conversational proposal unavailable; keeping normal assistant reply");
-        }
+      try {
+        const proposal=await chatJourney.prepare(scope,turn.ticketId,requestedAction.action);
+        if(proposal)responseText=proposal;
+      }catch(error){
+        this.log({turnId:turn.id,errorCode:(error as Error).name},
+          "Conversational proposal unavailable; keeping normal assistant reply");
       }
       await this.queue.complete(turn,responseText,
         responseText===result.text?citations(result.sourceReferences):[],
