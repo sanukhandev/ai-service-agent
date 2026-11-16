@@ -44,7 +44,7 @@ export function requestedBusinessAction(
   const explicitSubmission=/\b(?:send|share|prepare|generate|create|produce|issue|submit|download)\b/i;
   if(/^(?:what|why|how|when|where|which)\b/i.test(text))return null;
   if(informational.test(text) && !explicitSubmission.test(text))return null;
-  const request=/(?:\bhelp me\b|\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
+  const request=/(?:\bhelp me\b|\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need|start|proceed|continue)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
   if(!request.test(text))return null;
   // An explicit request to set up a company is a transactional enquiry,
   // even when the customer hasn't used "quotation" yet. No side effect occurs
@@ -53,12 +53,16 @@ export function requestedBusinessAction(
     /\b(?:want|need|help|please|would like|i'd like)\b/i.test(text))
     return "generate_quote";
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
+  // A purchase request can legitimately reference the reviewed quotation.
+  // Treat the specific payment/purchase intent as higher priority than
+  // the generic quotation keyword; never loop back to quote_ready.
+  if(/\b(?:checkout|purchase|buy|pay(?:ment)?)\b/i.test(text))
+    return "purchase_quotation";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
   if(/\bpdf\b/i.test(text) &&
     (previous==="generate_quote" || (quotePdfSupported &&
       !/\b(?:source|reference|policy|regulation|requirements?|steps|procedure|knowledge article|passport)\b/i.test(text))))
     return "generate_quote";
-  if(/\b(?:checkout|purchase|buy|pay(?:ment)?)\b/i.test(text))return "purchase_quotation";
   if(/\b(?:salesforce lead|crm lead|salesforce follow.up)\b/i.test(text))return "create_lead";
   return null;
 }

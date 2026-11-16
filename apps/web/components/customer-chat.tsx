@@ -340,6 +340,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       sendLock.current = true;
       setTurnState("sending");
       setSendError(null);
+      setOperationNotice(null);
       const previous = retryRequest.current;
       const requestId = previous?.text === text ? previous.requestId : crypto.randomUUID();
       retryRequest.current = { text, requestId };
@@ -652,7 +653,11 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               no legacy Available Actions forms or non-chat dashboard. */}
           {ticket && loadState==="ready" && (
             <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
-              revision={journeyRevision} />
+              revision={journeyRevision} conversationBusy={locked||isSending}
+              onDocumentsUpdated={()=>setOperationNotice(null)}
+              onContinuePurchase={()=>send(
+                "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
+              )} />
           )}
 
           {/* Natural Frosted Glass Thinking Indicator */}
