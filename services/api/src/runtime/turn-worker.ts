@@ -3,7 +3,7 @@ import { FoundryError } from "../foundry/errors.js";
 import type { SourceReference as FoundryReference } from "../foundry/types.js";
 import { AgentToolRegistry, type RegisteredToolName, type TrustedToolContext } from "../agent/tool-registry.js";
 import { registerIntentTools } from "../agent/intent-tools.js";
-import { PersistenceDatabase } from "../database/pool.js";
+import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { AgentRepository } from "../repositories/agent.js";
 import { ConversationContextRepository } from "../repositories/context.js";
 import { TicketMessageRepository } from "../repositories/messages.js";
@@ -129,11 +129,25 @@ export class TurnWorker {
       // Consent is tied to a Node-authored, ticket-scoped proposal that was
       // actually displayed before this message. Model text alone cannot act.
       let acceptedChatAction:"lead_quote"|"purchase_payment"|null=null;
+      let approvalFailure:string|null=null;
       try {
         acceptedChatAction=await chatJourney.accept(scope,turn.ticketId,turn.messageId,text);
       } catch(error) {
-        this.log({turnId:turn.id,errorCode:(error as Error).name},
+        // Never log consent text, contact fields, or the proposal snapshot.
+        // Finite denial codes distinguish stale facts from missing displayed
+        // proposals; unexpected database errors remain generic.
+        approvalFailure=error instanceof PersistenceError && error.code==="CONFLICT"
+          ? error.message : "CONSENT_VALIDATION_UNAVAILABLE";
+        this.log({turnId:turn.id,ticketId:turn.ticketId,
+          rejectionReason:approvalFailure,errorCode:(error as Error).name},
           "Conversational approval rejected; no business action authorized");
+      }
+      if(approvalFailure){
+        await this.queue.completeLocal(turn,
+          "I couldn't validate that authorization ("+approvalFailure+
+          "). No Salesforce enquiry or payment was initiated. "+
+          "Please request a freshly reviewed proposal before approving again.");
+        return;
       }
       if(acceptedChatAction){
         await this.queue.completeLocal(turn,acceptedChatAction==="lead_quote"
