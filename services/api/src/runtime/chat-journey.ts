@@ -58,6 +58,12 @@ export const isLeadQuoteApproval=(s:string):boolean=>
 export const isPurchasePaymentApproval=(s:string):boolean=>
   canonical(s)===canonical(PURCHASE_PAYMENT_APPROVAL) ||
   canonical(s)===canonical("Yes, "+PURCHASE_PAYMENT_APPROVAL);
+/** A short affirmative reply is authorization only when the immediately
+ * preceding assistant message displays exactly one server-created proposal.
+ * Without that context it remains an ordinary conversational answer. */
+export const isContextualApproval=(s:string):boolean=>
+  /^(?:yes|yes please|yes, please|go ahead|i approve|i consent|approved|please proceed|proceed)$/i
+    .test(canonical(s));
 
 function proposalCopy(p:Base):string {
   if(p.kind==="lead_quote"){
@@ -116,15 +122,23 @@ export class ChatJourney {
    * proposal, a verified ticket scope and a fresh customer source message. */
   async accept(scope:TicketScope,ticketId:string,sourceMessageId:string,text:string):
     Promise<"lead_quote"|"purchase_payment"|null>{
-    const kind=isLeadQuoteApproval(text)?"lead_quote":
+    const exactKind=isLeadQuoteApproval(text)?"lead_quote":
       isPurchasePaymentApproval(text)?"purchase_payment":null;
-    if(!kind)return null;
+    if(!exactKind&&!isContextualApproval(text))return null;
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       if(!await agentIsAncfz(client,scope.agentId))return null;
-      const row=await latestEvent(client,scope.agentId,ticketId,"chat."+kind+".proposed");
+      // Contextual assent is intentionally scoped to the most recent proposal
+      // across both transaction types; never guess which operation was meant.
+      const row=exactKind
+        ?await latestEvent(client,scope.agentId,ticketId,"chat."+exactKind+".proposed")
+        :(await client.query<EventRow>(
+          "SELECT id,ticket_id,payload,sequence::text FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2 AND event_type IN ('chat.lead_quote.proposed','chat.purchase_payment.proposed') ORDER BY sequence DESC LIMIT 1",
+          [scope.agentId,ticketId],
+        )).rows[0]??null;
       const p=asProposal(row);
-      if(!p||p.kind!==kind)return null;
+      if(!p|| (exactKind&&p.kind!==exactKind))return null;
+      const kind=p.kind;
       const previous=await latestEvent(client,scope.agentId,ticketId,"chat."+kind+".consented");
       if(previous && previous.payload.proposalId===p.id)return kind;
       const messages=await client.query<{id:string;role:string;content:string;message_sequence:string}>( 
@@ -175,6 +189,20 @@ export class ChatJourney {
     );
     const f=new Map(rows.rows.filter(x=>x.verification_status!=="disputed")
       .map(x=>[x.fact_key,x.value] as [string,unknown]));
+    // A complete contact/price snapshot is not enough: the existing Node
+    // Lead and Quote services also enforce catalog prerequisites. Check them
+    // before offering consent, otherwise a customer can approve an action
+    // that the worker will only reject after approval.
+    const requirements=await client.query<{requirement_key:string}>(
+      "SELECT DISTINCT r.requirement_key FROM tickets t JOIN ticket_intents ti ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id AND ti.status='active' JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id AND i.catalog_version_id=t.intent_catalog_version_id JOIN intent_requirements r ON r.agent_id=i.agent_id AND r.intent_id=i.id WHERE t.agent_id=$1 AND t.id=$2 AND r.required_for && ARRAY['create_lead','generate_quote']::text[]",
+      [agentId,ticketId],
+    );
+    if(requirements.rows.some(r=>{
+      const value=f.get(r.requirement_key);
+      return value===undefined||value===null||
+        (typeof value==="string"&&!value.trim())||
+        (typeof value==="number"&&!Number.isFinite(value));
+    }))return null;
     const name=field(f,["customer_name"]);
     const company=field(f,["preferred_company_name","company_name"]);
     const phone=field(f,["customer_phone"]);
@@ -259,6 +287,8 @@ export class ChatJourney {
         const questions:[string[],string][]=[
           [["business_activity"],"What business activity will your company perform?"],
           [["preferred_company_name","company_name"],"What company name would you prefer?"],
+          [["shareholder_nationality"],"What nationality should I record for the shareholder?"],
+          [["shareholder_count"],"How many shareholders will the company have?"],
           [["customer_name"],"What full name should I use for the Salesforce enquiry?"],
           [["customer_phone"],"What contact phone number should ANCFZ use?"],
           [["customer_email","email"],"What email address should ANCFZ use for your enquiry?"],
