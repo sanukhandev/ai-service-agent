@@ -123,3 +123,5 @@ assert.match(inline,/autoComplete="one-time-code"/);
 assert.match(inline,/\.size>1048576/);
 assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP after chat consent");
 console.log("Chat consent contracts PASS: exact/contextual approval, immutable snapshot, secure in-chat inputs");
+
+await import("./check-chat-journey-state.mjs");
