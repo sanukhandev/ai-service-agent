@@ -15,7 +15,9 @@ export function conversationalText(text:string):string {
         /^download\b/i.test(label))return "";
       return label;
     })
-    .replace(/https?:\/\/[^\s<>)]+/g,"")
+    .replace(/https?:\/\/[^\s<>)]+/g,(url:string)=>
+      /(?:search\.windows\.net|blob\.core\.windows\.net|\/download\b|\.(?:pdf|docx?)(?:[?#]|$))/i.test(url)
+        ? "" : url)
     .replace(/[ \t]{2,}/g," ")
     .replace(/\s+([,.!?;:])/g,"$1")
     .replace(/\n{3,}/g,"\n\n")
