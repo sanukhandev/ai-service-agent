@@ -34,6 +34,34 @@ assert.equal(actions.length,5,"UI normalization must not mutate the source array
 
 const panel=readFileSync("apps/web/components/intent-action-panel.tsx","utf8");
 assert.match(panel,/uniqueActionsByKey\(catalog\.actions\)/);
+assert.doesNotMatch(panel,/<PurchaseChecklist\\b/,
+  "Intent selection must never render the identity-document intake");
+
+// Sandbox uploads are offered only after a completed quote, and via one
+// explicit customer action rather than an automatically expanded card.
+const visibilitySource=readFileSync("apps/web/lib/purchase-checkout-visibility.ts","utf8");
+const visibilityExports={};
+new Function("exports",ts.transpileModule(visibilitySource,{
+  compilerOptions:{target:ts.ScriptTarget.ES2022,module:ts.ModuleKind.CommonJS},
+}).outputText)(visibilityExports);
+for (const quoteReady of [false,true]){
+  for (const purchaseSupported of [false,true]){
+    for (const sandboxEnabled of [false,true]){
+      assert.equal(
+        visibilityExports.canStartSandboxCheckout(quoteReady,purchaseSupported,sandboxEnabled),
+        quoteReady&&purchaseSupported&&sandboxEnabled,
+      );
+    }
+  }
+}
+const paymentUI=readFileSync("apps/web/components/payment-checkout.tsx","utf8");
+assert.match(paymentUI,/canStartSandboxCheckout\(quoteReady,purchaseSupported,summary\?\.enabled===true\)/);
+assert.match(paymentUI,/if\(!payment && !canStartCheckout\)return null/);
+assert.match(paymentUI,/if\(!payment && !checkoutOpen\)return <button/);
+assert.match(paymentUI,/setCheckoutOpen\(true\)/);
+assert.match(paymentUI,/<PurchaseChecklist\b/);
+assert.match(paymentUI,/setPurchaseReady\(purchase\?\.readyForOtp===true/,
+  "On reload, readiness must restore without a mounted document checklist");
 const chat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
 const transcriptStart=chat.indexOf("ref={transcriptRef}");
 const panelPosition=chat.indexOf("<IntentActionPanel");
