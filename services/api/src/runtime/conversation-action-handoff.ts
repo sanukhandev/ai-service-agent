@@ -38,6 +38,12 @@ export function requestedBusinessAction(
   if(informational.test(text) && !explicitSubmission.test(text))return null;
   const request=/(?:\b(?:send|share|prepare|generate|create|produce|request|provide|give|issue|make|download|get|want|need)\b|\b(?:can|could|would) (?:you|i|we)\b|\bi(?:'d| would) like\b)/i;
   if(!request.test(text))return null;
+  // An explicit request to set up a company is a transactional enquiry,
+  // even when the customer hasn't used "quotation" yet. No side effect occurs
+  // until Node presents and receives consent for the full proposal.
+  if(/\b(?:start|set up|open|register|form|establish)\b[\s\S]{0,80}\b(?:company|business|firm|startup)\b/i.test(text) &&
+    /\b(?:want|need|help|please|would like|i'd like)\b/i.test(text))
+    return "generate_quote";
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
   if(/\bpdf\b/i.test(text) &&
