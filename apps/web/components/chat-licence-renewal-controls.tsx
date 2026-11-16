@@ -8,7 +8,7 @@ import {useCallback,useEffect,useRef,useState,type FormEvent} from "react";
 type RenewalView={
   licenceNumber:string;companyName:string;status:string;expiresOn:string;
   offeringKey:string;termYears:number;fingerprint:string;
-  confirmed:boolean;confirmationText:string;
+  confirmed:boolean;confirmationText:string;fulfilmentStatus:string;
 };
 type State={enabled:boolean;applicable:boolean;record:RenewalView|null};
 async function json<T>(path:string,body?:object):Promise<T>{
@@ -97,6 +97,12 @@ export function ChatLicenceRenewalControls({
           <p>Company: {state.record.companyName}</p>
           <p>Current expiry: {state.record.expiresOn}</p>
           <p>Requested renewal: {state.record.termYears} year(s)</p>
+          {state.record.fulfilmentStatus==="awaiting_staff_review"&&(
+            <p role="status" className="text-xs text-amber-800">
+              TEST payment and invoice processed. Actual licence renewal is awaiting
+              staff or authority fulfilment; no renewed licence has been issued.
+            </p>
+          )}
           <p className="text-xs text-zinc-600">
             Sara can prepare a non-binding renewal quotation only when a
             published price exists. A sandbox order and invoice require
