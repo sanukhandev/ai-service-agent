@@ -8,7 +8,7 @@ import { PersistenceError } from "../database/pool.js";
 
 export type IdentityKind="passport"|"emirates_id";
 export type ExtractedIdentity={
-  fullName:string;
+  fullName:string|null;
   documentNumberLast4:string|null;
   model:"prebuilt-idDocument";
 };
@@ -36,7 +36,21 @@ export function nameKey(input:string):string{
   return normalizeBillingName(input).toLocaleLowerCase("en")
     .replace(/[^\p{L}\p{N} ]/gu,"").split(" ").filter(Boolean).sort().join(" ");
 }
-export function parseIdentityResult(raw:unknown,kind:IdentityKind):ExtractedIdentity{
+/** The sandbox exception never applies to production, even with the flag set. */
+export function allowUnnamedSyntheticPassport(
+  env:NodeJS.ProcessEnv=process.env,
+):boolean{
+  return env.APP_ENV==="development" &&
+    env.ANCFZ_DEV_ACCEPT_UNNAMED_PASSPORT==="true";
+}
+function validFullName(value:string):boolean{
+  return value.length>=3 && value.length<=200 &&
+    value.split(" ").length>=2 && /[\p{L}]/u.test(value) &&
+    !/[^\p{L}\p{M}\p{N} .'’-]/u.test(value);
+}
+export function parseIdentityResult(
+  raw:unknown,kind:IdentityKind,allowUnnamedPassport=false,
+):ExtractedIdentity{
   const result=obj(raw);
   const analysis=obj(result["analyzeResult"]);
   const docs=analysis["documents"];
@@ -52,10 +66,13 @@ export function parseIdentityResult(raw:unknown,kind:IdentityKind):ExtractedIden
   const combined=field(fields,["FullName","FullNameEnglish","Name","NameEnglish","PersonName"]);
   const first=field(fields,["FirstName","GivenNames","GivenName","GivenNameEnglish"]);
   const last=field(fields,["LastName","Surname","FamilyName","SurnameEnglish"]);
-  const fullName=normalizeBillingName(combined || [first,last].filter(Boolean).join(" "));
-  if(fullName.length<3||fullName.length>200||fullName.split(" ").length<2||
-     !/[\p{L}]/u.test(fullName)||
-     /[^\p{L}\p{M}\p{N} .'’-]/u.test(fullName))
+  // Azure may produce a single-word FullName alongside valid given/family names.
+  // Try both candidates before rejecting an otherwise classified document.
+  const candidates=[combined,[first,last].filter(Boolean).join(" ")]
+    .filter((value):value is string=>Boolean(value))
+    .map(normalizeBillingName);
+  const fullName=candidates.find(validFullName)??null;
+  if(!fullName && !(kind==="passport"&&allowUnnamedPassport))
     throw new PersistenceError("CONFLICT",kind+" document did not yield a reliable full name");
   const number=field(fields,kind==="passport"
     ? ["DocumentNumber","PassportNumber"]
@@ -123,7 +140,9 @@ export async function extractIdentityDocument(bytes:Buffer,kind:IdentityKind):Pr
       if(!response.ok)throw new PersistenceError("CONFLICT","Identity OCR verification failed");
       const result=await boundedResult(response);
       const status=obj(result)["status"];
-      if(status==="succeeded")return parseIdentityResult(result,kind);
+      if(status==="succeeded")return parseIdentityResult(
+        result,kind,allowUnnamedSyntheticPassport(),
+      );
       if(status==="failed")throw new PersistenceError("CONFLICT","Identity OCR could not read the document");
       if(status!=="running"&&status!=="notStarted")
         throw new PersistenceError("CONFLICT","Unexpected OCR state");
