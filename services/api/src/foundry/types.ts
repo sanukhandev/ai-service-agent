@@ -39,6 +39,8 @@ export interface FoundryTurnResult {
   readonly sourceReferences: readonly SourceReference[];
   readonly responseId?: string;
   readonly usage?: TokenUsage;
+  readonly toolRoundCount?: number;
+  readonly toolCallCount?: number;
 }
 
 export interface FoundryClientOptions {
