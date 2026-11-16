@@ -10,6 +10,7 @@
   "nodes": [
     {
       "id": "mock-otp-webhook",
+      "webhookId": "b771a8d1-b9e5-4a52-92af-1866dd740d4a",
       "name": "Receive Node OTP",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2,
