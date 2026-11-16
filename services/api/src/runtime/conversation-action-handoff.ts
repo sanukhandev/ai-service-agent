@@ -53,12 +53,16 @@ export function requestedBusinessAction(
     /\b(?:want|need|help|please|would like|i'd like)\b/i.test(text))
     return "generate_quote";
   if(/\b(?:invoice|receipt)\b/i.test(text))return "invoice";
+  // A purchase request can legitimately reference the reviewed quotation.
+  // Treat the specific payment/purchase intent as higher priority than
+  // the generic quotation keyword; never loop back to quote_ready.
+  if(/\b(?:checkout|purchase|buy|pay(?:ment)?)\b/i.test(text))
+    return "purchase_quotation";
   if(/\b(?:quotation|quote)\b/i.test(text))return "generate_quote";
   if(/\bpdf\b/i.test(text) &&
     (previous==="generate_quote" || (quotePdfSupported &&
       !/\b(?:source|reference|policy|regulation|requirements?|steps|procedure|knowledge article|passport)\b/i.test(text))))
     return "generate_quote";
-  if(/\b(?:checkout|purchase|buy|pay(?:ment)?)\b/i.test(text))return "purchase_quotation";
   if(/\b(?:salesforce lead|crm lead|salesforce follow.up)\b/i.test(text))return "create_lead";
   return null;
 }
