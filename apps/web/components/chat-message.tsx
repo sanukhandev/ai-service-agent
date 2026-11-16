@@ -2,6 +2,11 @@
 
 import { useState, type ReactNode } from "react";
 import type { ChatMessage, SourceReference } from "../lib/chat-api";
+import { conversationalText } from "../lib/chat-display";
+
+// Source evidence remains durable and available to the backend. Customer chat
+// hides IQ citations and all source download links until explicitly enabled.
+const SHOW_CHAT_SOURCES = process.env.NEXT_PUBLIC_SHOW_CHAT_SOURCES === "true";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -443,12 +448,14 @@ export function MessageBubble({
   const references = assistant
     ? message.sourceReferences?.filter((ref) => ref.sourceId.trim()) ?? []
     : [];
+  const visibleText = assistant && !SHOW_CHAT_SOURCES
+    ? conversationalText(message.text) : message.text;
   const time = new Date(message.createdAt);
   const validDate = !Number.isNaN(time.getTime());
 
   async function copyContent() {
     try {
-      await navigator.clipboard.writeText(message.text);
+      await navigator.clipboard.writeText(visibleText);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
@@ -497,16 +504,15 @@ export function MessageBubble({
           }`}
         >
           <RichTextContent
-            text={message.text}
+            text={visibleText}
             isAssistant={assistant}
             ticketId={ticketId}
-            sourceReferences={references}
+            sourceReferences={SHOW_CHAT_SOURCES ? references : []}
           />
 
           {/* Action footer for assistant responses */}
           {assistant && (
-            <div className="mt-3 flex items-center justify-between border-t border-zinc-200/50 pt-2 text-[0.72rem] text-zinc-400">
-              <span className="text-zinc-400">Official ANCFZ Service Knowledge</span>
+            <div className="mt-3 flex items-center justify-end border-t border-zinc-200/50 pt-2 text-[0.72rem] text-zinc-400">
               <button
                 type="button"
                 onClick={copyContent}
@@ -530,7 +536,7 @@ export function MessageBubble({
         </div>
 
         {/* Minimized / Expandable Sources Section */}
-        {references.length > 0 && (
+        {SHOW_CHAT_SOURCES && references.length > 0 && (
           <div className="mt-2 text-left">
             <button
               type="button"
