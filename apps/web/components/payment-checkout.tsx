@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import { PurchaseChecklist } from "./purchase-checklist";
+import { canStartSandboxCheckout } from "../lib/purchase-checkout-visibility";
 
 const consentText =
   "I authorize an ANCFZ sandbox payment for the exact quotation amount shown and understand that this is a test transaction.";
@@ -83,7 +84,7 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
   const ready=summary?.enabled===true && quoteReady && purchaseReady;
   // Identity inputs should never appear merely because an intent was selected.
   // A verified PDF, purchase-enabled catalog and enabled sandbox are all required.
-  const canStartCheckout=quoteReady && purchaseSupported && summary?.enabled===true;
+  const canStartCheckout=canStartSandboxCheckout(quoteReady,purchaseSupported,summary?.enabled===true);
   if(!payment && !canStartCheckout)return null;
   if(!payment && !checkoutOpen)return <button type="button"
     aria-expanded={false}
