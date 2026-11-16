@@ -189,7 +189,7 @@ assert.match(controls,/Continue to sandbox purchase review/);
 assert.match(controls,/await onContinuePurchase\(\)/);
 const customerChat=readFileSync("apps/web/components/customer-chat.tsx","utf8");
 assert.match(customerChat,/onContinuePurchase=\{\(\)=>send\(/);
-assert.match(customerChat,/onDocumentsUpdated=\{\(\)=>setOperationNotice\(null\)\}/);
+assert.match(customerChat,/onDocumentsUpdated=\{\(\)=>\{setOperationNotice\(null\);void refresh\(\);\}\}/);
 assert.ok(!controls.includes('fetch(root+"/purchase/confirm"'),
   "Secure document intake cannot issue purchase consent automatically");
 
@@ -198,4 +198,5 @@ assert.match(panel,/if\(!action\.ready\)return null/);
 assert.ok(!panel.includes("To proceed with {action.label}"),
   "Do not show a duplicate list of missing questions beside Sara's chat");
 console.log("Natural business action handoff PASS: missing facts, consent, lead, quotation, documents, sandbox payment, invoice and hidden chat sources");
+await import("./check-auto-document-review.mjs");
 await import("./check-verified-quote-purchase-handoff.mjs");

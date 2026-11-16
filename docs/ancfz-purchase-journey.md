@@ -39,27 +39,34 @@ enqueue an order and independently verify provider evidence.
    invoice billing name. If a passport does yield a complete name, it must
    still match the Emirates ID. No non-passport document may use the exception.
    The flag defaults off and can never enable the exception in production.
-4. Customer confirms the exact quote and the specific
+4. Once both synthetic documents are accepted, Node automatically posts a
+   **purchase-review prompt** to the same ticket, or asks for a synthetic
+   `@example.invalid` billing email when missing. This notice is not order
+   authorization. The quote-scoped notice is idempotent; for tickets whose
+   documents were uploaded before this feature, the secure chat UI can recover
+   the review through a customer-owned `POST /chat-journey/review` request
+   without re-uploading documents.
+5. Customer confirms the exact quote and the specific
    `PURCHASE_CONSENT` wording. Node creates a durable
    `ticket_purchase_confirmations` row; documents cannot be changed after
    confirmation. The model cannot grant or forge consent.
-5. Node's payment OTP endpoints independently assert supported intent,
+6. Node's payment OTP endpoints independently assert supported intent,
    verified quote, full configured document set and exact quote confirmation.
    Synthetic OTP is recorded only to the private n8n test Data Table with
    rate limiting, HMAC digest, expiration and max failures.
-6. Successful OTP authorizes exactly one durable sandbox order POST.
+7. Successful OTP authorizes exactly one durable sandbox order POST.
    The returned checkout URL is **not** evidence of payment.
-7. After order creation, a bounded worker polls the private n8n authenticated
+8. After order creation, a bounded worker polls the private n8n authenticated
    GET endpoint (max 60 checks, minimum 30 seconds apart, one-day order window).
    Matching `COMPLETE` + amount + currency + reference + ticket + quotation
    grants `verified_test_payment`; `DECLINED` and `REFUNDED` never do.
-8. Verified payment queues a Gotenberg PDF TEST invoice using the passport holder's
+9. Verified payment queues a Gotenberg PDF TEST invoice using the passport holder's
    **extracted full name**, corroborated against the Emirates ID. The quotation
    free-text customer name is never used as the invoice bill-to name. Before committing
    the result, the invoice worker rechecks that payment remains verified.
    A durable assistant ticket message then carries a same-origin,
    ticket-owner-authorized **Download your TEST invoice** attachment link.
-9. For gateway decline/refund, the Node service adds an idempotent,
+10. For gateway decline/refund, the Node service adds an idempotent,
    persona-named/tone-adjusted assistant reply. Chat shows the current
    payment state; failed or uncertain payment never authorizes a PDF.
 
@@ -69,6 +76,9 @@ enqueue an order and independently verify provider evidence.
   status and OTP readiness; never returns document bytes
 - `POST /api/v1/tickets/:ticketId/purchase/documents`: private base64 PDF/PNG/JPEG
   intake using `requirementKey, fileName, contentType, dataBase64`
+- `POST /api/v1/tickets/:ticketId/chat-journey/review`: idempotently
+  present the next Node purchase-review question after existing documents are
+  accepted; never authorizes an order or payment
 - `GET /api/v1/tickets/:ticketId/purchase/documents/:documentId`: owner-only file
 - `POST /api/v1/tickets/:ticketId/purchase/confirm`: explicit confirmation for
   `requestId, quotationId, amount, currency, consent, consentText`

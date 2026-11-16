@@ -14,7 +14,7 @@ interface Document {
 interface Purchase {
   supported:boolean;quotationId:string|null;amount:string|null;
   currency:string|null;documents:Document[];missing:string[];
-  confirmed:boolean;readyForOtp:boolean;
+  confirmed:boolean;readyForOtp:boolean;reviewIssued?:boolean;
 }
 interface Challenge {
   challengeId:string;quotationId:string;state:string;expiresAt:string;
@@ -88,6 +88,7 @@ export function ChatJourneyControls({
   const [otp,setOtp]=useState("");
   const [editingDocuments,setEditingDocuments]=useState(false);
   const otpRequest=useRef<string|null>(null);
+  const reviewRequestedForQuote=useRef<string|null>(null);
   const root="/api/v1/tickets/"+encodeURIComponent(ticketId);
   const load=useCallback(async()=>{
     const response=await requestJson<Journey>(root+"/chat-journey");
@@ -101,6 +102,29 @@ export function ChatJourneyControls({
       .catch(()=>{if(live)setData(null);});
     return ()=>{live=false;};
   },[root,revision]);
+
+  // Reconcile old tickets whose documents were already complete before the
+  // upload-triggered Node review existed. A POST creates a review message only;
+  // it never consents to or dispatches a sandbox purchase.
+  useEffect(()=>{
+    const quote=data?.quotation;
+    const purchase=data?.purchase;
+    if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
+       !purchase?.supported||purchase.confirmed||purchase.reviewIssued!==false||
+       purchase.missing.length!==0||conversationBusy||
+       purchase.documents.filter(d=>d.key==="passport"||d.key==="emirates_id")
+         .filter(d=>d.uploaded).length!==2||
+       reviewRequestedForQuote.current===quote.id)return;
+    reviewRequestedForQuote.current=quote.id;
+    void requestJson<{created:boolean}>(root+"/chat-journey/review",{})
+      .then(async()=>{
+        await load();
+        onDocumentsUpdated();
+      })
+      .catch(e=>{
+        setError(e instanceof Error?e.message:"Unable to show the purchase review");
+      });
+  },[data,root,load,conversationBusy,onDocumentsUpdated]);
 
   async function upload(key:string,file:File|undefined){
     if(!file||busy)return;
@@ -199,13 +223,16 @@ export function ChatJourneyControls({
                   </p>
                 )}
                 <p className="text-xs text-zinc-700">
-                  Checkout has not started. Review the exact quotation and explicitly
-                  authorize the sandbox purchase before a test OTP or payment is issued.
+                  {purchase.reviewIssued
+                    ? "Sara's purchase review is available in the chat. Answer the requested billing question or review the exact-amount proposal before authorizing."
+                    : "Checkout has not started. Sara is preparing the next purchase-review question; you can also request it using the button below."}
+                  A test OTP, order and invoice require separate authorization and verified payment.
                 </p>
                 <button type="button" onClick={()=>{void continuePurchase();}}
                   disabled={busy!==null||conversationBusy}
                   className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                  {busy==="purchase"?"Requesting purchase review…":"Continue to sandbox purchase review"}
+                  {busy==="purchase"?"Requesting purchase review…":
+                    purchase.reviewIssued?"Ask Sara to show purchase review again":"Continue to sandbox purchase review"}
                 </button>
                 <button type="button" onClick={()=>setEditingDocuments(value=>!value)}
                   disabled={busy!==null||conversationBusy}
