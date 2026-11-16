@@ -9,6 +9,7 @@ import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { workerTicketScope } from "../repositories/types.js";
 import { quoteDispatchEnabled } from "./quotation-operations.js";
+import {quoteDetailsMarkdown,type QuoteProposalDetails} from "./quote-proposal.js";
 
 interface Claim {
   agentId:string;ticketId:string;operationId:string;outboxId:string;
@@ -218,12 +219,31 @@ export class N8nQuoteWorker {
         // roll back independently verified quotation PDF evidence.
         const link="/api/v1/tickets/"+claim.ticketId+"/quotations/"+
           claim.quotationId+"/pdf";
+        const proposal=claim.payload.proposal as QuoteProposalDetails|undefined;
+        const line=Array.isArray(claim.payload.lines)?
+          claim.payload.lines[0] as {label?:unknown}|undefined:undefined;
+        const packageLabel=typeof line?.label==="string"?
+          line.label.slice(0,200):"Selected package";
+        const quotedTotal=typeof claim.payload.total==="number"&&
+          Number.isFinite(claim.payload.total)?
+          claim.payload.total.toFixed(2):"";
+        const currency=typeof claim.payload.currency==="string"?
+          claim.payload.currency:"";
+        const details=proposal&&Array.isArray(proposal.requirements)&&
+          typeof proposal.packageDescription==="string"?
+          "\n\n"+quoteDetailsMarkdown(proposal):"";
+        const notice=[
+          "**Verified ANCFZ test quotation**",
+          "Package: "+packageLabel,
+          quotedTotal?"Quoted total: "+currency+" "+quotedTotal:"",
+          details,
+          "[Download detailed quotation PDF]("+link+")",
+          "You can continue with the synthetic identity-document upload "+
+            "in the private controls in this conversation.",
+        ].filter(Boolean).join("\n\n");
         await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
           client,workerTicketScope(claim.agentId,claim.ticketId),claim.ticketId,
-          lifecycleNoticeId("quotation.verified",claim.quotationId),
-          "Your non-binding ANCFZ test quotation has been verified. "+
-          "[Download quotation PDF]("+link+"). You can continue with the "+
-          "secure identity-document upload here in the conversation.",
+          lifecycleNoticeId("quotation.verified",claim.quotationId),notice,
         );
       }
     });
