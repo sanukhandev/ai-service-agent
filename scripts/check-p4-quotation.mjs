@@ -69,6 +69,6 @@ assert.match(source,/await quoteRequirementsTx\(client,scope\.agentId,ticketId\)
 assert.match(source,/lines:\[\{label:chosen\.label,amount\}\],total:amount,proposal/);
 const chat=readFileSync("services/api/src/runtime/chat-journey.ts","utf8");
 assert.match(chat,/quoteDetailsMarkdown\(x\.proposal\)/);
-assert.match(chat,/offer ingLabel/.source.replace("offer ing","offering"));
+assert.match(chat,/offeringLabel/);
 // Preserve pre-authorized quote/lead snapshot and exact purchase consent.
 console.log("P4 quotation safety PASS: authoritative price, scoped requirement/scope snapshots, exact consent, correlated PDF");
