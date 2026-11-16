@@ -15,6 +15,7 @@ import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, type LeadFields
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations } from "./payment-operations.js";
+import {LicenceRenewalOperations} from "./licence-renewal.js";
 import { PAYMENT_CONSENT, paymentEnabled } from "./payment-evidence.js";
 import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
@@ -393,6 +394,32 @@ export class ChatJourney {
             .map(x=>[x.fact_key,x.value] as [string,unknown]));
         });
         if(!current)return null;
+        const currentIntent=await this.db.withAgent(scope.agentId,async client=>{
+          const r=await client.query<{intent_key:string}>(
+            `SELECT i.intent_key FROM tickets t JOIN ticket_intents ti
+             ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id AND ti.status='active'
+             JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id
+             AND i.catalog_version_id=t.intent_catalog_version_id
+             WHERE t.agent_id=$1 AND t.id=$2 LIMIT 1`,
+            [scope.agentId,ticketId]);
+          return r.rows[0]?.intent_key;
+        });
+        if(currentIntent==="license_renewal"){
+          const renewal=await new LicenceRenewalOperations(this.db).read(scope,ticketId);
+          if(!renewal.record)
+            return "To renew an existing ANCFZ licence, enter the synthetic licence number in the secure renewal lookup inside this conversation.";
+          if(!renewal.record.confirmed)
+            return "Please check the matched licence details in the secure renewal panel and explicitly confirm them before requesting a quotation.";
+          for(const [key,question] of [
+            ["customer_name","What contact name should I use for the renewal enquiry?"],
+            ["customer_phone","What contact phone number should ANCFZ use for your renewal enquiry?"],
+            ["customer_email","What contact email should ANCFZ use for your renewal enquiry?"],
+          ]){
+            const v=current.get(key);
+            if(typeof v!=="string"||!v.trim())return question;
+          }
+          return "This licence is confirmed, but an exact published renewal price is not configured for its selected term. ANCFZ staff must publish the renewal offering before I can issue a quotation or accept sandbox payment.";
+        }
         const questions:[string[],string][]=[
           [["business_activity"],"What business activity will your company perform?"],
           [["preferred_company_name","company_name"],"What company name would you prefer?"],
