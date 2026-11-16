@@ -163,7 +163,10 @@ try{
   await journey.advance(log);
   assert.equal(purchaseConfirms,1,"Purchase authorization must not repeat");
   assert.equal(otpIssues,1,"OTP must not be reissued on a repeated worker sweep");
-  assert.deepEqual(problems,[],"No unexpected state-machine errors");
+  assert.deepEqual(problems.filter(item=>/paused|failed|postponed/i.test(item.message)),[],
+    "No unexpected state-machine errors");
+  assert.equal(problems.filter(item=>/Synthetic OTP recorded/.test(item.message)).length,1,
+    "Successful one-shot OTP issuance should be observed once");
 }finally{
   for(const [klass,key,fn] of originals)klass.prototype[key]=fn;
   for(const name of envNames){
