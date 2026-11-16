@@ -47,6 +47,8 @@ jobs:
         run: node scripts/check-turn-worker-concurrency.mjs
       - name: Check action deduplication and composer layout
         run: node scripts/check-chat-action-layout.mjs
+      - name: Check natural workflow handoff through sandbox invoice
+        run: node scripts/check-natural-action-handoff.mjs
       - name: Validate Compose and Nginx-only ingress
         run: |
           docker compose config --quiet
