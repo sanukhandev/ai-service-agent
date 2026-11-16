@@ -19,12 +19,12 @@ type RenewalRow={
   licence_number:string;company_name:string;licence_status:string;
   expires_on:string;renewal_offering_key:string;renewal_term_years:number;
   source_fingerprint:string;state:"awaiting_confirmation"|"confirmed";
-  looked_up_at:Date;confirmed_at:Date|null;
+  looked_up_at:Date;confirmed_at:Date|null;fulfilment_state:string;
 };
 export type RenewalView={
   licenceNumber:string;companyName:string;status:string;expiresOn:string;
   offeringKey:string;termYears:number;fingerprint:string;
-  confirmed:boolean;confirmationText:string;
+  confirmed:boolean;confirmationText:string;fulfilmentStatus:string;
 };
 export function validateLicenceNumber(input:unknown):string{
   if(typeof input!=="string" || !licencePattern.test(input.trim().toUpperCase()))
@@ -48,6 +48,7 @@ export function validateLicenceResponse(raw:unknown,requested:string):LicenceRes
     typeof row.expiresOn!=="string"||
     !/^\d{4}-\d{2}-\d{2}$/.test(row.expiresOn)||
     !Number.isFinite(Date.parse(row.expiresOn+"T00:00:00Z"))||
+    new Date(row.expiresOn+"T00:00:00Z").toISOString().slice(0,10)!==row.expiresOn||
     typeof row.offeringKey!=="string"||!offeringPattern.test(row.offeringKey)||
     !Number.isInteger(row.termYears)||Number(row.termYears)<1||Number(row.termYears)>5)
     throw new PersistenceError("NOT_CONFIGURED","Invalid licence data returned by renewal lookup");
@@ -63,11 +64,12 @@ function view(row:RenewalRow):RenewalView{
     status:row.licence_status,expiresOn:row.expires_on,
     offeringKey:row.renewal_offering_key,termYears:row.renewal_term_years,
     fingerprint:row.source_fingerprint,
-    confirmed:row.state==="confirmed",confirmationText:CONSENT};
+    confirmed:row.state==="confirmed",confirmationText:CONSENT,
+    fulfilmentStatus:row.fulfilment_state??"not_requested"};
 }
 const lookupSql=`SELECT licence_number,company_name,licence_status,
   expires_on::text AS expires_on,renewal_offering_key,renewal_term_years,
-  source_fingerprint,state,looked_up_at,confirmed_at
+  source_fingerprint,state,looked_up_at,confirmed_at,fulfilment_state
   FROM ticket_licence_renewals WHERE agent_id=$1 AND ticket_id=$2`;
 
 export class LicenceRenewalOperations{
