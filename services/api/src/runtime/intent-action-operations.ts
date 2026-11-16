@@ -159,7 +159,7 @@ export class IntentActionOperations {
       for(const action of allowedActions){
         const kind=classifyAction(action);
         if(!kind)continue;
-        const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action,preloaded);
+        const facts=await actionRequirements(client,scope.agentId,ticketId,intent.id,action,preloaded,intent.intent_key);
         const missing=isServiceAction(action)
           ? [...facts.missing,...identity.missing]:facts.missing;
         result.push({actionKey:action,label:isServiceAction(action)?
