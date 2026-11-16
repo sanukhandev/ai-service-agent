@@ -144,6 +144,17 @@ assert.ok(!cleaned.includes("source"));
 assert.ok(!cleaned.includes("Download"));
 assert.ok(!cleaned.includes("/api/v1"));
 assert.match(cleaned,/quotation is ready/);
+const ownTicket="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const wrongTicket="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const quoteId="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
+const quoteLink="[Download verified quotation](/api/v1/tickets/"+ownTicket+"/quotations/"+quoteId+"/pdf)";
+const invoiceLink="[Download TEST invoice](/api/v1/tickets/"+ownTicket+"/invoices/"+quoteId+"/pdf)";
+assert.equal(helpers.conversationalText(quoteLink,ownTicket),quoteLink);
+assert.equal(helpers.conversationalText(invoiceLink,ownTicket),invoiceLink);
+assert.ok(!helpers.conversationalText(quoteLink,wrongTicket).includes("Download"));
+assert.ok(!helpers.conversationalText(quoteLink).includes("Download"));
+assert.ok(!helpers.conversationalText("[Download report](https://private.search.windows.net/file.pdf)",ownTicket)
+  .includes("Download report"));
 assert.equal(helpers.conversationalText("Visit https://ancfz.example for office hours."),
   "Visit https://ancfz.example for office hours.");
 assert.ok(!helpers.conversationalText("See https://private.search.windows.net/download/foo.pdf")
