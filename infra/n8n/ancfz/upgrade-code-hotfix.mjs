@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Guarded hotfix of exactly two pre-existing n8n workflows in the same owner workspace.
+ * Guarded hotfix of exactly three pre-existing n8n workflows in the same owner workspace.
  * Never creates a workflow, overwrites credentials, changes owner/encryption key,
  * activates a workflow, or posts to Salesforce/MockGateway.
  *
@@ -18,6 +18,11 @@ const specs=[
     ]},
   {file:"03-mockgateway-payment-link.json",name:"ANCFZ | 2Checkout Mock Order Create",
     path:"ancfz/payment-link",targets:["Inspect Demo Order Response"]},
+  {file:"04-mockgateway-payment-verify.json",
+    name:"ANCFZ | 2Checkout Mock Payment Verification",
+    path:"ancfz/payment-verify",targets:[
+      "Validate Verification Request","2Checkout Mock GET Order","Validate Gateway Status",
+    ]},
 ];
 const fail=(code,message)=>{const e=new Error(message);e.code=code;throw e;};
 async function readInput(){
@@ -91,6 +96,14 @@ function hasKnownCode(target,existing,spec){
     return existing.includes("new URL(urlText)")||
       existing.includes("n8n 2.x Code nodes do not expose the URL global");
   }
+  if(target.name==="Validate Verification Request"){
+    return existing.includes("Invalid 2Checkout order reference") &&
+      existing.includes("Invalid authorized amount/currency");
+  }
+  if(target.name==="Validate Gateway Status"){
+    return existing.includes("This runs after a FRESH authenticated GET") &&
+      existing.includes("2Checkout order reference mismatch");
+  }
   return false;
 }
 function validate(w,source,spec){
@@ -124,6 +137,11 @@ function validate(w,source,spec){
           old.options={timeout:30000};
           if(JSON.stringify(current.parameters)!==JSON.stringify(old))
             fail("SOURCE_DRIFT","Unexpected Salesforce HTTP node config");
+        }else if(expected.name==="2Checkout Mock GET Order"){
+          const old=structuredClone(expected.parameters);
+          old.url=old.url.replace("json.providerPaymentId","json.orderReference");
+          if(JSON.stringify(current.parameters)!==JSON.stringify(old))
+            fail("SOURCE_DRIFT","Unexpected MockGateway GET node config");
         }
         changes.push(expected.name);
       }
