@@ -30,13 +30,15 @@ type OtpRow = {
 export interface PaymentRow {
   id:string;quotation_id:string;request_id:string;external_reference:string;
   amount:string;currency:string;state:string;order_reference:string|null;
-  checkout_url:string|null;provider_status:string|null;verified_at:Date|null;created_at:Date;
+  provider_payment_id:string|null;checkout_url:string|null;
+  provider_status:string|null;verified_at:Date|null;created_at:Date;
 }
 export function paymentView(p:PaymentRow) {
   return {
     id:p.id,quotationId:p.quotation_id,state:p.state,
     amount:p.amount,currency:p.currency.trim(),orderReference:p.order_reference,
-    checkoutUrl:p.checkout_url,providerStatus:p.provider_status,
+    providerPaymentId:p.provider_payment_id,checkoutUrl:p.checkout_url,
+    providerStatus:p.provider_status,
     verifiedAt:p.verified_at?.toISOString()??null,createdAt:p.created_at.toISOString(),
   };
 }
@@ -223,7 +225,7 @@ export class PaymentOperations {
       await assertPurchaseReady(client,scope.agentId,ticketId,input.quotationId);
       const dup=await client.query<PaymentRow>(
         `SELECT id,quotation_id,request_id,external_reference,amount::text,currency,state,
-          order_reference,checkout_url,provider_status,verified_at,created_at
+          order_reference,provider_payment_id,checkout_url,provider_status,verified_at,created_at
           FROM ticket_payment_attempts
           WHERE agent_id=$1 AND ticket_id=$2 AND request_id=$3`,
         [scope.agentId,ticketId,input.requestId]);
@@ -274,7 +276,7 @@ export class PaymentOperations {
            external_reference,amount,currency,first_name,email,country_code)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
           RETURNING id,quotation_id,request_id,external_reference,amount::text,
-            currency,state,order_reference,checkout_url,provider_status,verified_at,created_at`,
+            currency,state,order_reference,provider_payment_id,checkout_url,provider_status,verified_at,created_at`,
         [attemptId,scope.agentId,ticketId,input.quotationId,row.id,input.requestId,outbox,
           externalReference,q.amount,q.currency.trim(),row.first_name,row.email,row.country_code.trim()],
       );
@@ -302,7 +304,7 @@ export class PaymentOperations {
       await requireAncfz(client,scope.agentId);
       const rows=await client.query<PaymentRow>(
         `SELECT id,quotation_id,request_id,external_reference,amount::text,currency,
-          state,order_reference,checkout_url,provider_status,verified_at,created_at
+          state,order_reference,provider_payment_id,checkout_url,provider_status,verified_at,created_at
           FROM ticket_payment_attempts WHERE agent_id=$1 AND ticket_id=$2
           ORDER BY created_at DESC LIMIT 10`,
         [scope.agentId,ticketId]);
@@ -322,7 +324,9 @@ export class PaymentOperations {
     });
   }
   /** Repair an UNKNOWN outcome with a fresh authenticated provider GET.
-   * Caller supplies an existing provider order number, NEVER a new order request.
+   * Caller supplies an existing provider payment ID plus its order number.
+   * GET uses payment ID; RefNo must match the stored order identity.
+   * NEVER create a new order or trust redirect parameters.
    * Matching reference, ticket, quotation, currency and amount are mandatory.
    * Recovery only attaches a reference. A second independent GET through
    * verify() is required before an invoice can be authorized. */
@@ -330,11 +334,14 @@ export class PaymentOperations {
     this.requireReadEnabled();
     requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
     if(!raw||typeof raw!=="object"||Array.isArray(raw)||
-       Object.keys(raw as Record<string,unknown>).some(k=>k!=="orderReference"))
-      throw new PersistenceError("INVALID_INPUT","Existing provider order reference required");
+       Object.keys(raw as Record<string,unknown>).some(k=>!["orderReference","providerPaymentId"].includes(k)))
+      throw new PersistenceError("INVALID_INPUT","Existing provider payment ID and order reference required");
     const orderReference=(raw as Record<string,unknown>).orderReference;
-    if(typeof orderReference!=="string"||!/^[A-Za-z0-9_-]{1,120}$/.test(orderReference))
-      throw new PersistenceError("INVALID_INPUT","Invalid existing provider order reference");
+    const providerPaymentId=(raw as Record<string,unknown>).providerPaymentId;
+    if(typeof orderReference!=="string"||!/^[A-Za-z0-9_-]{1,120}$/.test(orderReference)||
+       typeof providerPaymentId!=="string"||
+       !/^[A-Za-z0-9_-]{1,120}$/.test(providerPaymentId))
+      throw new PersistenceError("INVALID_INPUT","Invalid provider payment ID or order reference");
     const claim=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       await requireAncfz(client,scope.agentId);
@@ -369,7 +376,7 @@ export class PaymentOperations {
         [scope.agentId,ticketId,paymentId],
       );
       return {ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
-        amount:p.amount,currency:p.currency.trim(),orderReference};
+        amount:p.amount,currency:p.currency.trim(),orderReference,providerPaymentId};
     });
     let verified:ReturnType<typeof verifyPaymentStatus>=null;
     try{
@@ -392,16 +399,18 @@ export class PaymentOperations {
       // must recheck it after the durable reference has been stored.
       await client.query(
         `UPDATE ticket_payment_attempts SET order_reference=$4,
-           state='order_created_checkout_unavailable',
-           provider_status='reconciled_' || $5, next_verification_at=now(),
+           provider_payment_id=$5,state='order_created_checkout_unavailable',
+           provider_status='reconciled_' || $6,next_verification_at=now(),
            updated_at=now()
            WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
-        [scope.agentId,ticketId,paymentId,orderReference,verified.providerStatus]);
+        [scope.agentId,ticketId,paymentId,orderReference,
+          providerPaymentId,verified.providerStatus]);
       await appendEventTx(client,scope.agentId,ticketId,"payment.order_reconciled",{
-        paymentId,orderReference,providerStatus:verified.providerStatus,
+        paymentId,orderReference,providerPaymentId,
+        providerStatus:verified.providerStatus,
         verifiedPayment:false,testOnly:true,
       });
-      return {reconciled:true,paymentId,orderReference,
+      return {reconciled:true,paymentId,orderReference,providerPaymentId,
         providerStatus:verified.providerStatus,paymentCompleted:false};
     });
   }
@@ -413,18 +422,20 @@ export class PaymentOperations {
       await requireAncfz(client,scope.agentId);
       const selected=await client.query<{
         id:string;quotation_id:string;external_reference:string;amount:string;
-        currency:string;state:string;order_reference:string|null;verification_started_at:Date|null;
+        currency:string;state:string;order_reference:string|null;
+        provider_payment_id:string|null;verification_started_at:Date|null;
         provider_status:string|null;
       }>(
         `SELECT id,quotation_id,external_reference,amount::text,currency,state,order_reference,
-          verification_started_at,provider_status FROM ticket_payment_attempts
+          provider_payment_id,verification_started_at,provider_status FROM ticket_payment_attempts
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE`,
         [scope.agentId,ticketId,paymentId],
       );
       const p=selected.rows[0];
       if(!p)throw new PersistenceError("NOT_FOUND","Payment not found");
       // A fresh GET can detect a later refund even after a prior COMPLETE.
-      if(!p.order_reference||!["checkout_available","order_created_checkout_unavailable",
+      if(!p.order_reference||!p.provider_payment_id||
+         !["checkout_available","order_created_checkout_unavailable",
          "payment_pending","payment_declined","payment_refunded","unknown_outcome",
          "verifying","verified_test_payment"].includes(p.state))
         throw new PersistenceError("CONFLICT","Payment order is not ready for independent verification");
@@ -456,6 +467,7 @@ export class PaymentOperations {
         expected:{
           ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
           amount:p.amount,currency:p.currency.trim(),orderReference:p.order_reference,
+          providerPaymentId:p.provider_payment_id,
         },
         previousState:p.state,previousProviderStatus:p.provider_status,
       };
