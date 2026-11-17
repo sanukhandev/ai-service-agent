@@ -324,8 +324,10 @@ export class PaymentOperations {
     });
   }
   /** Repair an UNKNOWN outcome with a fresh authenticated provider GET.
-   * Caller supplies an existing provider payment ID plus its order number.
-   * GET uses payment ID; RefNo must match the stored order identity.
+   * Caller supplies an existing order RefNo plus its dashboard transaction ID.
+   * The live MockGateway GET path is keyed by RefNo, not by transaction UUID.
+   * Transaction ID is recovery metadata; RefNo, immutable ExternalReference,
+   * exact amount/currency and provider status must match independently.
    * NEVER create a new order or trust redirect parameters.
    * Matching reference, ticket, quotation, currency and amount are mandatory.
    * Recovery only attaches a reference. A second independent GET through
