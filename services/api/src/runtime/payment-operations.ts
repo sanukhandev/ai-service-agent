@@ -16,7 +16,9 @@ import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled,
   verifyPaymentStatus, type PaymentIdentity } from "./payment-evidence.js";
 
 const EMAIL=/^[A-Za-z0-9._%+-]+@example\.invalid$/i;
-const NAME=/^[A-Za-z][A-Za-z '._-]{0,99}$/;
+// OCR accepts international holder names; the sandbox billing preflight must
+// not reject the same validated Unicode name solely for being non-ASCII.
+const NAME=/^[\p{L}][\p{L}\p{M}\p{N} .'’_-]{0,99}$/u;
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 
 type Quote = {id:string;amount:string;currency:string;state:string;has_pdf:boolean};
