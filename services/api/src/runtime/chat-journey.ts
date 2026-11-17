@@ -15,7 +15,7 @@ import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, type LeadFields
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
-import { PAYMENT_CONSENT, paymentEnabled } from "./payment-evidence.js";
+import { PAYMENT_CONSENT, paymentEnabled, paymentReadEnabled } from "./payment-evidence.js";
 import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
 
@@ -593,7 +593,7 @@ export class ChatJourney {
       .find(l=>l.operation==="ancfz_salesforce_lead")??null;
     const quote=await new QuotationOperations(this.db).get(scope,ticketId);
     const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
-    const payment=paymentEnabled()?await new PaymentOperations(this.db).get(scope,ticketId):null;
+    const payment=paymentReadEnabled()?await new PaymentOperations(this.db).get(scope,ticketId):null;
     const challenge=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
       const r=await client.query<{id:string;quotation_id:string;state:string;expires_at:Date}>(
