@@ -45,6 +45,8 @@ jobs:
         run: node scripts/check-chat-journey-state.mjs
       - name: Validate safe reconciliation of existing gateway orders
         run: node scripts/check-payment-reconciliation.mjs
+      - name: Validate existing checkout URL recovery without new gateway orders
+        run: node scripts/check-payment-checkout-link.mjs
       - name: Validate SSE milestone notices and fail-safe persistence
         run: node scripts/check-sse-lifecycle-notifications.mjs
       - name: Validate bounded multi-ticket worker concurrency
