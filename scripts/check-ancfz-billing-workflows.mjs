@@ -142,8 +142,10 @@ assert.equal(missingLink.status,"order_created_checkout_unavailable");
 const statusNode=verify.nodes.find(n=>n.name==="2Checkout Mock GET Order");
 assert.equal(statusNode.parameters.method,"GET");
 assert(statusNode.parameters.url.includes("/api/base/2checkout-fzucuq/rest/6.0/orders/"));
-assert(statusNode.parameters.url.includes(".json.providerPaymentId"));
-assert(!statusNode.parameters.url.includes(".json.orderReference"));
+// The live MockGateway GET reports "No order found with RefNo ...":
+// it indexes its path by order number, not dashboard transaction UUID.
+assert(statusNode.parameters.url.includes(".json.orderReference"));
+assert(!statusNode.parameters.url.includes(".json.providerPaymentId"));
 assert.equal(statusNode.parameters.genericAuthType,"httpHeaderAuth");
 const req=code(verify,"Validate Verification Request");
 const v=(await req(input({
