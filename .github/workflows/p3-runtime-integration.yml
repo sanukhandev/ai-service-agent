@@ -43,6 +43,8 @@ jobs:
         run: node scripts/check-p5-2checkout.mjs
       - name: Validate detailed invoice scope, private Emirates ID and renderer gate
         run: node scripts/check-invoice-detailed-pdf.mjs
+      - name: Validate tolerant upload metadata and strict document signatures
+        run: node scripts/check-purchase-document-metadata.mjs
       - name: Validate chat journey OTP recovery and duplicate-dispatch guards
         run: node scripts/check-chat-journey-state.mjs
       - name: Validate direct activity replies avoid the repeated-question loop
