@@ -91,6 +91,8 @@ export function verifyPaymentStatus(raw:unknown,expected:PaymentIdentity & {orde
   if(!uuid.test(expected.ticketId)||!uuid.test(expected.quotationId)||
      !/^ANCFZ-[A-Za-z0-9_-]{8,160}$/.test(expected.externalReference)||
      typeof v.orderReference!=="string"||v.orderReference!==expected.orderReference||
+     ("providerPaymentId" in expected &&
+       v.providerPaymentId!==(expected as PaymentIdentity & {providerPaymentId:string}).providerPaymentId)||
      v.provider!=="2checkout_mock"||v.ticketId!==expected.ticketId||
      v.quotationId!==expected.quotationId||v.externalReference!==expected.externalReference||
      v.amount!==expected.amount||v.currency!==expected.currency)return null;
