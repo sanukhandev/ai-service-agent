@@ -91,6 +91,29 @@ export function parseIdentityResult(
     ? normalizedNumber.slice(-4).toUpperCase():null,
     model:"prebuilt-idDocument"};
 }
+/** Invoice-only extraction from the same private Azure OCR evidence.
+ * The full number is returned to the invoice renderer in memory only; never
+ * write it to ticket facts, chat, events, logs or an independent DB column. */
+export function parseInvoiceEmiratesId(raw:unknown):{fullName:string;number:string;last4:string}{
+  const parsed=parseIdentityResult(raw,"emirates_id");
+  if(!parsed.fullName||!parsed.documentNumberLast4)
+    throw new PersistenceError("CONFLICT","Invoice identity evidence unavailable");
+  const analysis=obj(obj(raw)["analyzeResult"]);
+  const docs=analysis["documents"];
+  const doc=Array.isArray(docs)?obj(docs[0]):{};
+  const fields=obj(doc["fields"]);
+  const fieldNumber=field(fields,["DocumentNumber","IdNumber","IdentificationNumber","PersonalNumber"]);
+  let number=fieldNumber?.replace(/[^0-9]/g,"")??"";
+  if(!/^784\\d{12}$/.test(number)){
+    const text=typeof analysis["content"]==="string"?analysis["content"]:"";
+    number=text.match(/(?:^|[^0-9])(784[- ]?\\d{4}[- ]?\\d{7}[- ]?\\d)(?:$|[^0-9])/)?.[1]
+      ?.replace(/[^0-9]/g,"")??"";
+  }
+  if(!/^784\\d{12}$/.test(number)||number.slice(-4)!==parsed.documentNumberLast4)
+    throw new PersistenceError("CONFLICT","Invoice Emirates ID did not match extracted evidence");
+  return {fullName:parsed.fullName,number,last4:parsed.documentNumberLast4};
+}
+
 function endpoint(){
   const raw=process.env.AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT;
   const key=process.env.AZURE_DOCUMENT_INTELLIGENCE_KEY;
@@ -110,7 +133,7 @@ async function boundedResult(response:Response):Promise<unknown>{
   try{return JSON.parse(body) as unknown;}
   catch{throw new PersistenceError("CONFLICT","OCR returned an invalid result");}
 }
-export async function extractIdentityDocument(bytes:Buffer,kind:IdentityKind):Promise<ExtractedIdentity>{
+async function analyzeIdentityDocument(bytes:Buffer):Promise<unknown>{
   const config=endpoint();
   const url=config.url+"/documentintelligence/documentModels/prebuilt-idDocument:analyze?api-version=2024-11-30";
   const controller=new AbortController();
@@ -140,9 +163,7 @@ export async function extractIdentityDocument(bytes:Buffer,kind:IdentityKind):Pr
       if(!response.ok)throw new PersistenceError("CONFLICT","Identity OCR verification failed");
       const result=await boundedResult(response);
       const status=obj(result)["status"];
-      if(status==="succeeded")return parseIdentityResult(
-        result,kind,allowUnnamedSyntheticPassport(),
-      );
+      if(status==="succeeded")return result;
       if(status==="failed")throw new PersistenceError("CONFLICT","Identity OCR could not read the document");
       if(status!=="running"&&status!=="notStarted")
         throw new PersistenceError("CONFLICT","Unexpected OCR state");
@@ -152,4 +173,14 @@ export async function extractIdentityDocument(bytes:Buffer,kind:IdentityKind):Pr
     if(err instanceof PersistenceError)throw err;
     throw new PersistenceError("CONFLICT","Identity OCR unavailable; no document accepted");
   }finally{clearTimeout(timeout);}
+}
+
+/** Existing upload path retains only a name and last four characters. */
+export async function extractIdentityDocument(bytes:Buffer,kind:IdentityKind):Promise<ExtractedIdentity>{
+  return parseIdentityResult(await analyzeIdentityDocument(bytes),kind,allowUnnamedSyntheticPassport());
+}
+/** Re-reads already authorized private document bytes during TEST invoice
+ * rendering. Does not retain the full number beyond the protected PDF. */
+export async function extractInvoiceEmiratesId(bytes:Buffer):Promise<{fullName:string;number:string;last4:string}>{
+  return parseInvoiceEmiratesId(await analyzeIdentityDocument(bytes));
 }
