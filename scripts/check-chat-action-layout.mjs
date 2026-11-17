@@ -157,6 +157,8 @@ const {
   isLeadQuoteApproval,isPurchasePaymentApproval,
   LEAD_QUOTE_APPROVAL,PURCHASE_PAYMENT_APPROVAL,isContextualApproval,
 }=await import("../services/api/dist/runtime/chat-journey.js");
+assert.equal(quoteConsent,LEAD_QUOTE_APPROVAL,"Frontend quotation button must send the current backend consent text");
+assert.equal(purchaseConsent,PURCHASE_PAYMENT_APPROVAL,"Frontend purchase button must send the current backend consent text");
 assert.equal(isLeadQuoteApproval(LEAD_QUOTE_APPROVAL),true);
 assert.equal(isLeadQuoteApproval("Yes, "+LEAD_QUOTE_APPROVAL),true);
 assert.equal(isLeadQuoteApproval("yes"),false);
