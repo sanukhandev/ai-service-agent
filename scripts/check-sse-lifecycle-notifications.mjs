@@ -86,11 +86,11 @@ for (const stage of ["lead.verified", "otp.verified", "payment.verified"]) {
 }
 assert.equal(recoveredQueries.size, 3);
 assert.match(recoveredQueries.get("lead.verified"), /FROM ticket_operations op/);
-assert.match(recoveredQueries.get("lead.verified"), /ORDER BY op\\.consented_at, op\\.id LIMIT 12/);
-assert.doesNotMatch(recoveredQueries.get("lead.verified"), /op\\.created_at/);
+assert.match(recoveredQueries.get("lead.verified"), /ORDER BY op\.consented_at, op\.id LIMIT 12/);
+assert.doesNotMatch(recoveredQueries.get("lead.verified"), /op\.created_at/);
 for (const stage of ["otp.verified", "payment.verified"]) {
   assert.match(recoveredQueries.get(stage), /FROM ticket_payment_attempts op/);
-  assert.match(recoveredQueries.get(stage), /ORDER BY op\\.created_at, op\\.id LIMIT 12/);
+  assert.match(recoveredQueries.get(stage), /ORDER BY op\.created_at, op\.id LIMIT 12/);
 }
 
 console.log("SSE lifecycle notice contracts PASS: deterministic IDs, failure isolation and successful release");
