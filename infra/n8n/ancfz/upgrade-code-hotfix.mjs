@@ -186,7 +186,11 @@ async function main(){
   if(!Array.isArray(request.expected)||request.expected.length!==results.length)
     fail("SNAPSHOT_REQUIRED","Expected exact workflow hash set");
   for(const x of results){
-    if(x.w.active!==false)fail("WORKFLOW_ACTIVE","Unpublish before updating: "+x.spec.path);
+    // An already-patched active workflow is strictly read-only. Only workflow
+    // definitions with actual parameter changes need to be unpublished.
+    // This avoids pausing Salesforce when patching payment workflows.
+    if(x.changes.length>0 && x.w.active!==false)
+      fail("WORKFLOW_ACTIVE","Unpublish workflow needing a patch: "+x.spec.path);
     const match=request.expected.find(v=>v.id===x.id);
     if(!match||match.hash!==x.hash)
       fail("SNAPSHOT_CHANGED","Workflow changed since backup: "+x.spec.path);
