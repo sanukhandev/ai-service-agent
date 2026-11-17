@@ -35,7 +35,7 @@ try {
     'const payCred={httpHeaderAuth:{id:"4d9487aa-e07b-4bfd-92b9-a9699ffb5e45",name:"ANCFZ - MockGateway Demo X-API-Key"}};',
     'const mode=process.env.MOCK_UPGRADE||"legacy";',
     'let rows=source.map((d,i)=>{',
-    ' const legacy=mode!=="updated"&&mode!=="drift";',
+    ' const legacy=mode!=="updated"&&mode!=="drift"&&!mode.startsWith("updated_");',
     ' const web=structuredClone(d.nodes.find(n=>n.type==="n8n-nodes-base.webhook"));',
     ' web.credentials=hookCred;',
     ' const old={name:oldNodes[i],type:i===1?"n8n-nodes-base.httpRequest":"n8n-nodes-base.code",',
@@ -47,6 +47,13 @@ try {
     ' return {...content,id:"wf-"+i,active:mode==="active"&&i===0};',
     '});',
     'if(mode==="drift")rows[1].nodes.find(n=>n.name==="Inspect Demo Order Response").parameters.jsCode+="\\n// drift";',
+    'if(mode.startsWith("updated_")){',
+    ' const pdf=rows[0].nodes.find(n=>n.name==="Gotenberg Private PDF Renderer");',
+    ' const response=pdf.parameters.options.response.response;',
+    ' if(mode==="updated_implicit_data")delete response.outputPropertyName;',
+    ' if(mode==="updated_wrong_field")response.outputPropertyName="other";',
+    ' if(mode==="updated_wrong_timeout")pdf.parameters.options.timeout=1000;',
+    '}',
     'if(mode==="credential")rows[1].nodes.find(n=>n.name===oldNodes[1]).credentials.httpHeaderAuth.id="wrong-id";',
     'globalThis.fetch=async (url,opts={})=>{',
     ' const u=new URL(url);const method=opts.method||"GET";',
@@ -82,6 +89,16 @@ try {
   assert.equal(simulate("apply","legacy",{expected}).applied,true);
   assert.equal(simulate("apply","legacy",{expected:[{id:"wf-0",hash:"a".repeat(64)},expected[1],expected[2]]}).code,"SNAPSHOT_CHANGED");
   assert(simulate("inspect","updated").workflows.every(w=>w.state==="already_upgraded"));
+  const implicit=simulate("inspect","updated_implicit_data");
+  assert.equal(implicit.ok,true);
+  assert(implicit.workflows.every(w=>w.state==="already_upgraded"));
+  const implicitBackup=simulate("snapshot","updated_implicit_data");
+  assert.equal(implicitBackup.ok,true);
+  assert.equal(simulate("apply","updated_implicit_data",{
+    expected:implicitBackup.snapshot.map(({id,hash})=>({id,hash})),
+  }).applied,true);
+  assert.equal(simulate("inspect","updated_wrong_field").code,"SOURCE_DRIFT");
+  assert.equal(simulate("inspect","updated_wrong_timeout").code,"SOURCE_DRIFT");
   assert.equal(simulate("inspect","drift").code,"SOURCE_DRIFT");
   assert.equal(simulate("inspect","active").code,"WORKFLOW_ACTIVE");
   assert.equal(simulate("inspect","credential").code,"CREDENTIAL_CONFLICT");
