@@ -111,6 +111,23 @@ n8n itself must never publish a host port or be exposed through Nginx.
 - Run live integration tests against n8n and the Salesforce sandbox.
 
 
+## Conversation name collection for lead + quotation (November 17, 2026)
+
+Sara may retain a customer's first name alone in the ticket and address them
+naturally. Before presenting the combined Salesforce enquiry / quotation
+consent, Node must confirm the customer-provided name contains a non-empty
+first and last component. If the ticket only contains a first name, Sara asks
+**"What is your last name?"**, saves the customer's answer alongside the
+already recorded given name and then continues the same conversation.
+No synthetic surname, duplicate first name, default "N/A", or model-inferred
+last name is permitted.
+
+The Node `parseAuthorizedLead` boundary independently rejects a single-token
+name **before creating an outbox operation**; n8n keeps its matching guard.
+One unchanged ticket and exact-consent transaction is used after the missing
+surname is collected. A formal quotation still requires a Salesforce lead
+independently verified by its provider reference.
+
 ## November 2026 Apex validation / duplicate-response hotfix
 
 The custom sandbox Apex endpoint returned HTTP 400 with
