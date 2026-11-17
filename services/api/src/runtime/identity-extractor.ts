@@ -104,12 +104,12 @@ export function parseInvoiceEmiratesId(raw:unknown):{fullName:string;number:stri
   const fields=obj(doc["fields"]);
   const fieldNumber=field(fields,["DocumentNumber","IdNumber","IdentificationNumber","PersonalNumber"]);
   let number=fieldNumber?.replace(/[^0-9]/g,"")??"";
-  if(!/^784\\d{12}$/.test(number)){
+  if(!/^784\d{12}$/.test(number)){
     const text=typeof analysis["content"]==="string"?analysis["content"]:"";
-    number=text.match(/(?:^|[^0-9])(784[- ]?\\d{4}[- ]?\\d{7}[- ]?\\d)(?:$|[^0-9])/)?.[1]
+    number=text.match(/(?:^|[^0-9])(784[- ]?\d{4}[- ]?\d{7}[- ]?\d)(?:$|[^0-9])/)?.[1]
       ?.replace(/[^0-9]/g,"")??"";
   }
-  if(!/^784\\d{12}$/.test(number)||number.slice(-4)!==parsed.documentNumberLast4)
+  if(!/^784\d{12}$/.test(number)||number.slice(-4)!==parsed.documentNumberLast4)
     throw new PersistenceError("CONFLICT","Invoice Emirates ID did not match extracted evidence");
   return {fullName:parsed.fullName,number,last4:parsed.documentNumberLast4};
 }
