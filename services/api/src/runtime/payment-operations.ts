@@ -358,6 +358,15 @@ export class PaymentOperations {
           "Existing order must be reconciled and pending before reopening checkout");
       const checkoutUrl=existingCheckoutUrl(p.provider_payment_id,p.checkout_url);
       if(!checkoutUrl)throw new PersistenceError("CONFLICT","Existing checkout URL is not trusted");
+      const recent=await client.query(
+        `SELECT 1 FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2
+           AND event_type='payment.checkout_link_reopened'
+           AND payload->>'paymentId'=$3 AND created_at>now()-interval '10 seconds'
+           LIMIT 1`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      if(recent.rows.length)throw new PersistenceError("CONFLICT",
+        "Checkout already reopened; use the existing window");
       return {
         ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
         amount:p.amount,currency:p.currency.trim(),orderReference:p.order_reference,
