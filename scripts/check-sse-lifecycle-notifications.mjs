@@ -2,6 +2,7 @@
 /** Offline lifecycle notification regression checks; no provider or database. */
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { LifecycleNoticeRecovery } from "../services/api/dist/runtime/lifecycle-notice-recovery.js";
 import {
   lifecycleNoticeId, TicketMessageRepository,
 } from "../services/api/dist/repositories/messages.js";
@@ -61,4 +62,36 @@ assert.deepEqual(successQueries, [
   "SAVEPOINT service_agent_optional_notice",
   "RELEASE SAVEPOINT service_agent_optional_notice",
 ]);
+// Regression: ticket_operations has consented_at but no created_at. All three
+// recovery stages must select/order only by fields available on their table.
+const recoveredQueries = new Map();
+const recoveryDb = {
+  withAgent: async (agentId, fn) => {
+    assert.equal(agentId, scope.agentId);
+    return fn({
+      query: async (sql, params) => {
+        assert.deepEqual(params, [scope.agentId, "test notice"]);
+        const stage = sql.includes("ticket_operations op") ? "lead.verified"
+          : sql.includes("op.state='verified_test_payment'")
+            ? "payment.verified" : "otp.verified";
+        recoveredQueries.set(stage, sql);
+        return { rows: [] };
+      },
+    });
+  },
+};
+const recovery = new LifecycleNoticeRecovery(recoveryDb, () => {});
+for (const stage of ["lead.verified", "otp.verified", "payment.verified"]) {
+  await recovery.candidates(scope.agentId, stage, "test notice");
+}
+assert.equal(recoveredQueries.size, 3);
+assert.match(recoveredQueries.get("lead.verified"), /FROM ticket_operations op/);
+assert.match(recoveredQueries.get("lead.verified"), /ORDER BY op\\.consented_at, op\\.id LIMIT 12/);
+assert.doesNotMatch(recoveredQueries.get("lead.verified"), /op\\.created_at/);
+for (const stage of ["otp.verified", "payment.verified"]) {
+  assert.match(recoveredQueries.get(stage), /FROM ticket_payment_attempts op/);
+  assert.match(recoveredQueries.get(stage), /ORDER BY op\\.created_at, op\\.id LIMIT 12/);
+}
+
 console.log("SSE lifecycle notice contracts PASS: deterministic IDs, failure isolation and successful release");
+console.log("Lifecycle notice query ordering PASS: Salesforce consented_at, payment created_at");
