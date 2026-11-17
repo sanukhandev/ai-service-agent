@@ -41,6 +41,11 @@ jobs:
         run: node scripts/check-ancfz-salesforce.mjs
       - name: Validate ANZFC owner and project seeding script (dry-run)
         run: node scripts/check-n8n-anzfc-seed.mjs
+      - name: Validate private Salesforce and checkout workflow hotfix (offline)
+        run: |
+          node --check infra/n8n/ancfz/upgrade-code-hotfix.mjs
+          node --check scripts/apply-n8n-code-hotfix.mjs
+          node scripts/apply-n8n-code-hotfix.mjs --dry-run
       - name: Validate Compose profile
         env:
           POSTGRES_PASSWORD: p4-test-migration-only
