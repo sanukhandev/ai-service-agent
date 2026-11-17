@@ -42,7 +42,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// Only the authorized Node outbox worker may call this Header Auth webhook.\n// An API caller's consent flag is NOT independent authorization evidence.\nconst b=$input.first().json.body??{};\nfunction string(v,name,max) {\n  if(typeof v!=='string'||!v.trim()||v.length>max)throw new Error('Invalid '+name);\n  return v.trim();\n}\nconst ticketId=string(b.ticketId,'ticketId',36);\nif(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ticketId))throw new Error('Invalid ticket ID');\nif(b.agentKey!=='ancfz'||b.consent!==true)throw new Error('Node-authorized ANCFZ consent required');\n// Allow existing Node facts (camelCase), or the exact Apex REST field names.\nconst lead={\n  Name:string(b.name??b.Name,'Name',120),\n  Company:string(b.company??b.Company,'Company',255),\n  Phone:string(b.phone??b.Phone,'Phone',40),\n  Email:string(b.email??b.Email,'Email',254),\n  Description:string(b.description??b.Description??b.enquiry,'Description',4000),\n};\nif(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(lead.Email))throw new Error('Invalid Email');\nif(!/^\\+?[0-9 ()-]{7,40}$/.test(lead.Phone))throw new Error('Invalid Phone');\nreturn [{json:{ticketId,lead}}];",
+        "jsCode": "// Only the authorized Node outbox worker may call this Header Auth webhook.\n// An API caller's consent flag is NOT independent authorization evidence.\nconst b=$input.first().json.body??{};\nfunction string(v,name,max) {\n  if(typeof v!=='string'||!v.trim()||v.length>max)throw new Error('Invalid '+name);\n  return v.trim();\n}\nconst ticketId=string(b.ticketId,'ticketId',36);\nif(!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(ticketId))throw new Error('Invalid ticket ID');\nif(b.agentKey!=='ancfz'||b.consent!==true)throw new Error('Node-authorized ANCFZ consent required');\n// Allow existing Node facts (camelCase), or the exact Apex REST field names.\nconst fullName=string(b.name??b.Name,'Name',120).replace(/\\s+/g,' ').trim();\nconst nameParts=fullName.split(' ');\nif(nameParts.length<2||!nameParts[0]||!nameParts.slice(1).join(''))\n  throw new Error('Salesforce requires both first and last name');\nconst lead={\n  FirstName:nameParts[0],\n  LastName:nameParts.slice(1).join(' '),\n  Name:fullName,\n  Company:string(b.company??b.Company,'Company',255),\n  Phone:string(b.phone??b.Phone,'Phone',40),\n  Email:string(b.email??b.Email,'Email',254),\n  Description:string(b.description??b.Description??b.enquiry,'Description',4000),\n};\nif(!/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/.test(lead.Email))throw new Error('Invalid Email');\nif(!/^\\+?[0-9 ()-]{7,40}$/.test(lead.Phone))throw new Error('Invalid Phone');\nreturn [{json:{ticketId,lead}}];",
         "mode": "runOnceForAllItems"
       }
     },
@@ -64,7 +64,14 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Validate ANCFZ Lead').first().json.lead) }}",
         "options": {
-          "timeout": 30000
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         }
       },
       "credentials": {
@@ -84,7 +91,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// The custom Apex REST success schema was not included in the sample.\n// Only treat a real Salesforce Lead ID returned by the endpoint as verified.\n// Do not invent an ID or claim creation on a generic HTTP 200.\nconst raw=$input.first().json;\nconst body=(raw!==null&&typeof raw==='object'&&!Array.isArray(raw))?raw:{raw};\nconst data=(body.data!==null&&typeof body.data==='object'&&!Array.isArray(body.data))?body.data:body;\nconst candidate=data.leadId??data.LeadId??data.Id??data.id;\nconst leadId=typeof candidate==='string'&&/^00Q(?:[A-Za-z0-9]{12}|[A-Za-z0-9]{15})$/.test(candidate)?candidate:null;\nconst negative=body.success===false||data.success===false||body.error===true||data.error===true;\nif(negative)throw new Error('Salesforce Apex REST reported failure');\nconst ticketId=$('Validate ANCFZ Lead').first().json.ticketId;\nreturn [{json:{status:leadId?'verified_completed':'provider_acknowledged_unverified',\n  provider:'salesforce_apex_rest',ticketId,leadId,verified:Boolean(leadId)}}];",
+        "jsCode": "// Inspect status + body from the authenticated Apex REST response.\n// A duplicate Lead ID is only a reconciliation hint: NEVER verify it here.\nconst envelope=$input.first().json;\nconst code=envelope.statusCode;\nif(typeof code!=='number')throw Error('Apex HTTP status unavailable');\nconst raw=envelope.body;\nconst body=(raw!==null&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};\nconst data=(body.data!==null&&typeof body.data==='object'&&!Array.isArray(body.data))?body.data:body;\nconst candidate=data.leadId??data.LeadId??data.Id??data.id;\nconst leadId=typeof candidate==='string'&&/^00Q(?:[A-Za-z0-9]{12}|[A-Za-z0-9]{15})$/.test(candidate)?candidate:null;\nconst ticketId=$('Validate ANCFZ Lead').first().json.ticketId;\nif(code===409){\n  return [{json:{status:'duplicate_requires_review',provider:'salesforce_apex_rest',\n    ticketId,leadId:null,duplicateCandidate:leadId,verified:false}}];\n}\nif(code===400||code===422){\n  return [{json:{status:'provider_rejected',provider:'salesforce_apex_rest',\n    ticketId,leadId:null,verified:false}}];\n}\nif(code<200||code>=300){\n  return [{json:{status:'provider_error_unverified',provider:'salesforce_apex_rest',\n    ticketId,leadId:null,verified:false}}];\n}\nconst negative=body.success===false||data.success===false||body.error===true||data.error===true;\nif(negative){\n  return [{json:{status:'provider_acknowledged_unverified',\n    provider:'salesforce_apex_rest',ticketId,leadId:null,verified:false}}];\n}\nreturn [{json:{status:leadId?'verified_completed':'provider_acknowledged_unverified',\n  provider:'salesforce_apex_rest',ticketId,leadId,verified:Boolean(leadId)}}];",
         "mode": "runOnceForAllItems"
       }
     },

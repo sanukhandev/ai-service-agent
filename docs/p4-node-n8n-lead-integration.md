@@ -109,3 +109,60 @@ n8n itself must never publish a host port or be exposed through Nginx.
 - Implement the independent quotation/PDF, OTP, payment and invoice action
   flows with their own consent and provider-evidence requirements.
 - Run live integration tests against n8n and the Salesforce sandbox.
+
+
+## November 2026 Apex validation / duplicate-response hotfix
+
+The custom sandbox Apex endpoint returned HTTP 400 with
+`First Name is Mandatory to Proceed..!`. The original n8n mapper supplied
+only `Name` and omitted `FirstName` / `LastName`. The reviewed workflow
+now derives `FirstName` from the first full-name token and `LastName` from
+the remaining tokens while preserving the original `Name` field.
+Single-token names are rejected for manual correction rather than fabricating
+a second name component.
+
+The Apex endpoint also returned HTTP 409 `DUPLICATE` with a Salesforce
+`00Q...` Lead ID. A duplicate identifier is NOT proof that this ticket owns
+or created that Lead. The n8n HTTP node now uses full response and never-error
+options, and its Code node classifies HTTP 400/409 without replay. Salesforce
+400 becomes a terminal validation failure, while duplicate 409 remains
+`unknown_outcome` with status `salesforce_duplicate_requires_review`.
+A real 2xx response with a valid Lead ID and matching ticket remains the only
+automatic verification path. Do not reset or replay a dead lead outbox.
+
+### Safe update of existing n8n owner workflows
+
+**Git pull does not update already-imported n8n workflows.** The hotfix
+updater targets exactly two workflows: `ANCFZ | Salesforce Apex REST AI Chatbot
+Lead` and `ANCFZ | 2Checkout Mock Order Create` (the latter fixes n8n's
+`URL is not defined` Code-node error). It changes reviewed node parameters
+only, preserving credential bindings, workflow IDs, project and webhook IDs.
+
+From the repo root on Windows:
+
+```powershell
+.\scripts\update-n8n-code-hotfix.ps1
+```
+
+This inspects without changes. **Before applying**, unpublish both n8n
+workflows in the editor, then run:
+
+```powershell
+.\scripts\update-n8n-code-hotfix.ps1 -Apply
+```
+
+The tool requests the existing n8n owner API key privately, backs up both
+definitions under the local user's private
+`ai-service-agent-n8n-backups` directory, verifies their snapshot hashes,
+refuses workflow drift/credential changes and leaves them unpublished.
+Reconfirm the existing Salesforce OAuth credential and the merchant
+authentication configuration, then deliberately publish both only after
+verification. No Salesforce or MockGateway API POST is made by the upgrader.
+
+For existing dead operations, inspect the lead in Salesforce via authenticated
+**read-only** search by matching contact/company and creation time. If Salesforce
+returns a duplicate, verify name, company, email and phone before attributing
+that Lead ID to a ticket; do not reuse the duplicate ID as success without
+independent verification. This hotfix affects future submissions, not dead
+records from earlier failed attempts.
+

@@ -7,7 +7,7 @@ import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { workerTicketScope } from "../repositories/types.js";
-import { leadDispatchEnabled, verifiedLeadResult } from "./lead-operations.js";
+import { classifyLeadResult, leadDispatchEnabled } from "./lead-operations.js";
 
 interface Claim {
   agentId:string; ticketId:string; operationId:string;
@@ -101,7 +101,7 @@ export class N8nLeadWorker {
     });
   }
 
-  private async deliver(op:Claim):Promise<{leadId:string|null;status:string}> {
+  private async deliver(op:Claim):Promise<{leadId:string|null;status:string;terminal?:boolean}> {
     const secret=process.env.ANCFZ_N8N_WEBHOOK_SECRET;
     if(!secret || secret.length<32) return {leadId:null,status:"not_configured"};
     const controller=new AbortController();
@@ -119,8 +119,7 @@ export class N8nLeadWorker {
       if(text.length>32768) return {leadId:null,status:"n8n_result_too_large"};
       let body:unknown;
       try {body=JSON.parse(text);} catch{return {leadId:null,status:"n8n_invalid_json"};}
-      const leadId=verifiedLeadResult(body,op.ticketId);
-      return {leadId,status:leadId?"verified_completed":"unverified_provider_response"};
+      return classifyLeadResult(body,op.ticketId);
     } catch {
       return {leadId:null,status:"dispatch_unknown"};
     } finally {
@@ -128,7 +127,7 @@ export class N8nLeadWorker {
     }
   }
 
-  private async finalize(op:Claim,result:{leadId:string|null;status:string}):Promise<void> {
+  private async finalize(op:Claim,result:{leadId:string|null;status:string;terminal?:boolean}):Promise<void> {
     await this.db.withAgent(op.agentId,async client=>{
       const current=await client.query<{state:string}>(
         "SELECT state FROM ticket_operations WHERE agent_id=$1 AND id=$2 FOR UPDATE",
@@ -139,7 +138,8 @@ export class N8nLeadWorker {
       const success=Boolean(result.leadId);
       await client.query(
         "UPDATE ticket_operations SET state=$3,provider_reference=$4,provider_status=$5,updated_at=now() WHERE agent_id=$1 AND id=$2",
-        [op.agentId,op.operationId,success?"verified_completed":"unknown_outcome",result.leadId,result.status],
+        [op.agentId,op.operationId,success?"verified_completed":
+          result.terminal?"terminal_failed":"unknown_outcome",result.leadId,result.status],
       );
       await client.query(
         "UPDATE event_outbox SET status=$3,lease_until=NULL WHERE agent_id=$1 AND id=$2",

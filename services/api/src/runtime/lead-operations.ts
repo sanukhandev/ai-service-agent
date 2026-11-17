@@ -158,4 +158,23 @@ export function verifiedLeadResult(raw: unknown, ticketId:string): string | null
     leadIdPattern.test(value.leadId) ? value.leadId : null;
 }
 
+/** Normalizes only reviewed, finite n8n outcomes. Provider errors never
+ * satisfy Salesforce lead verification and never authorize a quotation. */
+export function classifyLeadResult(raw:unknown,ticketId:string):
+  {leadId:string|null;status:string;terminal:boolean}{
+  const leadId=verifiedLeadResult(raw,ticketId);
+  if(leadId)return {leadId,status:"verified_completed",terminal:false};
+  const value=raw&&typeof raw==="object"&&!Array.isArray(raw)
+    ?raw as Record<string,unknown>:{};
+  if(value.ticketId!==ticketId)return {leadId:null,status:"response_ticket_mismatch",terminal:false};
+  const status=value.status;
+  if(status==="duplicate_requires_review")
+    return {leadId:null,status:"salesforce_duplicate_requires_review",terminal:false};
+  if(status==="provider_rejected")
+    return {leadId:null,status:"salesforce_validation_rejected",terminal:true};
+  if(status==="provider_error_unverified")
+    return {leadId:null,status:"salesforce_provider_error",terminal:false};
+  return {leadId:null,status:"unverified_provider_response",terminal:false};
+}
+
 export const LEAD_CONSENT_TEXT = AUTHORIZATION_TEXT;

@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /** Offline P4 safety gate: never contacts Foundry, n8n or Salesforce. */
 import assert from "node:assert/strict";
-import { parseAuthorizedLead, leadDispatchEnabled, verifiedLeadResult, LEAD_CONSENT_TEXT } from "../services/api/dist/runtime/lead-operations.js";
+import { parseAuthorizedLead, leadDispatchEnabled, verifiedLeadResult,
+  classifyLeadResult, LEAD_CONSENT_TEXT } from "../services/api/dist/runtime/lead-operations.js";
 
 const input = {
   requestId:"11111111-1111-4111-8111-111111111111",
@@ -27,4 +28,15 @@ assert.equal(verifiedLeadResult({status:"verified_completed",verified:true,ticke
 assert.equal(verifiedLeadResult({status:"provider_acknowledged_unverified",verified:true,ticketId,leadId},ticketId),null);
 assert.equal(verifiedLeadResult({status:"verified_completed",verified:true,ticketId,leadId:"fake"},ticketId),null);
 assert.equal(verifiedLeadResult(null,ticketId),null);
+assert.deepEqual(classifyLeadResult({status:"verified_completed",verified:true,ticketId,leadId},ticketId),
+  {leadId,status:"verified_completed",terminal:false});
+assert.deepEqual(classifyLeadResult({status:"provider_rejected",verified:false,ticketId,leadId:null},ticketId),
+  {leadId:null,status:"salesforce_validation_rejected",terminal:true});
+assert.deepEqual(classifyLeadResult({status:"duplicate_requires_review",verified:false,ticketId,
+  leadId:null,duplicateCandidate:leadId},ticketId),
+  {leadId:null,status:"salesforce_duplicate_requires_review",terminal:false});
+assert.deepEqual(classifyLeadResult({status:"provider_error_unverified",verified:false,ticketId},ticketId),
+  {leadId:null,status:"salesforce_provider_error",terminal:false});
+assert.equal(classifyLeadResult({status:"verified_completed",verified:true,ticketId:"wrong",leadId},ticketId).leadId,null);
+
 console.log("P4 ANCFZ lead bridge safety checks PASS: consent, bounds, disabled-by-default, verified provider evidence");
