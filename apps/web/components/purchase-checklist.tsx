@@ -76,8 +76,6 @@ export function PurchaseChecklist({
     if(!file || busy)return;
     setBusy(key);setError(null);setNotice(null);
     try{
-      if(!["application/pdf","image/png","image/jpeg"].includes(file.type))
-        throw Error("Use a PDF, PNG or JPEG file");
       const dataBase64=await asBase64(file);
       const result=await json(url+"/documents","POST",{
         requirementKey:key,fileName:file.name,contentType:file.type,dataBase64,

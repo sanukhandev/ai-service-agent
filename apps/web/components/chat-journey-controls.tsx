@@ -36,7 +36,6 @@ interface Journey {
   payment:Summary|null;
 }
 
-const allowedTypes=["application/pdf","image/png","image/jpeg"];
 function safeCheckoutUrl(value:string|null):value is string{
   if(!value)return false;
   try{
@@ -61,7 +60,9 @@ async function requestJson<T>(path:string,body?:object):Promise<T>{
   return result as T;
 }
 async function base64File(file:File):Promise<string>{
-  if(!allowedTypes.includes(file.type)||file.size<100||file.size>1048576)
+  // Filename and browser MIME metadata can be unreliable; the API validates
+  // actual document bytes and accepts only PDF, PNG and JPEG signatures.
+  if(file.size<100||file.size>1048576)
     throw Error("Choose a PDF, PNG or JPEG between 100 bytes and 1 MiB");
   return new Promise<string>((resolve,reject)=>{
     const reader=new FileReader();
