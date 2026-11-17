@@ -10,6 +10,8 @@
  */
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
+import {fileURLToPath} from "node:url";
+import {resolve} from "node:path";
 
 const specs=[
   {file:"01-salesforce-lead.json",name:"ANCFZ | Salesforce Apex REST AI Chatbot Lead",
@@ -149,6 +151,9 @@ function validate(w,source,spec){
   }
   return changes;
 }
+export function requiresUnpublish(workflow){
+  return workflow.changes.length>0 && workflow.w.active!==false;
+}
 function updateBody(current,template,spec){
   const nodes=structuredClone(current.nodes);
   for(const name of spec.targets){
@@ -189,7 +194,7 @@ async function main(){
     // An already-patched active workflow is strictly read-only. Only workflow
     // definitions with actual parameter changes need to be unpublished.
     // This avoids pausing Salesforce when patching payment workflows.
-    if(x.changes.length>0 && x.w.active!==false)
+    if(requiresUnpublish(x))
       fail("WORKFLOW_ACTIVE","Unpublish workflow needing a patch: "+x.spec.path);
     const match=request.expected.find(v=>v.id===x.id);
     if(!match||match.hash!==x.hash)
@@ -207,9 +212,11 @@ async function main(){
     path:spec.path,updated:changes.length>0,remainsInactive:true,
   }))};
 }
-main().then(x=>process.stdout.write(JSON.stringify(x)+"\n")).catch(e=>{
-  // Never print workflow or secret-bearing response bodies.
-  process.stdout.write(JSON.stringify({ok:false,code:e.code||"HOTFIX_FAILED",
-    error:String(e.message||"Workflow update stopped").slice(0,180)})+"\n");
-  process.exitCode=1;
-});
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  main().then(x=>process.stdout.write(JSON.stringify(x)+"\n")).catch(e=>{
+    // Never print workflow or secret-bearing response bodies.
+    process.stdout.write(JSON.stringify({ok:false,code:e.code||"HOTFIX_FAILED",
+      error:String(e.message||"Workflow update stopped").slice(0,180)})+"\n");
+    process.exitCode=1;
+  });
+}
