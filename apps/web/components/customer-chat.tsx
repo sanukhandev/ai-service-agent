@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { ChatComposer } from "./chat-composer";
 import { ChatJourneyControls } from "./chat-journey-controls";
 import { MessageBubble } from "./chat-message";
+import { pendingChatConsent } from "../lib/chat-consent";
 import {
   AlertCircleIcon,
   ArrowDownIcon,
@@ -442,6 +443,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isProcessing;
 
   const currentStatus = ticket ? statusConfig[ticket.status] : null;
+  const pendingConsent = pendingChatConsent(messages);
 
   return (
     <main className="flex h-dvh min-h-[24rem] flex-col text-zinc-900">
@@ -665,7 +667,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               className="space-y-6"
             >
               {messages.map((message) => (
-                <MessageBubble message={message} ticketId={ticket?.id} key={message.id} />
+                <MessageBubble message={message} ticketId={ticket?.id} key={message.id}
+                  consentText={pendingConsent?.messageId===message.id ? pendingConsent.text : undefined}
+                  consentDisabled={locked||isSending}
+                  onConsent={send} />
               ))}
             </ol>
           )}
