@@ -509,7 +509,7 @@ export class PaymentOperations {
     });
   }
 
-  async verify(scope:TicketScope,ticketId:string,paymentId:string){
+  async verify(scope:TicketScope,ticketId:string,paymentId:string,checkoutClosed=false){
     this.requireReadEnabled();requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
     const claim=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
@@ -591,6 +591,22 @@ export class PaymentOperations {
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,paymentId,newState,resolved.providerStatus],
       );
+      if(checkoutClosed){
+        // Window closure is an interaction event, NOT a payment success signal.
+        // This event is emitted only after the authenticated GET has finished.
+        await appendEventTx(client,scope.agentId,ticketId,"payment.checkout_closed_checked",{
+          paymentId,providerStatus:result?.providerStatus??"unavailable",
+          paymentCompleted:newState==="verified_test_payment",testOnly:true,
+        });
+        if(newState==="payment_pending"){
+          await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+            client,scope,ticketId,lifecycleNoticeId("checkout.closed.pending",paymentId),
+            "I checked your existing sandbox payment after the checkout window closed. "+
+            "The gateway still reports PENDING, so no TEST invoice has been issued. "+
+            "You can reopen the existing checkout or continue chatting.",
+          );
+        }
+      }
       if(newState==="verified_test_payment"){
         const existingInvoice=await client.query<{id:string}>(
           "SELECT id FROM ticket_payment_invoices WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
