@@ -36,7 +36,7 @@ export class N8nPaymentVerificationWorker {
       const r=await client.query<{ticket_id:string;id:string}>(
         `SELECT p.ticket_id,p.id FROM ticket_payment_attempts p
          JOIN tickets t ON t.agent_id=p.agent_id AND t.id=p.ticket_id
-         WHERE p.agent_id=$1 AND p.order_reference IS NOT NULL
+         WHERE p.agent_id=$1 AND p.order_reference IS NOT NULL AND p.provider_payment_id IS NOT NULL
            AND p.state IN ('checkout_available','order_created_checkout_unavailable',
              'payment_pending','unknown_outcome','verifying','verified_test_payment')
            AND (p.state<>'verifying' OR p.verification_started_at<now()-interval '2 minutes')
