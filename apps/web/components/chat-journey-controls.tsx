@@ -116,80 +116,6 @@ export function ChatJourneyControls({
   // upload-triggered Node review existed. A POST creates a review message only;
   // it never consents to or dispatches a sandbox purchase.
   useEffect(()=>{
-  // A popup must be created synchronously during the user click. Fetching
-  // the existing checkout link first would trigger browser popup blockers.
-  // Popup close is NOT payment evidence; a separate server-side GET is required.
-  async function verifyAfterCheckoutClose(paymentId:string){
-    setBusy("verify");setError(null);setNotice("Checking the gateway after checkout closed…");
-    try {
-      const result=await requestJson<Summary>(
-        root+"/payments/"+encodeURIComponent(paymentId)+"/checkout-closed",{});
-      await load();
-      onDocumentsUpdated(); // Refresh durable assistant messages and SSE snapshot.
-      const state=result.payments.find(p=>p.id===paymentId)?.state??"unknown_outcome";
-      setNotice(state==="verified_test_payment"
-        ?"The gateway independently confirmed COMPLETE. Sara is preparing your TEST invoice."
-        :state==="payment_pending"
-          ?"The gateway still reports PENDING. You can reopen the existing checkout; no invoice has been issued."
-          :state==="payment_declined"||state==="payment_refunded"
-            ?"Gateway status: "+state.replaceAll("_"," ")+". No new order was created."
-            :"Payment could not be independently confirmed. Use Verify status with gateway; no invoice has been issued.");
-    }catch(e){
-      setError(e instanceof Error?e.message:"Unable to verify the existing checkout");
-      setNotice("Checkout window closed. No payment is assumed complete.");
-      await load().catch(()=>{});
-      onDocumentsUpdated();
-    }finally{setBusy(null);}
-  }
-
-  async function reopenCheckout(){
-    const payment=data?.payment?.payments?.[0];
-    if(!payment||!payment.orderReference||!payment.providerPaymentId||
-       !["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(payment.state)||
-       busy!==null||checkoutWatcher.current)return;
-    setBusy("checkout");setError(null);setNotice(null);setFallbackCheckoutUrl(null);
-    const popup=window.open("about:blank","ancfz_existing_checkout_"+payment.id.replaceAll("-",""),
-      "popup=yes,width=540,height=740,scrollbars=yes,resizable=yes");
-    if(popup){
-      // Prevent the hosted cross-origin payment page from controlling Sara.
-      popup.opener=null;
-      popup.document.title="Existing sandbox checkout";
-      popup.document.body.textContent="Checking the existing sandbox order…";
-    }
-    try {
-      const result=await requestJson<{
-        checkoutUrl:string;paymentId:string;orderReference:string;
-        existingOrder:boolean;newOrderCreated:boolean;providerStatus:string;
-      }>(root+"/payments/"+encodeURIComponent(payment.id)+"/checkout-link",{});
-      if(result.paymentId!==payment.id||result.orderReference!==payment.orderReference||
-         result.existingOrder!==true||result.newOrderCreated!==false||
-         result.providerStatus!=="PENDING"||!safeCheckoutUrl(result.checkoutUrl)||
-         new URL(result.checkoutUrl).pathname!=="/pg/pay/"+payment.providerPaymentId)
-        throw Error("Gateway returned an untrusted existing checkout link");
-      setFallbackCheckoutUrl(result.checkoutUrl);
-      await load();
-      onDocumentsUpdated();
-      if(popup&&!popup.closed){
-        popup.location.replace(result.checkoutUrl);
-        popup.focus();
-        checkoutPopup.current=popup;
-        checkoutWatcher.current=setInterval(()=>{
-          if(!popup.closed)return;
-          if(checkoutWatcher.current)clearInterval(checkoutWatcher.current);
-          checkoutWatcher.current=null;checkoutPopup.current=null;
-          void verifyAfterCheckoutClose(payment.id);
-        },750);
-        setNotice("Existing sandbox checkout opened in a small window. Closing it will trigger an independent payment status check.");
-      }else{
-        setNotice("The small checkout window was blocked or closed. Use the existing checkout link below, then select Verify status.");
-      }
-    }catch(e){
-      if(popup&&!popup.closed)popup.close();
-      setError(e instanceof Error?e.message:"Could not reopen the existing payment");
-      setFallbackCheckoutUrl(null);
-    }finally{setBusy(null);}
-  }
-
   const quote=data?.quotation;
     const purchase=data?.purchase;
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
@@ -290,6 +216,80 @@ export function ChatJourneyControls({
       setNotice("The existing order was checked with the gateway. PENDING is not payment confirmation.");
     }catch(e){setError(e instanceof Error?e.message:"Unable to verify existing gateway order");}
     finally{setBusy(null);}
+  }
+
+  // A popup must be created synchronously during the user click. Fetching
+  // the existing checkout link first would trigger browser popup blockers.
+  // Popup close is NOT payment evidence; a separate server-side GET is required.
+  async function verifyAfterCheckoutClose(paymentId:string){
+    setBusy("verify");setError(null);setNotice("Checking the gateway after checkout closed…");
+    try {
+      const result=await requestJson<Summary>(
+        root+"/payments/"+encodeURIComponent(paymentId)+"/checkout-closed",{});
+      await load();
+      onDocumentsUpdated(); // Refresh durable assistant messages and SSE snapshot.
+      const state=result.payments.find(p=>p.id===paymentId)?.state??"unknown_outcome";
+      setNotice(state==="verified_test_payment"
+        ?"The gateway independently confirmed COMPLETE. Sara is preparing your TEST invoice."
+        :state==="payment_pending"
+          ?"The gateway still reports PENDING. You can reopen the existing checkout; no invoice has been issued."
+          :state==="payment_declined"||state==="payment_refunded"
+            ?"Gateway status: "+state.replaceAll("_"," ")+". No new order was created."
+            :"Payment could not be independently confirmed. Use Verify status with gateway; no invoice has been issued.");
+    }catch(e){
+      setError(e instanceof Error?e.message:"Unable to verify the existing checkout");
+      setNotice("Checkout window closed. No payment is assumed complete.");
+      await load().catch(()=>{});
+      onDocumentsUpdated();
+    }finally{setBusy(null);}
+  }
+
+  async function reopenCheckout(){
+    const payment=data?.payment?.payments?.[0];
+    if(!payment||!payment.orderReference||!payment.providerPaymentId||
+       !["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(payment.state)||
+       busy!==null||checkoutWatcher.current)return;
+    setBusy("checkout");setError(null);setNotice(null);setFallbackCheckoutUrl(null);
+    const popup=window.open("about:blank","ancfz_existing_checkout_"+payment.id.replaceAll("-",""),
+      "popup=yes,width=540,height=740,scrollbars=yes,resizable=yes");
+    if(popup){
+      // Prevent the hosted cross-origin payment page from controlling Sara.
+      popup.opener=null;
+      popup.document.title="Existing sandbox checkout";
+      popup.document.body.textContent="Checking the existing sandbox order…";
+    }
+    try {
+      const result=await requestJson<{
+        checkoutUrl:string;paymentId:string;orderReference:string;
+        existingOrder:boolean;newOrderCreated:boolean;providerStatus:string;
+      }>(root+"/payments/"+encodeURIComponent(payment.id)+"/checkout-link",{});
+      if(result.paymentId!==payment.id||result.orderReference!==payment.orderReference||
+         result.existingOrder!==true||result.newOrderCreated!==false||
+         result.providerStatus!=="PENDING"||!safeCheckoutUrl(result.checkoutUrl)||
+         new URL(result.checkoutUrl).pathname!=="/pg/pay/"+payment.providerPaymentId)
+        throw Error("Gateway returned an untrusted existing checkout link");
+      setFallbackCheckoutUrl(result.checkoutUrl);
+      await load();
+      onDocumentsUpdated();
+      if(popup&&!popup.closed){
+        popup.location.replace(result.checkoutUrl);
+        popup.focus();
+        checkoutPopup.current=popup;
+        checkoutWatcher.current=setInterval(()=>{
+          if(!popup.closed)return;
+          if(checkoutWatcher.current)clearInterval(checkoutWatcher.current);
+          checkoutWatcher.current=null;checkoutPopup.current=null;
+          void verifyAfterCheckoutClose(payment.id);
+        },750);
+        setNotice("Existing sandbox checkout opened in a small window. Closing it will trigger an independent payment status check.");
+      }else{
+        setNotice("The small checkout window was blocked or closed. Use the existing checkout link below, then select Verify status.");
+      }
+    }catch(e){
+      if(popup&&!popup.closed)popup.close();
+      setError(e instanceof Error?e.message:"Could not reopen the existing payment");
+      setFallbackCheckoutUrl(null);
+    }finally{setBusy(null);}
   }
 
   const quote=data?.quotation;
