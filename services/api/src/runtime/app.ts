@@ -466,6 +466,15 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       return payments.verify(scope,idParam(request),request.params.paymentId);
     });
 
+  // Never creates or retries an order: checks an EXISTING provider reference
+  // against the stored ticket/quote/price through authenticated backend GET.
+  app.post<{Params:{ticketId:string;paymentId:string}}>(
+    "/api/v1/tickets/:ticketId/payments/:paymentId/reconcile",async(request)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      return payments.reconcile(scope,idParam(request),request.params.paymentId,request.body);
+    });
+
   app.get<{Params:{ticketId:string;invoiceId:string}}>(
     "/api/v1/tickets/:ticketId/invoices/:invoiceId/pdf",async(request,reply)=>{
       const scope=await scopeFromCookie(db,request);
