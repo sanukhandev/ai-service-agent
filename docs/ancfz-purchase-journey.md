@@ -164,3 +164,42 @@ synthetic samples before enabling broader access.
 
 The 2Checkout sandbox must be validated with synthetic data only. No
 successful CI smoke is evidence of a live merchant transaction.
+
+
+## Reopen existing hosted checkout from Sara (POC)
+
+A customer with an already-reconciled, independently matched **PENDING**
+MockGateway order can use **Regenerate / reopen existing payment link** in
+Sara's in-chat secure transaction controls. This means **recovering the
+same order's hosted URL**, not generating a new order or rerunning an OTP.
+
+- `POST /api/v1/tickets/:ticketId/payments/:paymentId/checkout-link`
+  accepts no identifiers or status from the browser. The ticket owner must
+  already own the payment, which must have a durable RefNo and provider
+  transaction ID and be in a checkout/pending state.
+- Node invokes the private n8n payment-verification workflow, which issues
+  an authenticated GET by RefNo and checks the exact ANCFZ external reference,
+  original quotation/amount/currency and `PENDING` provider status.
+  `COMPLETE`, mismatched, unknown and terminal payments cannot reopen.
+- The HTTPS checkout URL is reconstructed only from the **stored** MockGateway
+  transaction ID (or a previously stored exact matching URL), with an
+  exact-host/path validator. No new provider POST is ever sent. A 10-second
+  per-payment event cooldown prevents accidental reopening bursts.
+- The browser opens a small, resizable `mockgateway.com` checkout window
+  from the user's click. When it closes, it calls
+  `POST /api/v1/tickets/:ticketId/payments/:paymentId/checkout-closed`.
+  Popup blockers receive a safe same-order link and can manually verify.
+- Window closure, browser redirects and gateway notifications **are not**
+  payment evidence. The close endpoint calls the existing authenticated
+  `PaymentOperations.verify`, and writes `payment.checkout_closed_checked`
+  to ticket SSE, plus a deduplicated assistant notice when the order is
+  still `PENDING`. A separate authenticated `COMPLETE` is the **only** path
+  to an idempotent TEST invoice; subsequent invoice rendering emits the
+  usual chat/SSE milestones.
+- If payment is `unknown_outcome` with no stored order references, the
+  customer must first complete the existing guarded reconciliation. This
+  link-recovery feature intentionally does not bypass the five-attempt
+  lookup limit or reactivate the original dead order-creation outbox.
+
+Test with a synthetic matched order before enabling the UI. No production
+card data, original OTP values or merchant secrets should be entered in chat.
