@@ -38,6 +38,23 @@ function field(value: unknown, label: string, max: number): string {
   return value.trim();
 }
 
+/** Salesforce requires a real surname. Single-word names remain valid chat facts
+ * but cannot authorize or dispatch a lead to n8n. Do not fabricate a surname. */
+export function parseSalesforceLeadName(value: unknown): {
+  firstName: string; lastName: string; fullName: string;
+} | null {
+  if (typeof value !== "string") return null;
+  const fullName = value.trim().replace(/\s+/g, " ");
+  if (fullName.length > 120) return null;
+  const separator = fullName.indexOf(" ");
+  if (separator <= 0 || separator === fullName.length - 1) return null;
+  return {
+    firstName: fullName.slice(0, separator),
+    lastName: fullName.slice(separator + 1),
+    fullName,
+  };
+}
+
 export function leadDispatchEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
   return env.ANCFZ_LEAD_DISPATCH_ENABLED === "true" &&
     typeof env.ANCFZ_N8N_WEBHOOK_SECRET === "string" &&
@@ -55,8 +72,12 @@ export function parseAuthorizedLead(raw: unknown): { requestId: string; lead: Le
   if (typeof body.requestId !== "string" || !uuid.test(body.requestId)) {
     throw new PersistenceError("INVALID_INPUT","Invalid requestId");
   }
+  const name = parseSalesforceLeadName(field(body.name,"name",120));
+  if (!name) {
+    throw new PersistenceError("INVALID_INPUT", "Last name is required for Salesforce lead creation");
+  }
   const lead = {
-    name:field(body.name,"name",120),
+    name:name.fullName,
     company:field(body.company,"company",255),
     phone:field(body.phone,"phone",40),
     email:field(body.email,"email",254).toLowerCase(),
