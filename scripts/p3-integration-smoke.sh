@@ -45,11 +45,20 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 12
+test "$migrations" = 13
 # New OTP/payment/invoice tables must enforce agent-scoped row-level security.
 payment_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname IN ('ticket_payment_otps','ticket_payment_attempts','ticket_payment_invoices') AND relrowsecurity AND relforcerowsecurity")
 test "$payment_rls" = 3
+# Separate provider payment_id from display RefNo; runtime may update only
+# this narrowly granted field and the existing payment state.
+provider_id_column=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM information_schema.columns WHERE table_name='ticket_payment_attempts' AND column_name='provider_payment_id'")
+test "$provider_id_column" = 1
+provider_id_grant=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT has_column_privilege('agent_runtime','ticket_payment_attempts','provider_payment_id','UPDATE')")
+test "$provider_id_grant" = t
+
 count=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM ticket_messages WHERE ticket_id='$ticket_id' AND role='customer'")
 test "$count" = 1
