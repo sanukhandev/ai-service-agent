@@ -5,6 +5,7 @@
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { ChatJourney } from "../services/api/dist/runtime/chat-journey.js";
+import { workerTicketScope } from "../services/api/dist/repositories/types.js";
 import {quoteDetails,quoteRequirements} from "../services/api/dist/runtime/quote-proposal.js";
 import { LeadOperations } from "../services/api/dist/runtime/lead-operations.js";
 import { QuotationOperations } from "../services/api/dist/runtime/quotation-operations.js";
@@ -167,7 +168,7 @@ try{
   const log=(detail,message)=>problems.push({detail,message});
   // A mononym is an acceptable sourced chat fact, never a dispatchable
   // Salesforce lead or a combined enquiry/quotation consent proposal.
-  const scope={agentId,owner:{kind:"internal"}};
+  const scope=workerTicketScope(agentId,ticketId);
   facts.customer_name="Test";
   const lastNameQuestion=await journey.prepare(scope,ticketId,"generate_quote");
   assert.match(lastNameQuestion,/What is your last name\?/);
