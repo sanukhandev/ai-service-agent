@@ -58,6 +58,10 @@ const query=async(sql,params=[])=>{
     return {rows:[{id:ticketId,status:"open"}]};
   if(sql.includes("SELECT a.ticket_id,p.id AS proposal_id"))
     return {rows:approvals};
+  if(sql.includes("SELECT agent_key FROM agents WHERE id=$1 AND status='active'"))
+    return {rows:[{agent_key:"ancfz"}]};
+  if(sql.includes("SELECT i.allowed_actions AS actions FROM tickets"))
+    return {rows:[{actions:["create_lead","generate_quote","purchase_quotation"]}]};
   if(sql.includes("SELECT i.intent_key,i.allowed_actions FROM tickets"))
     return {rows:[{intent_key:"company_formation",
       allowed_actions:["create_lead","generate_quote","purchase_quotation"]}]};
@@ -161,6 +165,16 @@ try{
   TicketMessageRepository.prototype.createAssistantMessage=async()=>({duplicated:false});
   const journey=new ChatJourney(db);
   const log=(detail,message)=>problems.push({detail,message});
+  // A mononym is an acceptable sourced chat fact, never a dispatchable
+  // Salesforce lead or a combined enquiry/quotation consent proposal.
+  const scope={agentId,owner:{kind:"internal"}};
+  facts.customer_name="Test";
+  const lastNameQuestion=await journey.prepare(scope,ticketId,"generate_quote");
+  assert.match(lastNameQuestion,/What is your last name\?/);
+  assert.equal(leadSubmits,0,"No Salesforce submission when surname is missing");
+  facts.customer_name="Test Customer";
+  const prepared=await journey.prepare(scope,ticketId,"generate_quote");
+  assert.match(prepared,/Review your ANCFZ enquiry and quotation/);
   await journey.advance(log);
   assert.equal(leadSubmits,1);
   assert.equal(quoteSubmits,0,"No quotation before a verified CRM lead");
