@@ -64,7 +64,14 @@
         "specifyBody": "json",
         "jsonBody": "={{ JSON.stringify($('Validate ANCFZ Lead').first().json.lead) }}",
         "options": {
-          "timeout": 30000
+          "timeout": 30000,
+          "response": {
+            "response": {
+              "fullResponse": true,
+              "neverError": true,
+              "responseFormat": "json"
+            }
+          }
         }
       },
       "credentials": {
@@ -84,7 +91,7 @@
         300
       ],
       "parameters": {
-        "jsCode": "// The custom Apex REST success schema was not included in the sample.\n// Only treat a real Salesforce Lead ID returned by the endpoint as verified.\n// Do not invent an ID or claim creation on a generic HTTP 200.\nconst raw=$input.first().json;\nconst body=(raw!==null&&typeof raw==='object'&&!Array.isArray(raw))?raw:{raw};\nconst data=(body.data!==null&&typeof body.data==='object'&&!Array.isArray(body.data))?body.data:body;\nconst candidate=data.leadId??data.LeadId??data.Id??data.id;\nconst leadId=typeof candidate==='string'&&/^00Q(?:[A-Za-z0-9]{12}|[A-Za-z0-9]{15})$/.test(candidate)?candidate:null;\nconst negative=body.success===false||data.success===false||body.error===true||data.error===true;\nif(negative)throw new Error('Salesforce Apex REST reported failure');\nconst ticketId=$('Validate ANCFZ Lead').first().json.ticketId;\nreturn [{json:{status:leadId?'verified_completed':'provider_acknowledged_unverified',\n  provider:'salesforce_apex_rest',ticketId,leadId,verified:Boolean(leadId)}}];",
+        "jsCode": "// Inspect status + body from the authenticated Apex REST response.\n// A duplicate Lead ID is only a reconciliation hint: NEVER verify it here.\nconst envelope=$input.first().json;\nconst code=envelope.statusCode;\nif(typeof code!=='number')throw Error('Apex HTTP status unavailable');\nconst raw=envelope.body;\nconst body=(raw!==null&&typeof raw==='object'&&!Array.isArray(raw))?raw:{};\nconst data=(body.data!==null&&typeof body.data==='object'&&!Array.isArray(body.data))?body.data:body;\nconst candidate=data.leadId??data.LeadId??data.Id??data.id;\nconst leadId=typeof candidate==='string'&&/^00Q(?:[A-Za-z0-9]{12}|[A-Za-z0-9]{15})$/.test(candidate)?candidate:null;\nconst ticketId=$('Validate ANCFZ Lead').first().json.ticketId;\nif(code===409){\n  return [{json:{status:'duplicate_requires_review',provider:'salesforce_apex_rest',\n    ticketId,leadId:null,duplicateCandidate:leadId,verified:false}}];\n}\nif(code===400||code===422){\n  return [{json:{status:'provider_rejected',provider:'salesforce_apex_rest',\n    ticketId,leadId:null,verified:false}}];\n}\nif(code<200||code>=300){\n  return [{json:{status:'provider_error_unverified',provider:'salesforce_apex_rest',\n    ticketId,leadId:null,verified:false}}];\n}\nconst negative=body.success===false||data.success===false||body.error===true||data.error===true;\nif(negative){\n  return [{json:{status:'provider_acknowledged_unverified',\n    provider:'salesforce_apex_rest',ticketId,leadId:null,verified:false}}];\n}\nreturn [{json:{status:leadId?'verified_completed':'provider_acknowledged_unverified',\n  provider:'salesforce_apex_rest',ticketId,leadId,verified:Boolean(leadId)}}];",
         "mode": "runOnceForAllItems"
       }
     },
