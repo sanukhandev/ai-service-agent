@@ -150,6 +150,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [showLatest, setShowLatest] = useState(false);
   const [copiedTicket, setCopiedTicket] = useState(false);
   const [prefilledPrompt, setPrefilledPrompt] = useState<string | null>(null);
+  const [focusReplyId, setFocusReplyId] = useState<string | null>(null);
 
   const initPromise = useRef<Promise<TicketHistory> | null>(null);
   const sendLock = useRef(false);
@@ -157,12 +158,17 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const transcriptRef = useRef<HTMLDivElement>(null);
   const followLatest = useRef(true);
   const prevMessageCount = useRef(0);
+  // Seeded on initial load so old replies never steal focus on refresh.
+  const seenAssistantMessages = useRef<Set<string>>(new Set());
   useEffect(() => {
     let subscribed = true;
     if (!initPromise.current) initPromise.current = initializeTicket(agentKey);
     initPromise.current
       .then((history) => {
         if (!subscribed) return;
+        seenAssistantMessages.current = new Set(
+          history.messages.filter(message => message.role === "assistant").map(message => message.id),
+        );
         setTicket(history.ticket);
         setMessages(history.messages);
         setHasOlder(history.hasOlder===true);
@@ -183,6 +189,8 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const restart = useCallback(() => {
     initPromise.current = null;
     retryRequest.current = null;
+    seenAssistantMessages.current.clear();
+    setFocusReplyId(null);
     setTicket(null);
     setMessages([]);
     setHasOlder(false);
@@ -208,6 +216,13 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       if (history.ticket.agentKey !== agentKey)
         throw new ChatApiError("Ticket agent mismatch.", 404, "NOT_FOUND");
       setTicket(history.ticket);
+      // SSE is preferred; refresh handles replies received during reconnection.
+      const novelReplies = history.messages.filter(message =>
+        message.role === "assistant" && !seenAssistantMessages.current.has(message.id),
+      );
+      history.messages.filter(message => message.role === "assistant")
+        .forEach(message => seenAssistantMessages.current.add(message.id));
+      if (novelReplies.length) setFocusReplyId(novelReplies.at(-1)!.id);
       setMessages((current) => mergeMessages(current, history.messages));
       // A lifecycle assistant notice can arrive during an active Foundry turn.
       // Only the authoritative ticket state decides whether processing finished.
@@ -245,6 +260,12 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       if (incomingMessage) {
         setMessages((existing) => mergeMessages(existing, [incomingMessage]));
         if (incomingMessage.role === "assistant") {
+          // A new assistant reply/notice requests focus once; disabled state
+          // defers focus until the active model turn has completed.
+          if (!seenAssistantMessages.current.has(incomingMessage.id)) {
+            seenAssistantMessages.current.add(incomingMessage.id);
+            setFocusReplyId(incomingMessage.id);
+          }
           // Do not clear a running Foundry turn for an unsolicited workflow notice.
           setSendError(null);
         }
@@ -755,6 +776,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             disabled={locked}
             sending={isSending}
             prefilledPrompt={prefilledPrompt}
+            focusReplyId={focusReplyId}
             onClearPrefilledPrompt={() => setPrefilledPrompt(null)}
           />
 
