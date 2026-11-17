@@ -139,7 +139,9 @@ function validate(w,source,spec){
             fail("SOURCE_DRIFT","Unexpected Salesforce HTTP node config");
         }else if(expected.name==="2Checkout Mock GET Order"){
           const old=structuredClone(expected.parameters);
-          old.url=old.url.replace("json.providerPaymentId","json.orderReference");
+          // Previous deployed workflow used internal payment ID as GET path.
+          // The mock provider's live 404 explicitly calls the URL path RefNo.
+          old.url=old.url.replace("json.orderReference","json.providerPaymentId");
           if(JSON.stringify(current.parameters)!==JSON.stringify(old))
             fail("SOURCE_DRIFT","Unexpected MockGateway GET node config");
         }

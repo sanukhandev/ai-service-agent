@@ -135,6 +135,20 @@ for(const bad of [
 ]){
   await assert.rejects(inspectOrder({first:()=>({json:{...orderResponse,...bad}})},context,Buffer,URL));
 }
+// Do not bypass missing/mis-expanded provider identity just because the
+// order POST succeeded. Distinguish provider template faults safely.
+await assert.rejects(
+  inspectOrder({first:()=>({json:{...orderResponse,ExternalReference:undefined}})},context,Buffer,undefined),
+  /2Checkout external reference mismatch \(missing\)/,
+);
+await assert.rejects(
+  inspectOrder({first:()=>({json:{...orderResponse,ExternalReference:"{{merchant_order_id}}"}})},context,Buffer,undefined),
+  /2Checkout external reference mismatch \(unexpanded_template\)/,
+);
+await assert.rejects(
+  inspectOrder({first:()=>({json:{...orderResponse,ExternalReference:"ANCFZ-different"}})},context,Buffer,undefined),
+  /2Checkout external reference mismatch \(different_value\)/,
+);
 const missingLink=(await inspectOrder({first:()=>({json:{...orderResponse,redirect_url:undefined}})},context,Buffer,URL))[0].json;
 assert.equal(missingLink.checkoutUrl,null);
 assert.equal(missingLink.status,"order_created_checkout_unavailable");
@@ -142,8 +156,10 @@ assert.equal(missingLink.status,"order_created_checkout_unavailable");
 const statusNode=verify.nodes.find(n=>n.name==="2Checkout Mock GET Order");
 assert.equal(statusNode.parameters.method,"GET");
 assert(statusNode.parameters.url.includes("/api/base/2checkout-fzucuq/rest/6.0/orders/"));
-assert(statusNode.parameters.url.includes(".json.providerPaymentId"));
-assert(!statusNode.parameters.url.includes(".json.orderReference"));
+// The live MockGateway GET reports "No order found with RefNo ...":
+// it indexes its path by order number, not dashboard transaction UUID.
+assert(statusNode.parameters.url.includes(".json.orderReference"));
+assert(!statusNode.parameters.url.includes(".json.providerPaymentId"));
 assert.equal(statusNode.parameters.genericAuthType,"httpHeaderAuth");
 const req=code(verify,"Validate Verification Request");
 const v=(await req(input({

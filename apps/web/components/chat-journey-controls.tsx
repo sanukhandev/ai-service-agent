@@ -366,16 +366,16 @@ export function ChatJourneyControls({
                       maxLength={120} placeholder="Existing provider order number"
                       className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs"/>
                     <label className="block text-xs font-medium" htmlFor="existing-gateway-payment-id">
-                      Existing MockGateway payment ID (GET path)
+                      MockGateway transaction ID (for record matching, not GET lookup)
                     </label>
                     <input id="existing-gateway-payment-id" autoComplete="off"
                       value={providerPaymentId}
                       onChange={event=>setProviderPaymentId(event.currentTarget.value)}
-                      maxLength={120} placeholder="Existing payment ID, not RefNo"
+                      maxLength={120} placeholder="Transaction ID from MockGateway dashboard"
                       className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs"/>
                     <p className="text-xs text-zinc-600">
-                      Read-only gateway lookup. Enter both the existing payment ID and the matching
-                      RefNo/OrderNo from the provider. No new order or OTP will be generated.
+                      Read-only gateway lookup uses the existing RefNo/OrderNo. Enter its matching
+                      dashboard transaction ID for recovery tracking. No new order or OTP will be generated.
                     </p>
                     <button type="submit" disabled={busy!==null||
                       !/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim())||
