@@ -18,7 +18,7 @@ import { invoiceFinalizationDecision } from "../services/api/dist/runtime/n8n-in
 // The restricted agent_runtime role has SELECT/INSERT on quotations but no
 // UPDATE grant; FOR UPDATE OF q would make OTP issuance fail with SQLSTATE 42501.
 const paymentSource=readFileSync(new URL("../services/api/src/runtime/payment-operations.ts",import.meta.url),"utf8");
-assert.doesNotMatch(paymentSource,/^\\s*FOR UPDATE OF q\\b/m,
+assert.doesNotMatch(paymentSource,/^\s*FOR UPDATE OF q\b/m,
   "Immutable quotation preflight must not acquire an unauthorized row lock");
 
 const conf={
