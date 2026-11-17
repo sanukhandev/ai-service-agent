@@ -183,7 +183,7 @@ export function registerIntentTools(
     },
     {
       name: "record_ticket_facts",
-      description: "Persist customer-provided details from the latest message. For ANCFZ lead enquiries also record customer_name and customer_phone, and for mock billing customer_test_email (@example.invalid). Do not invent values or record OTP/card/identity contents. Every fact is linked to the customer's message.",
+      description: "Persist customer-provided details from the latest message. For ANCFZ lead enquiries record customer_name and customer_phone. A first name alone may be recorded in customer_name; if the customer later supplies a surname, use the existing sourced first name and their new surname to update customer_name to the full name. Never invent surnames. For mock billing use customer_test_email (@example.invalid). Do not invent values or record OTP/card/identity contents. Every fact is linked to the customer's message.",
       parameters: schema({
         intentKey: { type: "string", maxLength: 128 },
         facts: {
