@@ -250,13 +250,16 @@ export function ChatJourneyControls({
        !["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(payment.state)||
        busy!==null||checkoutWatcher.current)return;
     setBusy("checkout");setError(null);setNotice(null);setFallbackCheckoutUrl(null);
-    const popup=window.open("about:blank","ancfz_existing_checkout_"+payment.id.replaceAll("-",""),
+    const popup=window.open("about:blank","_blank",
       "popup=yes,width=540,height=740,scrollbars=yes,resizable=yes");
     if(popup){
-      // Prevent the hosted cross-origin payment page from controlling Sara.
-      popup.opener=null;
-      popup.document.title="Existing sandbox checkout";
-      popup.document.body.textContent="Checking the existing sandbox order…";
+      // Prevent the cross-origin payment page from controlling Sara.
+      // Document access is only optional presentation, never authorization.
+      try{
+        popup.document.title="Existing sandbox checkout";
+        popup.document.body.textContent="Checking the existing sandbox order…";
+        popup.opener=null;
+      }catch{/* Browser isolation may disallow modifying the blank window. */}
     }
     try {
       const result=await requestJson<{
