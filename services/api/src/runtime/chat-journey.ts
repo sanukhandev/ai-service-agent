@@ -441,6 +441,7 @@ export class ChatJourney {
       });
       for(const item of approvals){
         const scope=workerTicketScope(agentId,item.ticket_id);
+        let paymentPhase:string|null=null;
         try{
           if(item.kind==="lead_quote"){
             const x=item.proposal.data as LeadQuoteData;
@@ -472,15 +473,18 @@ export class ChatJourney {
             continue;
           }
           if(item.kind==="purchase_payment"){
+            paymentPhase="purchase_read";
             const x=item.proposal.data as PurchaseData;
             const purchase=await new PurchaseOperations(this.db).read(scope,item.ticket_id);
             if(!purchase.confirmed){
+              paymentPhase="purchase_confirm";
               await new PurchaseOperations(this.db).confirm(scope,item.ticket_id,{
                 requestId:item.proposal_id,quotationId:x.quotationId,amount:x.amount,
                 currency:x.currency,consent:true,consentText:PURCHASE_CONSENT,
               });
             }
             if(!paymentEnabled())continue;
+            paymentPhase="otp_input_preflight";
             const firstName=x.billingName.trim().split(/\s+/)[0]??"";
             const otpRequest={
               requestId:item.proposal_id,quotationId:x.quotationId,
@@ -495,6 +499,7 @@ export class ChatJourney {
             // Therefore, if an old dispatch marker has NO OTP row, dispatch
             // cannot have happened: a bounded, cooled-down retry is safe.
             // An existing OTP row (including failed/expired) is never replayed.
+            paymentPhase="otp_claim";
             const started=await this.db.withAgent(agentId,async client=>{
               await authorizedTicket(client,scope,item.ticket_id,true);
               const existing=await client.query(
@@ -514,9 +519,11 @@ export class ChatJourney {
                   [agentId,item.ticket_id,x.quotationId],
                 );
                 const state=retries.rows[0];
-                // Maximum two recovery attempts, 90 seconds apart. The ticket
-                // lock serializes competing workers before the durable claim.
-                if(!state?.ready||state.attempts>=3)return true;
+                // One further no-row recovery is permitted for tickets that
+                // exhausted the previous budget against the unauthorized
+                // quotation lock (fixed by the current payment preflight).
+                // Still bounded and serialized; no existing OTP is replayed.
+                if(!state?.ready||state.attempts>=4)return true;
                 await appendEventTx(client,agentId,item.ticket_id,
                   "chat.otp.preinsert_retry_started",{
                     quotationId:x.quotationId,proposalId:item.proposal_id,
@@ -530,6 +537,7 @@ export class ChatJourney {
               return false;
             });
             if(started)continue;
+            paymentPhase="otp_issue";
             await new PaymentOperations(this.db).issueOtp(scope,item.ticket_id,otpRequest);
             // Only status/challenge ID is exposed to the browser; code stays
             // exclusively in n8n's private mock table and an HMAC in Node.
@@ -560,8 +568,17 @@ export class ChatJourney {
           };
           const reason=error instanceof PersistenceError
             ?reasons[error.message]??error.code:"UNEXPECTED";
+          // A five-character SQLSTATE is safe operational metadata. Never
+          // include the raw PG exception, parameters, SQL text or credentials.
+          const cause=error instanceof PersistenceError?error.cause:null;
+          const rawState=cause && typeof cause==="object" && "code" in cause
+            ?cause.code:null;
+          const sqlState=typeof rawState==="string" && /^[A-Z0-9]{5}$/.test(rawState)
+            ?rawState:null;
           log({ticketId:item.ticket_id,code:(error as Error).name,
-            ...(item.kind==="purchase_payment"?{reason}:{}),
+            ...(item.kind==="purchase_payment"?{
+              reason,phase:paymentPhase,...(sqlState?{sqlState}:{}),
+            }:{}),
           },"Chat-authorized workflow paused; preserve provider/idempotency state");
         }
       }

@@ -84,8 +84,10 @@ image rebuild alone does not rewrite saved n8n workflows.
    rate limiting, HMAC digest, expiration and max failures.
    If an earlier OTP dispatcher recorded a one-shot start marker but failed
    **before creating an OTP database row**, the worker may recover at most
-   twice, at least 90 seconds between durable attempts, after rechecking the
-   approved quotation and pre-validating synthetic billing input. This is
+   three times, at least 90 seconds between durable attempts, after rechecking
+   the approved quotation and pre-validating synthetic billing input. The
+   third recovery specifically accommodates tickets that exhausted the older
+   retry budget against an erroneous quotation row lock. This is
    safe because the external n8n delivery call only occurs after the OTP row
    is committed. Existing OTP rows, even failed or expired, prohibit this
    automatic recovery; operators must use a separately authorized issuance

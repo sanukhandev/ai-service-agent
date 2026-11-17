@@ -134,6 +134,25 @@ docker compose exec -T -e P5_PURCHASE_OFFLINE_SMOKE=1 -e P3_TEST_TICKET="$ticket
   api node dist/runtime/purchase-smoke.js
 purchase_status=$(curl --fail --silent --show-error -b "$jar" "http://localhost/api/v1/tickets/$ticket_id/purchase")
 printf '%s' "$purchase_status" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d["supported"];assert d["readyForOtp"];assert d["confirmed"];assert len(d["requirements"])==2'
+# Exercise the quotation read as the REAL restricted runtime role.
+# Verified quotations are immutable; preflight must NOT need an UPDATE grant.
+# This test executes against the disposable CI database with RLS active.
+docker compose exec -T postgres psql -X -v ON_ERROR_STOP=1 -U postgres -d "$POSTGRES_DB" <<SQL
+BEGIN;
+SELECT set_config('app.agent_id',(SELECT agent_id::text FROM tickets WHERE id='$ticket_id'),true);
+SET LOCAL ROLE agent_runtime;
+SELECT q.id,q.amount::text,q.currency,op.state,
+       EXISTS(SELECT 1 FROM ticket_quotation_pdfs pdf
+         WHERE pdf.agent_id=q.agent_id AND pdf.ticket_id=q.ticket_id
+           AND pdf.quotation_id=q.id) AS has_pdf
+FROM ticket_quotations q
+JOIN ticket_operations op ON op.agent_id=q.agent_id AND op.ticket_id=q.ticket_id
+  AND op.id=q.operation_id AND op.operation_key='ancfz_render_quote'
+WHERE q.agent_id=current_setting('app.agent_id')::uuid
+  AND q.ticket_id='$ticket_id'
+  AND q.id=(SELECT id FROM ticket_quotations WHERE ticket_id='$ticket_id' LIMIT 1);
+ROLLBACK;
+SQL
 # Contract-level DB execution of every non-provider action in the bootstrap
 # catalog, including authorization, fact provenance and durable chat notice.
 service_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
