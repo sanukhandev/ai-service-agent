@@ -41,6 +41,8 @@ jobs:
         run: node scripts/check-p4-quotation.mjs
       - name: Validate Node P5 2Checkout OTP/payment/invoice safety offline
         run: node scripts/check-p5-2checkout.mjs
+      - name: Validate chat journey OTP recovery and duplicate-dispatch guards
+        run: node scripts/check-chat-journey-state.mjs
       - name: Validate SSE milestone notices and fail-safe persistence
         run: node scripts/check-sse-lifecycle-notifications.mjs
       - name: Validate bounded multi-ticket worker concurrency
