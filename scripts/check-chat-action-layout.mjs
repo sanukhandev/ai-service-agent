@@ -87,7 +87,7 @@ assert.match(chat,/if \(novelReplies\.length\) setFocusReplyId\(/);
 assert.match(chat,/if \(!seenAssistantMessages\.current\.has\(incomingMessage\.id\)\)/);
 assert.match(chat,/focusReplyId=\{focusReplyId\}/);
 // Frontend-only buttons must send the existing exact chat consent text,
- // not invent a new backend operation or expose approvals on stale messages.
+// not invent a new backend operation or expose approvals on stale messages.
 const consentSource=readFileSync("apps/web/lib/chat-consent.ts","utf8");
 const consentExports={};
 new Function("exports",ts.transpileModule(consentSource,{
@@ -98,14 +98,14 @@ const purchaseConsent=consentExports.PURCHASE_CONSENT_TEXT;
 const proposalRef="11111111-1111-4111-8111-111111111111";
 const quoteProposal={
   id:"quote-proposal",role:"assistant",
-  text:"**Review your ANCFZ enquiry and quotation**\\n"+
-    "Proposal reference: "+proposalRef+"\\n"+
+  text:"**Review your ANCFZ enquiry and quotation**\n"+
+    "Proposal reference: "+proposalRef+"\n"+
     'To approve both actions, reply: "'+quoteConsent+'"',
 };
 const purchaseProposal={
   id:"purchase-proposal",role:"assistant",
-  text:"**Review your sandbox purchase and test payment**\\n"+
-    "Proposal reference: "+proposalRef+"\\n"+
+  text:"**Review your sandbox purchase and test payment**\n"+
+    "Proposal reference: "+proposalRef+"\n"+
     'To approve, reply: "'+purchaseConsent+'"',
 };
 const customer={id:"customer-reply",role:"customer",text:"No, I need changes"};
@@ -129,15 +129,15 @@ assert.equal(pending([{...quoteProposal,text:quoteProposal.text.replace(quoteCon
 assert.equal(pending([{...purchaseProposal,text:"Your invoice is ready"}]),null);
 assert.equal(pending([{...quoteProposal,text:quoteProposal.text.replace(proposalRef,"not-a-reference")}]),null);
 assert.equal(pending([{...quoteProposal,role:"customer"}]),null);
-assert.match(chat,/pendingChatConsent\\(messages\\)/);
-assert.match(chat,/consentText=\\{pendingConsent\\?\\.messageId===message\\.id/);
-assert.match(chat,/consentDisabled=\\{locked\\|\\|isSending\\}/);
-assert.match(chat,/onConsent=\\{send\\}/);
+assert.match(chat,/pendingChatConsent\(messages\)/);
+assert.match(chat,/consentText=\{pendingConsent\?\.messageId===message\.id/);
+assert.match(chat,/consentDisabled=\{locked\|\|isSending\}/);
+assert.match(chat,/onConsent=\{send\}/);
 const bubble=readFileSync("apps/web/components/chat-message.tsx","utf8");
 assert.match(bubble,/I Consent/);
-assert.match(bubble,/disabled=\\{consentDisabled\\|\\|submittingConsent\\}/);
-assert.match(bubble,/await onConsent\\(consentText\\)/);
-assert.doesNotMatch(bubble,/chat-journey\\/approve|lead\\/submit/,
+assert.match(bubble,/disabled=\{consentDisabled\|\|submittingConsent\}/);
+assert.match(bubble,/await onConsent\(consentText\)/);
+assert.doesNotMatch(bubble,/chat-journey\/approve|lead\/submit/,
   "Consent button is a chat message, not a direct side-effect API");
 console.log("Chat I Consent PASS: exact quote/purchase text, current proposal only, safe one-click send");
 
