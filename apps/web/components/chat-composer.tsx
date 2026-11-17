@@ -8,19 +8,38 @@ export function ChatComposer({
   disabled,
   sending,
   prefilledPrompt,
+  focusReplyId,
   onClearPrefilledPrompt,
 }: {
   onSend: (text: string) => Promise<void>;
   disabled: boolean;
   sending: boolean;
   prefilledPrompt?: string | null;
+  focusReplyId?: string | null;
   onClearPrefilledPrompt?: () => void;
 }) {
   const [draft, setDraft] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const locked = useRef(false);
+  const handledReplyId = useRef<string | null>(null);
   const text = draft.trim();
+
+  // Refocus after every newly received assistant reply, not on initial history
+  // load or every render. Wait until the message input is enabled. Do not
+  // interrupt typing an OTP, uploading a file, or interacting with a dialog.
+  useEffect(() => {
+    if (!focusReplyId || disabled || sending ||
+        handledReplyId.current === focusReplyId) return;
+    handledReplyId.current = focusReplyId;
+    const textarea = textareaRef.current;
+    if (!textarea || document.visibilityState !== "visible") return;
+    const active = document.activeElement;
+    if (active instanceof HTMLElement && active !== textarea &&
+        (active.matches("input, textarea, select, [contenteditable]") ||
+         active.closest('[aria-label="Secure in-chat journey"], [role="dialog"]'))) return;
+    textarea.focus({ preventScroll: true });
+  }, [focusReplyId, disabled, sending]);
 
   // If a suggestion card passes a prompt, update draft and focus
   useEffect(() => {
