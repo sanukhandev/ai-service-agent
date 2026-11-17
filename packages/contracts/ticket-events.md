@@ -86,6 +86,26 @@ function arguments, prompts or private credentials are included.
 The server may send `: heartbeat` comment frames to keep connections alive.
 Heartbeat comments are not durable events and have no IDs.
 
+## ANCFZ existing-checkout recovery events (POC extension)
+
+The following durable, ticket-scoped events extend the initial P0 list.
+Only the authorized owner receives them via SSE; they are not provider
+notifications or payment proof.
+
+| Event | Payload | Meaning |
+|---|---|---|
+| `payment.checkout_link_reopened` | `paymentId, quotationId, existingOrder=true, verifiedPayment=false, testOnly=true` | Existing payment passed a fresh authorized provider GET for PENDING; no new order created |
+| `payment.checkout_closed_checked` | `paymentId, providerStatus, paymentCompleted, testOnly=true` | Customer closed a hosted checkout popup; backend completed an independent provider GET |
+| `payment.checked` | `paymentId, providerStatus, verified=false` | Provider not independently verified as COMPLETE |
+| `payment.verified` | `paymentId, quotationId, testOnly=true` | Fresh authenticated gateway response matched COMPLETE, exact order, external reference, amount and currency |
+
+A popup close, redirect, checkout URL, or provider HTTP 200 does **not**
+set `paymentCompleted=true`. Only `PaymentOperations.verify` can do so
+from independently matched provider evidence. Do not include payment URLs,
+billing data, merchant secrets or OTPs in these event payloads. The browser
+must refresh the owner-scoped payment snapshot on SSE and may continue
+ordinary chat; verified invoice rendering retains its existing events.
+
 ## Replay / synchronization rules
 
 - `GET /api/v1/tickets/{ticketId}` provides the current durable message

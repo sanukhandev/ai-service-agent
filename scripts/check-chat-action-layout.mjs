@@ -136,6 +136,20 @@ assert.match(inline,/purchase\/documents/);
 assert.match(inline,/autoComplete="one-time-code"/);
 assert.match(inline,/\.size>1048576/);
 assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP after chat consent");
+assert.match(inline,/payments\/"\+encodeURIComponent\(payment.id\)\+"\/checkout-link"/,
+  "Existing orders must reopen through a ticket-scoped backend check");
+assert.match(inline,/payments\/"\+encodeURIComponent\(paymentId\)\+"\/checkout-closed"/,
+  "Closing the mini checkout window must trigger independent verification");
+assert.match(inline,/window\.open\("about:blank"/,
+  "Mini-window must be opened synchronously from a customer gesture");
+assert.match(inline,/if\(!popup\.closed\)return;/,
+  "Only a closed popup triggers the post-checkout status check");
+assert.match(inline,/result\.newOrderCreated!==false/,
+  "The UI must reject unexpected order creation in link regeneration");
+const ticketEvents=readFileSync("apps/web/hooks/use-ticket-events.ts","utf8");
+assert.match(ticketEvents,/"payment\.checkout_link_reopened"/);
+assert.match(ticketEvents,/"payment\.checkout_closed_checked"/);
+
 console.log("Chat consent contracts PASS: exact/contextual approval, immutable snapshot, secure in-chat inputs");
 
 await import("./check-chat-journey-state.mjs");

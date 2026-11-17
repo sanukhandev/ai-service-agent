@@ -13,7 +13,7 @@ import { createHash } from "node:crypto";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled, paymentReadEnabled,
-  verifyPaymentStatus, type PaymentIdentity } from "./payment-evidence.js";
+  verifyPaymentStatus, existingCheckoutUrl, type PaymentIdentity } from "./payment-evidence.js";
 
 const EMAIL=/^[A-Za-z0-9._%+-]+@example\.invalid$/i;
 // OCR accepts international holder names; the sandbox billing preflight must
@@ -323,6 +323,107 @@ export class PaymentOperations {
         }:null};
     });
   }
+  /**
+   * Reopen ONLY the existing sandbox checkout, never create a provider order.
+   * An authenticated provider GET keyed by the durable RefNo must match the
+   * exact payment identity/price and still be PENDING before a URL is returned.
+   * This is a navigation convenience, not payment verification for invoicing.
+   */
+  async checkoutLink(scope:TicketScope,ticketId:string,paymentId:string){
+    this.requireReadEnabled();
+    requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
+    const claim=await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      await requireAncfz(client,scope.agentId);
+      const rows=await client.query<{
+        quotation_id:string;external_reference:string;amount:string;currency:string;
+        state:string;order_reference:string|null;provider_payment_id:string|null;
+        checkout_url:string|null;
+      }>(
+        `SELECT p.quotation_id,p.external_reference,p.amount::text,p.currency,
+          p.state,p.order_reference,p.provider_payment_id,p.checkout_url
+          FROM ticket_payment_attempts p
+          JOIN ticket_quotations q ON q.agent_id=p.agent_id AND q.ticket_id=p.ticket_id
+            AND q.id=p.quotation_id AND q.amount=p.amount AND q.currency=p.currency
+          JOIN ticket_operations op ON op.agent_id=q.agent_id AND op.ticket_id=q.ticket_id
+            AND op.id=q.operation_id AND op.state='verified_completed'
+          WHERE p.agent_id=$1 AND p.ticket_id=$2 AND p.id=$3`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      const p=rows.rows[0];
+      if(!p)throw new PersistenceError("NOT_FOUND","Verified checkout record not found");
+      if(!p.order_reference||!p.provider_payment_id||
+         !["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(p.state))
+        throw new PersistenceError("CONFLICT",
+          "Existing order must be reconciled and pending before reopening checkout");
+      const checkoutUrl=existingCheckoutUrl(p.provider_payment_id,p.checkout_url);
+      if(!checkoutUrl)throw new PersistenceError("CONFLICT","Existing checkout URL is not trusted");
+      const recent=await client.query(
+        `SELECT 1 FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2
+           AND event_type='payment.checkout_link_reopened'
+           AND payload->>'paymentId'=$3 AND created_at>now()-interval '10 seconds'
+           LIMIT 1`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      if(recent.rows.length)throw new PersistenceError("CONFLICT",
+        "Checkout already reopened; use the existing window");
+      return {
+        ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
+        amount:p.amount,currency:p.currency.trim(),orderReference:p.order_reference,
+        providerPaymentId:p.provider_payment_id,checkoutUrl,
+      };
+    });
+    let verified:ReturnType<typeof verifyPaymentStatus>=null;
+    try {
+      const raw=await requestJson("ancfz/payment-verify",{agentKey:"ancfz",...claim,
+        checkoutUrl:undefined});
+      verified=verifyPaymentStatus(raw,claim);
+    }catch{/* Provider response is never returned to the browser or logs. */}
+    if(!verified)throw new PersistenceError("CONFLICT",
+      "Existing checkout could not be independently matched at the gateway");
+    if(verified.state!=="payment_pending")throw new PersistenceError("CONFLICT",
+      "Gateway order is no longer pending; verify payment status in Sara");
+
+    await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      const latest=await client.query<{
+        state:string;order_reference:string|null;provider_payment_id:string|null;
+      }>(
+        `SELECT state,order_reference,provider_payment_id
+           FROM ticket_payment_attempts
+           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      const p=latest.rows[0];
+      if(!p || !["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(p.state) ||
+         p.order_reference!==claim.orderReference ||
+         p.provider_payment_id!==claim.providerPaymentId)
+        throw new PersistenceError("CONFLICT","Checkout order changed during link recovery");
+      const recent=await client.query(
+        `SELECT 1 FROM ticket_events WHERE agent_id=$1 AND ticket_id=$2
+           AND event_type='payment.checkout_link_reopened'
+           AND payload->>'paymentId'=$3 AND created_at>now()-interval '10 seconds'
+           LIMIT 1`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      if(recent.rows.length)throw new PersistenceError("CONFLICT",
+        "Checkout already reopened; use the existing window");
+      await client.query(
+        `UPDATE ticket_payment_attempts
+           SET checkout_url=$4,updated_at=now()
+           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
+        [scope.agentId,ticketId,paymentId,claim.checkoutUrl],
+      );
+      await appendEventTx(client,scope.agentId,ticketId,"payment.checkout_link_reopened",{
+        paymentId,quotationId:claim.quotationId,testOnly:true,
+        existingOrder:true,verifiedPayment:false,
+      });
+    });
+    return {checkoutUrl:claim.checkoutUrl,paymentId,
+      orderReference:claim.orderReference,providerStatus:"PENDING",
+      existingOrder:true,newOrderCreated:false,paymentCompleted:false};
+  }
+
   /** Repair an UNKNOWN outcome with a fresh authenticated provider GET.
    * Caller supplies an existing order RefNo plus its dashboard transaction ID.
    * The live MockGateway GET path is keyed by RefNo, not by transaction UUID.
@@ -417,7 +518,7 @@ export class PaymentOperations {
     });
   }
 
-  async verify(scope:TicketScope,ticketId:string,paymentId:string){
+  async verify(scope:TicketScope,ticketId:string,paymentId:string,checkoutClosed=false){
     this.requireReadEnabled();requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
     const claim=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
@@ -499,6 +600,22 @@ export class PaymentOperations {
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,paymentId,newState,resolved.providerStatus],
       );
+      if(checkoutClosed){
+        // Window closure is an interaction event, NOT a payment success signal.
+        // This event is emitted only after the authenticated GET has finished.
+        await appendEventTx(client,scope.agentId,ticketId,"payment.checkout_closed_checked",{
+          paymentId,providerStatus:result?.providerStatus??"unavailable",
+          paymentCompleted:newState==="verified_test_payment",testOnly:true,
+        });
+        if(newState==="payment_pending"){
+          await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
+            client,scope,ticketId,lifecycleNoticeId("checkout.closed.pending",paymentId),
+            "I checked your existing sandbox payment after the checkout window closed. "+
+            "The gateway still reports PENDING, so no TEST invoice has been issued. "+
+            "You can reopen the existing checkout or continue chatting.",
+          );
+        }
+      }
       if(newState==="verified_test_payment"){
         const existingInvoice=await client.query<{id:string}>(
           "SELECT id FROM ticket_payment_invoices WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",

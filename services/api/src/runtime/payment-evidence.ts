@@ -45,6 +45,23 @@ export function paymentIdFromCheckout(value:unknown):string|null {
 export function isCheckoutUrl(value:unknown):value is string {
   return paymentIdFromCheckout(value)!==null;
 }
+
+/** Reopen the provider's existing sandbox checkout without POSTing an order.
+ * The caller must independently verify the stored RefNo, external reference
+ * and amount through the authenticated gateway GET before returning this link.
+ * Never accept a URL or payment ID from the browser as proof of a payment. */
+export function existingCheckoutUrl(
+  providerPaymentId:unknown, storedUrl:unknown,
+):string|null {
+  if(typeof providerPaymentId!=="string"||
+     !/^[A-Za-z0-9_-]{1,120}$/.test(providerPaymentId))return null;
+  if(storedUrl!==null){
+    return typeof storedUrl==="string" &&
+      paymentIdFromCheckout(storedUrl)===providerPaymentId ? storedUrl:null;
+  }
+  const url="https://mockgateway.com/pg/pay/"+providerPaymentId;
+  return isCheckoutUrl(url)?url:null;
+}
 /** Only finite failure categories are retained. Never log provider bodies, URL query
  * parameters, billing data, credentials, or customer identifiers. */
 export function inspectCreatedOrder(raw:unknown,expected:PaymentIdentity):
