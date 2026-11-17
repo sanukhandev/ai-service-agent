@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /** Offline Node payment/OTP validation; no provider, no database, no secrets. */
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import {
   paymentEnabled, PAYMENT_CONSENT, isCheckoutUrl, otpHmac,checkOtp,
@@ -13,6 +14,12 @@ import {
   verifyQuotationPdf,verifyInvoicePdf,
 } from "../services/api/dist/runtime/n8n-quote-worker.js";
 import { invoiceFinalizationDecision } from "../services/api/dist/runtime/n8n-invoice-worker.js";
+
+// The restricted agent_runtime role has SELECT/INSERT on quotations but no
+// UPDATE grant; FOR UPDATE OF q would make OTP issuance fail with SQLSTATE 42501.
+const paymentSource=readFileSync(new URL("../services/api/src/runtime/payment-operations.ts",import.meta.url),"utf8");
+assert.doesNotMatch(paymentSource,/^\\s*FOR UPDATE OF q\\b/m,
+  "Immutable quotation preflight must not acquire an unauthorized row lock");
 
 const conf={
   APP_ENV:"development",ANCFZ_PAYMENT_DISPATCH_ENABLED:"true",
