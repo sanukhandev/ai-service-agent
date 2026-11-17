@@ -120,7 +120,8 @@ const orderResponse = {
   Status:"PENDING",InvoiceID:"TEST-INV-123",
 };
 const context=()=>({first:()=>({json:val[0].json})});
-const good=(await inspectOrder({first:()=>({json:orderResponse})},context,Buffer,URL))[0].json;
+// Simulate the restricted n8n 2.x Code sandbox: URL is not a global.
+const good=(await inspectOrder({first:()=>({json:orderResponse})},context,Buffer,undefined))[0].json;
 assert.equal(good.orderReference,"123456789");
 assert.equal(good.verified,false);
 assert.equal(good.provider,"2checkout_mock");
