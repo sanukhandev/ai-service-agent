@@ -12,7 +12,7 @@ export interface PaymentIdentity {
   amount:string; currency:string;
 }
 export interface CreatedOrder {
-  orderReference:string; checkoutUrl:string|null;
+  orderReference:string; providerPaymentId:string|null; checkoutUrl:string|null;
   state:"checkout_available"|"order_created_checkout_unavailable";
 }
 export interface VerifiedStatus {
@@ -28,13 +28,22 @@ export function paymentEnabled(env:NodeJS.ProcessEnv=process.env):boolean {
 export function moneyEqual(a:string,b:string):boolean {
   return /^(?:0|[1-9]\d{0,11})\.\d{2}$/.test(a) && a===b;
 }
-export function isCheckoutUrl(value:unknown):value is string {
-  if(typeof value!=="string"||value.length>2048)return false;
+/** The documented MockGateway GET uses payment_id, not RefNo/OrderNo.
+ * The payment ID is the sole path token of the provider's hosted checkout URL
+ * in the supplied test API examples. Its identity must be confirmed by GET.
+ * Never use it to infer payment completion. */
+export function paymentIdFromCheckout(value:unknown):string|null {
+  if(typeof value!=="string"||value.length>2048)return null;
   try {
     const u=new URL(value);
-    return u.protocol==="https:" && u.hostname==="mockgateway.com" &&
-      u.pathname.startsWith("/pg/pay/") && !u.username && !u.password && !u.hash;
-  } catch {return false;}
+    const match=/^\/pg\/pay\/([A-Za-z0-9_-]{1,120})$/.exec(u.pathname);
+    if(u.protocol!=="https:"||u.hostname!=="mockgateway.com"||
+       u.username||u.password||u.search||u.hash||u.port||!match)return null;
+    return match[1];
+  }catch{return null;}
+}
+export function isCheckoutUrl(value:unknown):value is string {
+  return paymentIdFromCheckout(value)!==null;
 }
 /** Only finite failure categories are retained. Never log provider bodies, URL query
  * parameters, billing data, credentials, or customer identifiers. */
@@ -52,12 +61,17 @@ export function inspectCreatedOrder(raw:unknown,expected:PaymentIdentity):
     return {created:null,reason:"post_order_price_mismatch"};
   if(typeof v.orderReference!=="string"||!ref.test(v.orderReference))
     return {created:null,reason:"post_order_reference_invalid"};
-  if(v.status==="checkout_available"&&isCheckoutUrl(v.checkoutUrl))
+  if(v.status==="checkout_available"&&isCheckoutUrl(v.checkoutUrl)){
+    const paymentId=paymentIdFromCheckout(v.checkoutUrl);
+    if(v.providerPaymentId!==undefined&&v.providerPaymentId!==paymentId)
+      return {created:null,reason:"post_provider_payment_id_mismatch"};
     return {created:{state:"checkout_available",orderReference:v.orderReference,
-      checkoutUrl:v.checkoutUrl},reason:"validated"};
+      providerPaymentId:paymentId,checkoutUrl:v.checkoutUrl},reason:"validated"};
+  }
   if(v.status==="order_created_checkout_unavailable"&&v.checkoutUrl===null)
     return {created:{state:"order_created_checkout_unavailable",
-      orderReference:v.orderReference,checkoutUrl:null},reason:"validated"};
+      orderReference:v.orderReference,providerPaymentId:null,
+      checkoutUrl:null},reason:"validated"};
   return {created:null,reason:"post_checkout_contract_invalid"};
 }
 export function verifyCreatedOrder(raw:unknown,expected:PaymentIdentity):CreatedOrder|null {
