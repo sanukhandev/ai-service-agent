@@ -80,6 +80,9 @@ async function requireAncfz(client:PoolClient,agentId:string):Promise<void>{
   if(!r.rows[0])throw new PersistenceError("NOT_FOUND","ANCFZ payment operation unavailable");
 }
 async function quote(client:PoolClient,agentId:string,ticketId:string,quotationId:string):Promise<Quote>{
+  // The parent ticket is already locked by the caller and verified quotations
+  // are immutable to agent_runtime (SELECT/INSERT only). FOR UPDATE OF q
+  // would require UPDATE privilege and fail with SQLSTATE 42501.
   const result=await client.query<Quote>(
     `SELECT q.id,q.amount::text,q.currency,op.state,
         EXISTS(SELECT 1 FROM ticket_quotation_pdfs pdf
@@ -88,8 +91,7 @@ async function quote(client:PoolClient,agentId:string,ticketId:string,quotationI
       FROM ticket_quotations q
       JOIN ticket_operations op ON op.agent_id=q.agent_id AND op.ticket_id=q.ticket_id
         AND op.id=q.operation_id AND op.operation_key='ancfz_render_quote'
-      WHERE q.agent_id=$1 AND q.ticket_id=$2 AND q.id=$3
-      FOR UPDATE OF q`,
+      WHERE q.agent_id=$1 AND q.ticket_id=$2 AND q.id=$3`,
     [agentId,ticketId,quotationId],
   );
   const q=result.rows[0];
