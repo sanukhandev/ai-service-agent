@@ -14,6 +14,7 @@ import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ConversationActionHandoff, shouldUseHandoff } from "./conversation-action-handoff.js";
 import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
+import { sourcedBusinessActivityReply } from "./chat-fact-reconciliation.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -123,7 +124,7 @@ export class TurnWorker {
       const scope=workerTicketScope(turn.agentId,turn.ticketId);
       const binding=await this.agents.getPinnedForTicket(scope,turn.ticketId);
       if(!binding.intentCatalogRevision||!binding.offeringCatalogRevision) throw new Error("PINNED_CATALOG_MISSING");
-      const stored=await this.context.read(scope,turn.ticketId);
+      let stored=await this.context.read(scope,turn.ticketId);
       const text=await this.queue.currentCustomerMessage(turn);
       const chatJourney=new ChatJourney(this.db);
       // Consent is tied to a Node-authored, ticket-scoped proposal that was
@@ -179,6 +180,36 @@ export class TurnWorker {
       const displayHistory=requestedAction.action
         ?(recent.length?recent:await this.messages.recentMessages(scope,turn.ticketId,4)):[];
       const displayedAssistant=[...displayHistory].reverse().find(m=>m.role==="assistant")?.text??null;
+      // Ticket #58: Foundry can respond without persisting the customer's
+      // answer, then ChatJourney.prepare() overrides the reply with the same
+      // missing-fact question indefinitely. Reconcile ONLY an immediate,
+      // unambiguous answer to Node's exact prior activity question.
+      const preceding=displayHistory.at(-1)?.role==="customer" &&
+        displayHistory.at(-1)?.id===turn.messageId &&
+        displayHistory.at(-2)?.role==="assistant"
+          ? displayHistory.at(-2)!.text : null;
+      const activity=sourcedBusinessActivityReply({
+        previousAssistant:preceding,customerText:text,
+        requestedAction:requestedAction.action,
+        missingBusinessActivity:Boolean(stored.activeIntent) &&
+          stored.missingRequirements.includes("business_activity"),
+      });
+      if(activity){
+        try{
+          // The existing repository enforces active intent, catalog keys,
+          // current-ticket ownership and customer-message provenance.
+          await this.context.recordCustomerFacts(scope,turn.ticketId,turn.messageId,
+            [{key:"business_activity",value:activity}]);
+          stored=await this.context.read(scope,turn.ticketId);
+          handoffBefore=await handoff.status(scope,turn.ticketId,requestedAction.action);
+          this.log({turnId:turn.id,ticketId:turn.ticketId,factKey:"business_activity"},
+            "Answered required activity question recorded with customer provenance");
+        }catch(error){
+          // Never fabricate a fact or bypass the existing persistence guards.
+          this.log({turnId:turn.id,errorCode:(error as Error).name},
+            "Source-linked activity reconciliation rejected");
+        }
+      }
       const actionRead=async()=>{
         const state=await new IntentActionOperations(this.db).catalog(scope,turn.ticketId);
         return {intentKey:state.intentKey,
