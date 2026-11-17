@@ -46,6 +46,7 @@ jobs:
           node --check infra/n8n/ancfz/upgrade-code-hotfix.mjs
           node --check scripts/apply-n8n-code-hotfix.mjs
           node scripts/apply-n8n-code-hotfix.mjs --dry-run
+          node scripts/check-n8n-hotfix-active-guard.mjs
       - name: Validate Compose profile
         env:
           POSTGRES_PASSWORD: p4-test-migration-only
