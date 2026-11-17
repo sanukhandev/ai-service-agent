@@ -123,6 +123,22 @@ function confirmExpectedBindings(detail,source,d){
      (!isLegacyVerifier && credentialId(merchant)!==expectedMerchant))
     fail("CREDENTIAL_CONFLICT","Merchant credential binding differs: "+d.path);
 }
+// n8n omits the default binary output field in some saved HTTP Request nodes.
+// Accept only that omission for the reviewed Gotenberg PDF renderer. Do not
+// normalize explicit alternative fields, URLs, HTTP methods or other options.
+function httpParametersMatch(actual,expected,d){
+  const params=structuredClone(actual.parameters??{});
+  const response=params.options?.response?.response;
+  const approved=expected.parameters?.options?.response?.response;
+  if(d.path==="ancfz/render-pdf" &&
+     expected.name==="Gotenberg Private PDF Renderer" &&
+     response?.responseFormat==="file" &&
+     approved?.responseFormat==="file" &&
+     approved.outputPropertyName==="data" &&
+     !Object.hasOwn(response,"outputPropertyName"))
+    response.outputPropertyName="data";
+  return JSON.stringify(params)===JSON.stringify(expected.parameters);
+}
 function assertUpgradedMatches(detail,source,d){
   const byName=new Map((detail.nodes||[]).map(n=>[n.name,n]));
   for(const expected of source.nodes){
@@ -133,7 +149,7 @@ function assertUpgradedMatches(detail,source,d){
        actual.parameters?.jsCode!==expected.parameters?.jsCode)
       fail("SOURCE_DRIFT","n8n Code node differs from reviewed source: "+d.path);
     if(expected.type==="n8n-nodes-base.httpRequest" &&
-       JSON.stringify(actual.parameters)!==JSON.stringify(expected.parameters))
+       !httpParametersMatch(actual,expected,d))
       fail("SOURCE_DRIFT","n8n gateway HTTP node differs from reviewed source: "+d.path);
   }
   if(byName.size!==source.nodes.length||
