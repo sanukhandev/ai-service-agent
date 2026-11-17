@@ -123,6 +123,8 @@ const context=()=>({first:()=>({json:val[0].json})});
 // Simulate the restricted n8n 2.x Code sandbox: URL is not a global.
 const good=(await inspectOrder({first:()=>({json:orderResponse})},context,Buffer,undefined))[0].json;
 assert.equal(good.orderReference,"123456789");
+assert.equal(good.providerPaymentId,"1a2b3c4d-test");
+assert.notEqual(good.providerPaymentId,good.orderReference);
 assert.equal(good.verified,false);
 assert.equal(good.provider,"2checkout_mock");
 assert.equal(good.status,"checkout_available");
@@ -140,12 +142,20 @@ assert.equal(missingLink.status,"order_created_checkout_unavailable");
 const statusNode=verify.nodes.find(n=>n.name==="2Checkout Mock GET Order");
 assert.equal(statusNode.parameters.method,"GET");
 assert(statusNode.parameters.url.includes("/api/base/2checkout-fzucuq/rest/6.0/orders/"));
+assert(statusNode.parameters.url.includes(".json.providerPaymentId"));
+assert(!statusNode.parameters.url.includes(".json.orderReference"));
 assert.equal(statusNode.parameters.genericAuthType,"httpHeaderAuth");
 const req=code(verify,"Validate Verification Request");
 const v=(await req(input({
   agentKey:"ancfz",ticketId,quotationId,orderReference:"123456789",
+  providerPaymentId:"1a2b3c4d-test",
   externalReference:authorization.externalReference,currency:"AED",amount:"425.25",
 }),()=>{},Buffer,URL))[0].json;
+assert.equal(v.providerPaymentId,"1a2b3c4d-test");
+await assert.rejects(req(input({
+  agentKey:"ancfz",ticketId,quotationId,orderReference:"123456789",
+  externalReference:authorization.externalReference,currency:"AED",amount:"425.25",
+}),()=>{}),/Invalid provider payment ID/);
 const statusCode=code(verify,"Validate Gateway Status");
 const expected=()=>({first:()=>({json:v})});
 const fetched={RefNo:"123456789",ExternalReference:v.externalReference,Currency:"AED",
@@ -156,6 +166,7 @@ assert.equal(paid.provider,"2checkout_mock");
 assert.equal(paid.status,"verified_test_payment");
 assert.equal(paid.quotationId,quotationId);
 assert.equal(paid.amount,"425.25");
+assert.equal(paid.providerPaymentId,"1a2b3c4d-test");
 for(const providerStatus of ["PENDING","DECLINED","REFUNDED"]){
   const pending=(await statusCode({first:()=>({json:{...fetched,Status:providerStatus}})},expected,Buffer,URL))[0].json;
   assert.equal(pending.verified,false);

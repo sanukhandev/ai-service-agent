@@ -31,8 +31,8 @@ function helper(action,key,expected){
   return r;
 }
 function saveBackups(snapshot){
-  if(!Array.isArray(snapshot)||snapshot.length!==2)
-    throw Error("Expected precisely two workflow backup records");
+  if(!Array.isArray(snapshot)||snapshot.length!==3)
+    throw Error("Expected precisely three workflow backup records");
   const base=join(homedir(),"ai-service-agent-n8n-backups");
   mkdirSync(base,{recursive:true,mode:0o700});
   const directory=mkdtempSync(join(base,"salesforce-checkout-"));

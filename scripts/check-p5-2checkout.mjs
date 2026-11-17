@@ -5,7 +5,7 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import {
   paymentEnabled, paymentReadEnabled, inspectCreatedOrder,
-  PAYMENT_CONSENT, isCheckoutUrl, otpHmac,checkOtp,
+  PAYMENT_CONSENT, isCheckoutUrl, paymentIdFromCheckout, otpHmac,checkOtp,
   verifyCreatedOrder, verifyPaymentStatus,
 } from "../services/api/dist/runtime/payment-evidence.js";
 import {
@@ -72,6 +72,9 @@ const expected={ticketId,quotationId,externalReference:"ANCFZ-"+randomUUID().rep
   amount:"425.25",currency:"AED"};
 const url="https://mockgateway.com/pg/pay/abc123";
 assert.equal(isCheckoutUrl(url),true);
+assert.equal(paymentIdFromCheckout(url),"abc123");
+assert.equal(paymentIdFromCheckout(url+"?status=COMPLETE"),null);
+assert.equal(paymentIdFromCheckout("https://mockgateway.com/pg/pay/abc123/extra"),null);
 for(const test of ["http://mockgateway.com/pg/pay/abc","https://evil.invalid/pg/pay/abc",
   "https://mockgateway.com.evil.invalid/pg/pay/abc","https://mockgateway.com/admin"])
   assert.equal(isCheckoutUrl(test),false);
@@ -79,7 +82,8 @@ const order={provider:"2checkout_mock",verified:false,orderReference:"123456789"
   ...expected,status:"checkout_available",checkoutUrl:url};
 assert.equal(verifyCreatedOrder(order,expected)?.checkoutUrl,url);
 assert.deepEqual(inspectCreatedOrder(order,expected),{
-  created:{orderReference:order.orderReference,checkoutUrl:url,state:"checkout_available"},
+  created:{orderReference:order.orderReference,providerPaymentId:"abc123",
+    checkoutUrl:url,state:"checkout_available"},
   reason:"validated",
 });
 assert.equal(inspectCreatedOrder(null,expected).reason,"post_invalid_json_shape");
@@ -91,6 +95,9 @@ assert.equal(inspectCreatedOrder({...order,amount:"425.26"},expected).reason,
   "post_order_price_mismatch");
 assert.equal(inspectCreatedOrder({...order,orderReference:123},expected).reason,
   "post_order_reference_invalid");
+assert.equal(inspectCreatedOrder({...order,providerPaymentId:"wrong"},expected).reason,
+  "post_provider_payment_id_mismatch");
+assert.equal(verifyCreatedOrder({...order,providerPaymentId:"abc123"},expected)?.providerPaymentId,"abc123");
 assert.equal(inspectCreatedOrder({...order,checkoutUrl:"https://evil.invalid"},expected).reason,
   "post_checkout_contract_invalid");
 assert.equal(verifyCreatedOrder({...order,verified:true},expected),null);
@@ -98,11 +105,16 @@ assert.equal(verifyCreatedOrder({...order,amount:"425.26"},expected),null);
 assert.equal(verifyCreatedOrder({...order,checkoutUrl:"https://evil.invalid/"},expected),null);
 assert.equal(verifyCreatedOrder({...order,status:"order_created_checkout_unavailable",checkoutUrl:null},expected)?.state,
   "order_created_checkout_unavailable");
+assert.equal(verifyCreatedOrder({...order,status:"order_created_checkout_unavailable",checkoutUrl:null},expected)?.providerPaymentId,null);
 
 const check={...expected,orderReference:order.orderReference};
 const paid={...check,provider:"2checkout_mock",providerStatus:"COMPLETE",
   status:"verified_test_payment",verified:true};
 assert.equal(verifyPaymentStatus(paid,check)?.verified,true);
+const withPaymentId={...check,providerPaymentId:"abc123"};
+assert.equal(verifyPaymentStatus({...paid,providerPaymentId:"abc123"},withPaymentId)?.verified,true);
+assert.equal(verifyPaymentStatus({...paid,providerPaymentId:"wrong"},withPaymentId),null);
+assert.equal(verifyPaymentStatus(paid,withPaymentId),null);
 for(const [providerStatus,status] of [
   ["PENDING","payment_pending"],["DECLINED","payment_declined"],["REFUNDED","payment_refunded"],
 ])assert.equal(verifyPaymentStatus({...paid,providerStatus,status,verified:false},check)?.verified,false);

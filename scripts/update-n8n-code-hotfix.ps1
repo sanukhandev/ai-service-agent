@@ -8,10 +8,10 @@
   .\scripts\update-n8n-code-hotfix.ps1 -BackupOnly
   .\scripts\update-n8n-code-hotfix.ps1 -Apply
 .NOTES
-  Before -Apply, UNPUBLISH the two existing n8n workflows (Salesforce Lead and
+  Before -Apply, UNPUBLISH the three existing n8n workflows (Salesforce Lead and
   2Checkout Mock Order Create). Do not re-run old failed outbox operations.
   This writes timestamped private backups and only updates reviewed node parameters.
-  Both workflows remain unpublished for manual credential checks before republish.
+  All three workflows remain unpublished for manual credential checks before republish.
 #>
 [CmdletBinding()]
 param([switch]$Apply,[switch]$BackupOnly)
@@ -39,13 +39,13 @@ try {
 
     Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--inspect')
     if($Apply){
-        $confirmation=Read-Host 'Unpublish both ANCFZ Salesforce Lead and 2Checkout Order Create, then type APPLY ANCFZ HOTFIX'
+        $confirmation=Read-Host 'Unpublish the ANCFZ Salesforce Lead, 2Checkout Order Create and 2Checkout Payment Verification, then type APPLY ANCFZ HOTFIX'
         if($confirmation -cne 'APPLY ANCFZ HOTFIX'){
             throw 'Cancelled. No workflow changes made.'
         }
         Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--apply')
         Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--inspect')
-        Write-Host 'Hotfix installed; both workflows must remain unpublished until credentials are checked and you deliberately republish.'
+        Write-Host 'Hotfix installed; all three workflows must remain unpublished until credentials are checked and you deliberately republish.'
     } elseif($BackupOnly){
         Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--backup')
     } else {
