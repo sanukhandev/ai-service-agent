@@ -161,6 +161,17 @@ test "$service_rls" = 1
 docker compose exec -T -e P5_INTENT_ACTION_SMOKE=1 api node dist/runtime/intent-actions-smoke.js
 
 
+# A forged public merchant callback must never confirm a payment, queue an
+# invoice, or require a ticket-owner cookie. It only acknowledges receipt.
+mock_notification=$(curl --fail --silent --show-error \
+  -H 'Content-Type: application/json' \
+  -d '{"MESSAGE_TYPE":"ORDER_CREATED","ORDERSTATUS":"COMPLETE","IPN_TOTAL":"999999.99"}' \
+  http://localhost/api/v1/mockgateway/notifications)
+printf '%s' "$mock_notification" | python3 -c 'import json,sys;d=json.load(sys.stdin);assert d=={"received":True,"paymentVerified":False}'
+invoices_after_notification=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM ticket_payment_invoices")
+test "$invoices_after_notification" = 0
+
 # P5 customer payment routes are still disabled without explicit test-mode flags.
 unauthorized_payment=$(curl --silent -o /dev/null -w '%{http_code}' \
   "http://localhost/api/v1/tickets/$ticket_id/payments")
