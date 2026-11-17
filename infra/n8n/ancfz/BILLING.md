@@ -163,7 +163,7 @@ Only enable ANCFZ_PAYMENT_DISPATCH_ENABLED=true after the merchant key has been 
 
 The merchant-specific documentation supplied for this POC explicitly uses
 `GET /rest/6.0/orders/{payment_id}/`, while the POST body returns
-`RefNo`/`OrderNo`. Migration `013_mockgateway_provider_payment_id.sql`
+`RefNo`/`OrderNo`. Migration `015_mockgateway_provider_payment_id.sql`
 adds `provider_payment_id` without modifying existing attempts, consent,
 quoted amounts, invoices or order references. The HTTP status worker now
 requires **both** payment ID and RefNo. Missing IDs fail closed.
