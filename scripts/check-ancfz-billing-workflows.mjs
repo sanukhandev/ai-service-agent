@@ -69,6 +69,7 @@ await assert.rejects(prepare(input({...quote,lines:[]}),()=>{},Buffer,URL),/Inva
 await assert.rejects(prepare(input({...quote,ticketId:"unknown"}),()=>{},Buffer,URL),/ticket UUID/);
 const invoice={
   ...quote,documentType:"invoice",documentNumber:"ANCFZ-TEST-INV-"+quotationId,
+  invoiceIdentity:{emiratesIdNumber:"784199912345671",emiratesIdLast4:"5671"},
 };
 await assert.rejects(prepare(input(invoice),()=>{},Buffer,URL),/Invoice blocked/);
 await assert.rejects(prepare(input({...invoice,paymentVerified:true}),()=>{},Buffer,URL),/Invoice blocked/);
@@ -85,8 +86,23 @@ const accepted=await prepare(input({...invoice,paymentVerified:true,quotationId,
 const invoiceHtml=Buffer.from(accepted[0].binary.html.data,"base64").toString("utf8");
 assert(invoiceHtml.includes("TEST PAYMENT INVOICE"));
 assert(invoiceHtml.includes("Not proof of real funds"));
-assert(!invoiceHtml.includes("Customer requirements for this quotation"));
-assert(!invoiceHtml.includes("Published package scope"));
+assert(invoiceHtml.includes("Customer requirements from approved quotation"));
+assert(invoiceHtml.includes("Published package scope"));
+assert(invoiceHtml.includes("Software development"));
+assert(invoiceHtml.includes("Private office &lt;script&gt;not included&lt;/script&gt;"));
+assert(invoiceHtml.includes("784-1999-1234567-1"));
+assert(invoiceHtml.includes("demoOrder_1234567"));
+assert(invoiceHtml.includes("Independently verified TEST payment"));
+const last4Invoice=await prepare(input({
+  ...invoice,paymentVerified:true,quotationId,paymentEvidence:evidence,
+  invoiceIdentity:{emiratesIdNumber:null,emiratesIdLast4:"5671"},
+}),()=>{},Buffer,URL);
+const maskedHtml=Buffer.from(last4Invoice[0].binary.html.data,"base64").toString("utf8");
+assert(maskedHtml.includes("XXXX-XXXX-XXXX-5671"));
+await assert.rejects(prepare(input({
+  ...invoice,paymentVerified:true,quotationId,paymentEvidence:evidence,
+  invoiceIdentity:{emiratesIdNumber:"784199912345671",emiratesIdLast4:"9999"},
+}),()=>{},Buffer,URL),/Invalid invoice Emirates ID correlation/);
 
 const gotenberg=pdf.nodes.find(x=>x.name==="Gotenberg Private PDF Renderer");
 assert.equal(gotenberg?.parameters?.url,"http://gotenberg:3000/forms/chromium/convert/html");
