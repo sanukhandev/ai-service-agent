@@ -483,6 +483,19 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       return reply.header("Cache-Control","private, no-store").send(result);
     });
 
+  // Popup close is NOT proof of payment. Independently GET the gateway
+  // before emitting payment status and chat events; invoice gate is unchanged.
+  app.post<{Params:{ticketId:string;paymentId:string}}>(
+    "/api/v1/tickets/:ticketId/payments/:paymentId/checkout-closed",async(request)=>{
+      rejectCrossSite(request);
+      if(request.body!==undefined && request.body!==null &&
+         (typeof request.body!=="object" || Array.isArray(request.body) ||
+           Object.keys(request.body).length!==0))
+        throw new PersistenceError("INVALID_INPUT","Checkout close does not accept payment status");
+      const scope=await scopeFromCookie(db,request);
+      return payments.verify(scope,idParam(request),request.params.paymentId,true);
+    });
+
   app.post<{Params:{ticketId:string;paymentId:string}}>(
     "/api/v1/tickets/:ticketId/payments/:paymentId/verify",async(request)=>{
       rejectCrossSite(request);
