@@ -91,20 +91,45 @@ async function persona(client:PoolClient,agentId:string,ticketId:string){
   return {name:typeof name==="string" && /^[\p{L} .'-]{1,60}$/u.test(name)?name:"Sara",
     tone:typeof tone==="string" && ["professional","friendly","formal","concise"].includes(tone)?tone:"professional"};
 }
-function validateBase64(b:unknown,contentType:unknown):Buffer{
+type DocumentContentType="application/pdf"|"image/png"|"image/jpeg";
+function validateBase64(b:unknown):{bytes:Buffer;contentType:DocumentContentType}{
   if(typeof b!=="string" || b.length<136 || b.length>Math.ceil(MAX_FILE/3)*4+8 ||
      !/^[A-Za-z0-9+/]+={0,2}$/.test(b) || b.length%4!==0)
     throw new PersistenceError("INVALID_INPUT","Invalid or oversized document data");
   const bytes=Buffer.from(b,"base64");
   if(bytes.length<100||bytes.length>MAX_FILE||bytes.toString("base64")!==b)
     throw new PersistenceError("INVALID_INPUT","Invalid or oversized document");
+  // Browser-supplied MIME types are not authoritative. Detect the supported
+  // format from the bytes and persist that canonical type in PostgreSQL.
   const pdf=bytes.subarray(0,5).toString("ascii")==="%PDF-";
   const png=bytes.subarray(0,8).equals(Buffer.from([137,80,78,71,13,10,26,10]));
   const jpg=bytes.length>3 && bytes[0]===255 && bytes[1]===216 && bytes[2]===255;
-  if((contentType==="application/pdf" && pdf)||
-     (contentType==="image/png" && png)||
-     (contentType==="image/jpeg" && jpg))return bytes;
-  throw new PersistenceError("INVALID_INPUT","File signature does not match PDF, PNG or JPEG content type");
+  const contentType:DocumentContentType|undefined=pdf?"application/pdf":
+    png?"image/png":jpg?"image/jpeg":undefined;
+  if(!contentType)
+    throw new PersistenceError("INVALID_INPUT","Only PDF, PNG or JPEG documents are supported");
+  return {bytes,contentType};
+}
+
+/** Tolerant browser metadata, strict document bytes and allowlisted requirement. */
+export function preparePurchaseDocumentUpload(raw:unknown):{
+  requirementKey:IdentityKind;fileName:string;contentType:DocumentContentType;bytes:Buffer;
+}{
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))
+    throw new PersistenceError("INVALID_INPUT","Document request required");
+  const v=raw as Record<string,unknown>;
+  if(v.requirementKey!=="passport"&&v.requirementKey!=="emirates_id")
+    throw new PersistenceError("INVALID_INPUT","Unsupported document requirement");
+  const {bytes,contentType}=validateBase64(v.dataBase64);
+  const extension=contentType==="application/pdf"?"pdf":contentType==="image/png"?"png":"jpg";
+  // Keep common download names such as "Passport (1).pdf" and Unicode names.
+  // Strip path separators, control and bidirectional override characters.
+  const candidate=typeof v.fileName==="string"?v.fileName.normalize("NFC"):"";
+  const cleaned=candidate.replace(/[\\/\u0000-\u001f\u007f\u202a-\u202e\u2066-\u2069]/gu,"_").trim();
+  const fileName=cleaned && cleaned!=="." && cleaned!==".."
+    ? Array.from(cleaned).slice(0,150).join("")
+    : v.requirementKey+"."+extension;
+  return {requirementKey:v.requirementKey,fileName,contentType,bytes};
 }
 /** Accept a classified synthetic passport without a name only for local POC. */
 function unnamedSyntheticPassport(d:DocRow):boolean{
@@ -203,15 +228,8 @@ export class PurchaseOperations {
   }
   async upload(scope:TicketScope,ticketId:string,raw:unknown){
     requireUuid(ticketId,"ticketId");
-    if(!raw||typeof raw!=="object"||Array.isArray(raw))throw new PersistenceError("INVALID_INPUT","Document request required");
-    const v=raw as Record<string,unknown>;
-    if(Object.keys(v).some(k=>!["requirementKey","fileName","contentType","dataBase64"].includes(k))||
-       typeof v.requirementKey!=="string"||!["passport","emirates_id"].includes(v.requirementKey)||
-       typeof v.fileName!=="string"||v.fileName.length>150||v.fileName.length<1||
-       !/^[A-Za-z0-9][A-Za-z0-9_. -]{0,149}$/.test(v.fileName)||
-       !["application/pdf","image/png","image/jpeg"].includes(String(v.contentType)))
-      throw new PersistenceError("INVALID_INPUT","Invalid document metadata");
-    const bytes=validateBase64(v.dataBase64,v.contentType);
+    const v=preparePurchaseDocumentUpload(raw);
+    const {bytes}=v;
     const digest=createHash("sha256").update(bytes).digest("hex");
     // Check eligibility before sending identity bytes to the OCR service.
     await this.db.withAgent(scope.agentId,async client=>{
