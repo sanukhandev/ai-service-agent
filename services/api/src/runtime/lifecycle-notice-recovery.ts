@@ -3,7 +3,7 @@
  * PostgreSQL remains authoritative. Recovery only READS verified state and
  * writes a deterministic assistant message; it never sends provider POSTs.
  */
-import { PersistenceDatabase } from "../database/pool.js";
+import { PersistenceDatabase, PersistenceError } from "../database/pool.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { authorizedTicket, workerTicketScope } from "../repositories/types.js";
 import { leadDispatchEnabled } from "./lead-operations.js";
@@ -18,6 +18,17 @@ const PAYMENT_TEXT =
 
 type Candidate = { id:string; ticket_id:string };
 type Stage = "lead.verified" | "otp.verified" | "payment.verified";
+
+/** Log safe diagnostic codes, not SQL text, provider payloads or customer data. */
+function recoveryErrorCodes(error:unknown):Record<string,unknown> {
+  const cause=error instanceof PersistenceError?error.cause:error;
+  const sqlState=(cause as {code?:unknown}|null)?.code;
+  return {
+    errorCode:error instanceof Error?error.name:"UnknownError",
+    ...(error instanceof PersistenceError?{persistenceCode:error.code}:{}),
+    ...(typeof sqlState==="string"?{sqlState}:{}),
+  };
+}
 
 export class LifecycleNoticeRecovery {
   private timer:ReturnType<typeof setInterval>|undefined;
@@ -60,6 +71,9 @@ export class LifecycleNoticeRecovery {
           ? "op.state='verified_test_payment'"
           : "op.state IN ('queued','creating','checkout_available','order_created_checkout_unavailable','payment_pending') AND op.created_at>now()-interval '1 hour'";
       const key=stage==="otp.verified"?"op.otp_id":"op.id";
+      // ticket_operations has consented_at, not created_at (migration 007).
+      // Payment attempts use created_at (migration 009).
+      const orderBy=lead?"op.consented_at":"op.created_at";
       const result=await client.query<Candidate>(
         `SELECT ${key} AS id,op.ticket_id FROM ${table}
           JOIN tickets t ON t.agent_id=op.agent_id AND t.id=op.ticket_id
@@ -69,7 +83,7 @@ export class LifecycleNoticeRecovery {
               SELECT 1 FROM ticket_messages m WHERE m.agent_id=op.agent_id
                 AND m.ticket_id=op.ticket_id AND m.role='assistant' AND m.content=$2
             )
-          ORDER BY op.created_at LIMIT 12`,
+          ORDER BY ${orderBy}, op.id LIMIT 12`,
         [agentId,copy],
       );
       return result.rows;
@@ -109,7 +123,7 @@ export class LifecycleNoticeRecovery {
         });
         if(written)this.log({stage,ticketId:row.ticket_id},"Recovered durable workflow chat notification");
       }catch(error){
-        this.log({stage,errorCode:(error as Error).name},"Workflow chat recovery postponed");
+        this.log({stage,...recoveryErrorCodes(error)},"Workflow chat recovery postponed");
       }
     }
   }
@@ -126,7 +140,7 @@ export class LifecycleNoticeRecovery {
         await this.recover(agentId,"payment.verified",PAYMENT_TEXT);
       }
     } catch(error){
-      this.log({errorCode:(error as Error).name},"Workflow notice reconciliation failed");
+      this.log(recoveryErrorCodes(error),"Workflow notice reconciliation failed");
     } finally {this.busy=false;}
   }
 }
