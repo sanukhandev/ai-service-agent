@@ -29,25 +29,25 @@ Push-Location $repo
 try {
     if(-not (Get-Command node -ErrorAction SilentlyContinue)){ throw 'Node.js 22 required.' }
     if(-not (Get-Command docker -ErrorAction SilentlyContinue)){ throw 'Docker Compose required.' }
-    Invoke-CheckedNode @('scripts/apply-n8n-code-hotfix.mjs','--dry-run')
-    Invoke-CheckedNode @('scripts/check-ancfz-salesforce.mjs')
-    Invoke-CheckedNode @('scripts/check-ancfz-billing-workflows.mjs')
+    Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--dry-run')
+    Invoke-CheckedNode -Arguments @('scripts/check-ancfz-salesforce.mjs')
+    Invoke-CheckedNode -Arguments @('scripts/check-ancfz-billing-workflows.mjs')
 
     $key=Read-Host 'EXISTING n8n owner API key (not a Salesforce or merchant token)' -AsSecureString
     $bstr=[Runtime.InteropServices.Marshal]::SecureStringToBSTR($key)
     $env:N8N_API_KEY=[Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
 
-    Invoke-CheckedNode @('scripts/apply-n8n-code-hotfix.mjs','--inspect')
+    Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--inspect')
     if($Apply){
         $confirmation=Read-Host 'Unpublish both ANCFZ Salesforce Lead and 2Checkout Order Create, then type APPLY ANCFZ HOTFIX'
         if($confirmation -cne 'APPLY ANCFZ HOTFIX'){
             throw 'Cancelled. No workflow changes made.'
         }
-        Invoke-CheckedNode @('scripts/apply-n8n-code-hotfix.mjs','--apply')
-        Invoke-CheckedNode @('scripts/apply-n8n-code-hotfix.mjs','--inspect')
+        Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--apply')
+        Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--inspect')
         Write-Host 'Hotfix installed; both workflows must remain unpublished until credentials are checked and you deliberately republish.'
     } elseif($BackupOnly){
-        Invoke-CheckedNode @('scripts/apply-n8n-code-hotfix.mjs','--backup')
+        Invoke-CheckedNode -Arguments @('scripts/apply-n8n-code-hotfix.mjs','--backup')
     } else {
         Write-Host 'Inspection only. No changes made; use -Apply to patch after unpublishing workflows.'
     }
