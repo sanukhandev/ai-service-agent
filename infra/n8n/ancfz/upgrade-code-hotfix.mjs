@@ -10,6 +10,8 @@
  */
 import {readFileSync} from "node:fs";
 import {createHash} from "node:crypto";
+import {resolve} from "node:path";
+import {fileURLToPath} from "node:url";
 
 const specs=[
   {file:"01-salesforce-lead.json",name:"ANCFZ | Salesforce Apex REST AI Chatbot Lead",
@@ -151,6 +153,10 @@ function validate(w,source,spec){
   }
   return changes;
 }
+/** Only workflows that actually require a change must be unpublished. */
+export function requiresUnpublish(workflow){
+  return workflow.changes.length>0 && workflow.w.active!==false;
+}
 function updateBody(current,template,spec){
   const nodes=structuredClone(current.nodes);
   for(const name of spec.targets){
@@ -188,7 +194,9 @@ async function main(){
   if(!Array.isArray(request.expected)||request.expected.length!==results.length)
     fail("SNAPSHOT_REQUIRED","Expected exact workflow hash set");
   for(const x of results){
-    if(x.w.active!==false)fail("WORKFLOW_ACTIVE","Unpublish before updating: "+x.spec.path);
+    // Already-patched active workflows are read-only: do not interrupt Salesforce.
+    if(requiresUnpublish(x))
+      fail("WORKFLOW_ACTIVE","Unpublish workflow needing a patch: "+x.spec.path);
     const match=request.expected.find(v=>v.id===x.id);
     if(!match||match.hash!==x.hash)
       fail("SNAPSHOT_CHANGED","Workflow changed since backup: "+x.spec.path);
@@ -201,13 +209,16 @@ async function main(){
     if(saved.active!==false||validate(saved,x.template,x.spec).length)
       fail("UPDATE_NOT_VERIFIED","Workflow update could not be verified: "+x.spec.path);
   }
-  return {ok:true,applied:true,workflows:results.map(({spec,changes})=>({
-    path:spec.path,updated:changes.length>0,remainsInactive:true,
+  return {ok:true,applied:true,workflows:results.map(({spec,changes,w})=>({
+    path:spec.path,updated:changes.length>0,
+    remainsInactive:changes.length>0?true:w.active===false,
   }))};
 }
-main().then(x=>process.stdout.write(JSON.stringify(x)+"\n")).catch(e=>{
+if(process.argv[1] && resolve(process.argv[1])===fileURLToPath(import.meta.url)){
+  main().then(x=>process.stdout.write(JSON.stringify(x)+"\n")).catch(e=>{
   // Never print workflow or secret-bearing response bodies.
   process.stdout.write(JSON.stringify({ok:false,code:e.code||"HOTFIX_FAILED",
     error:String(e.message||"Workflow update stopped").slice(0,180)})+"\n");
   process.exitCode=1;
-});
+  });
+}
