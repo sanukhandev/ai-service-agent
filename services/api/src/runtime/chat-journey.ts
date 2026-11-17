@@ -344,13 +344,13 @@ export class ChatJourney {
           [["term_years"],"How many years should the licence cover (1–5)?"],
           [["office_preference"],"What is your office preference: flexi-desk, shared office, or private office?"],
         ];
+        const customerName=field(current,["customer_name"]);
+        if(customerName && !parseSalesforceLeadName(customerName))
+          return "What is your last name? Salesforce requires it to create the enquiry. I'll keep the first name and other details you've already provided.";
         const missing=questions.find(([keys])=>keys.every(k=>{
           const v=current.get(k);return v===undefined||v===null||v==="";
         }));
         if(missing)return missing[1];
-        const customerName=field(current,["customer_name"]);
-        if(customerName && !parseSalesforceLeadName(customerName))
-          return "What is your last name? Salesforce requires it to create the enquiry. I'll keep the first name and other details you've already provided.";
         return "There is no exact published test offering for those requirements, or a value is invalid. I won't substitute another visa count or price. Please correct the package details or request staff review.";
       }
       return this.stage(scope,ticketId,"lead_quote",data);
