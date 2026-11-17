@@ -11,7 +11,7 @@ import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/
 import { authorizedTicket, workerTicketScope, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
-import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, type LeadFields } from "./lead-operations.js";
+import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, parseSalesforceLeadName, type LeadFields } from "./lead-operations.js";
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
@@ -253,7 +253,9 @@ export class ChatJourney {
     const officePreference=field(f,["office_preference"]);
     const visaCount=count(f.get("visa_count"),0,10);
     const termYears=count(f.get("term_years"),1,5);
-    if(!name||!company||!phone||!email||!activity||!officePreference||
+    // A first name is enough for chat, but not for Salesforce lead dispatch.
+    // Do not issue a consent proposal that the n8n workflow would reject.
+    if(!parseSalesforceLeadName(name)||!company||!phone||!email||!activity||!officePreference||
       visaCount===null||termYears===null)return null;
     if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
       !/^\+?[0-9 ()-]{7,40}$/.test(phone))return null;
@@ -335,7 +337,7 @@ export class ChatJourney {
           [["preferred_company_name","company_name"],"What company name would you prefer?"],
           [["shareholder_nationality"],"What nationality should I record for the shareholder?"],
           [["shareholder_count"],"How many shareholders will the company have?"],
-          [["customer_name"],"What full name should I use for the Salesforce enquiry?"],
+          [["customer_name"],"What is your first name for the Salesforce enquiry?"],
           [["customer_phone"],"What contact phone number should ANCFZ use?"],
           [["customer_email","email"],"What email address should ANCFZ use for your enquiry?"],
           [["visa_count"],"How many visas do you need (0–10)?"],
@@ -345,8 +347,11 @@ export class ChatJourney {
         const missing=questions.find(([keys])=>keys.every(k=>{
           const v=current.get(k);return v===undefined||v===null||v==="";
         }));
-        return missing?missing[1]:
-          "There is no exact published test offering for those requirements, or a value is invalid. I won't substitute another visa count or price. Please correct the package details or request staff review.";
+        if(missing)return missing[1];
+        const customerName=field(current,["customer_name"]);
+        if(customerName && !parseSalesforceLeadName(customerName))
+          return "What is your last name? Salesforce requires it to create the enquiry. I'll keep the first name and other details you've already provided.";
+        return "There is no exact published test offering for those requirements, or a value is invalid. I won't substitute another visa count or price. Please correct the package details or request staff review.";
       }
       return this.stage(scope,ticketId,"lead_quote",data);
     }
