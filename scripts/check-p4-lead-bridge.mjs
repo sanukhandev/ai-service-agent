@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /** Offline P4 safety gate: never contacts Foundry, n8n or Salesforce. */
 import assert from "node:assert/strict";
-import { parseAuthorizedLead, leadDispatchEnabled, verifiedLeadResult,
+import { parseAuthorizedLead, parseSalesforceLeadName, leadDispatchEnabled, verifiedLeadResult,
   classifyLeadResult, LEAD_CONSENT_TEXT } from "../services/api/dist/runtime/lead-operations.js";
 
 const input = {
@@ -13,6 +13,19 @@ const input = {
 const parsed=parseAuthorizedLead(input);
 assert.equal(parsed.lead.email,"example@example.invalid");
 assert.equal(parsed.digest.length,64);
+assert.deepEqual(parseSalesforceLeadName("  Sanu   Khan  "), {
+  firstName:"Sanu",lastName:"Khan",fullName:"Sanu Khan",
+});
+assert.deepEqual(parseSalesforceLeadName("Ali Bin Ahmed"), {
+  firstName:"Ali",lastName:"Bin Ahmed",fullName:"Ali Bin Ahmed",
+});
+assert.equal(parseSalesforceLeadName("Sanu"),null);
+assert.equal(parseSalesforceLeadName("  Sanu  "),null);
+assert.equal(parseSalesforceLeadName(""),null);
+assert.equal(parseSalesforceLeadName(null),null);
+assert.equal(parseAuthorizedLead({...input,name:"  Test   Customer  "}).lead.name,"Test Customer");
+assert.throws(()=>parseAuthorizedLead({...input,name:"Sanu"}),/Last name is required/);
+assert.throws(()=>parseAuthorizedLead({...input,name:"  Sanu  "}),/Last name is required/);
 assert.throws(()=>parseAuthorizedLead({...input,consent:false}));
 assert.throws(()=>parseAuthorizedLead({...input,consentText:"yes"}));
 assert.throws(()=>parseAuthorizedLead({...input,email:"invalid"}));
