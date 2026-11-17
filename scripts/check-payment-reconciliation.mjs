@@ -86,7 +86,7 @@ try{
   assert.equal(record.verification_attempts,1,"Failed lookup counts against rate limit");
   assert.equal(events.length,0);
   reset();remoteAmount="30150.00";remoteStatus="COMPLETE";
-  const paid=await service.reconcile(scope,ticketId,paymentId,{orderReference});
+  const paid=await service.reconcile(scope,ticketId,paymentId,{orderReference,providerPaymentId});
   assert.equal(paid.paymentCompleted,false,"COMPLETE recovery is not invoice authorization");
   assert.equal(record.state,"order_created_checkout_unavailable");
   assert.equal(events[0].payload.verifiedPayment,false);
