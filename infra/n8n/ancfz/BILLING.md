@@ -176,6 +176,17 @@ must also match RefNo, external reference, exact AED amount and currency.
 If the URL is absent or the payment ID cannot be verified, the operation
 remains pending/unknown until an operator recovers both identifiers.
 
+To confirm the merchant credentials and identifier **without creating a
+new order**, run this script against an existing provider payment ID after
+rotating the exposed key:
+
+    .\scripts\check-mockgateway-order-readonly.ps1 -PaymentId "<existing payment ID>" -ExpectedExternalReference "<ANCFZ external ref>" -ExpectedAmount "20700.00"
+
+The script prompts for the rotated secret without printing it, performs **one
+GET** and displays only whether the reference, amount and currency match.
+A 401 means merchant authentication remains invalid; a 404 means the selected
+provider payment ID did not resolve. Neither error authorizes a POST retry.
+
 Before using the new contract, import the forward-only migration, rebuild
 API + web, and update the already-imported n8n **Order Create** and
 **Payment Verification** workflows with the guarded `update-n8n-code-hotfix.ps1`
