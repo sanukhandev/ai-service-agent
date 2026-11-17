@@ -21,6 +21,7 @@ interface Challenge {
 }
 interface Payment {
   id:string;state:string;orderReference:string|null;checkoutUrl:string|null;
+  providerStatus?:string|null;
 }
 interface Invoice {
   id:string;state:string;documentNumber:string;pdfAvailable:boolean;
@@ -86,6 +87,7 @@ export function ChatJourneyControls({
   const [error,setError]=useState<string|null>(null);
   const [notice,setNotice]=useState<string|null>(null);
   const [otp,setOtp]=useState("");
+  const [orderReference,setOrderReference]=useState("");
   const [editingDocuments,setEditingDocuments]=useState(false);
   const otpRequest=useRef<string|null>(null);
   const reviewRequestedForQuote=useRef<string|null>(null);
@@ -107,7 +109,37 @@ export function ChatJourneyControls({
   // upload-triggered Node review existed. A POST creates a review message only;
   // it never consents to or dispatches a sandbox purchase.
   useEffect(()=>{
-    const quote=data?.quotation;
+    async function reconcileOrder(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    const payment=data?.payment?.payments?.[0];
+    if(!payment||payment.state!=="unknown_outcome"||payment.orderReference||
+       busy!==null||!/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim()))return;
+    setBusy("reconcile");setError(null);setNotice(null);
+    try{
+      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/reconcile",{
+        orderReference:orderReference.trim(),
+      });
+      setOrderReference("");
+      setNotice("Existing gateway order matched. Payment remains unverified until a fresh gateway status check.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Gateway order could not be reconciled");
+    }finally{setBusy(null);}
+  }
+
+  async function verifyExistingPayment(){
+    const payment=data?.payment?.payments?.[0];
+    if(!payment||!payment.orderReference||busy!==null)return;
+    setBusy("verify");setError(null);setNotice(null);
+    try{
+      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/verify",{});
+      await load();
+      setNotice("The existing order was checked with the gateway. PENDING is not payment confirmation.");
+    }catch(e){setError(e instanceof Error?e.message:"Unable to verify existing gateway order");}
+    finally{setBusy(null);}
+  }
+
+  const quote=data?.quotation;
     const purchase=data?.purchase;
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
        !purchase?.supported||purchase.confirmed||purchase.reviewIssued!==false||
@@ -313,9 +345,44 @@ export function ChatJourneyControls({
               </a>
             )}
             {currentPayment.state==="unknown_outcome" && (
-              <p role="alert" className="text-xs text-amber-800">
-                Provider outcome unknown. Do not create another payment order.
-              </p>
+              <div className="space-y-2">
+                <p role="alert" className="text-xs text-amber-800">
+                  Provider outcome unknown. Do not create another payment order.
+                </p>
+                {currentPayment.providerStatus && (
+                  <p className="text-xs text-zinc-600">
+                    Dispatch diagnostic: {currentPayment.providerStatus}
+                  </p>
+                )}
+                {!currentPayment.orderReference && (
+                  <form className="space-y-2" onSubmit={reconcileOrder}>
+                    <label className="block text-xs font-medium" htmlFor="existing-gateway-order">
+                      Existing MockGateway RefNo / OrderNo (operator recovery)
+                    </label>
+                    <input id="existing-gateway-order" autoComplete="off"
+                      value={orderReference} onChange={event=>setOrderReference(event.currentTarget.value)}
+                      maxLength={120} placeholder="Existing provider order number"
+                      className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs"/>
+                    <p className="text-xs text-zinc-600">
+                      Read-only gateway lookup. Requires the exact existing provider order number,
+                      not a new payment or OTP. A mismatched order cannot be attached.
+                    </p>
+                    <button type="submit" disabled={busy!==null||
+                      !/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim())}
+                      className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">
+                      {busy==="reconcile"?"Checking existing order…":"Reconcile existing order (GET only)"}
+                    </button>
+                  </form>
+                )}
+              </div>
+            )}
+            {currentPayment.orderReference &&
+              !["payment_refunded","payment_declined"].includes(currentPayment.state) && (
+              <button type="button" onClick={()=>{void verifyExistingPayment();}}
+                disabled={busy!==null}
+                className="block rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium disabled:opacity-40">
+                {busy==="verify"?"Verifying status…":"Verify status with gateway (GET only)"}
+              </button>
             )}
           </div>
         )}
