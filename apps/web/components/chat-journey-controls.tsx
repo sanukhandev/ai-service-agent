@@ -109,36 +109,6 @@ export function ChatJourneyControls({
   // upload-triggered Node review existed. A POST creates a review message only;
   // it never consents to or dispatches a sandbox purchase.
   useEffect(()=>{
-    async function reconcileOrder(event:FormEvent<HTMLFormElement>){
-    event.preventDefault();
-    const payment=data?.payment?.payments?.[0];
-    if(!payment||payment.state!=="unknown_outcome"||payment.orderReference||
-       busy!==null||!/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim()))return;
-    setBusy("reconcile");setError(null);setNotice(null);
-    try{
-      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/reconcile",{
-        orderReference:orderReference.trim(),
-      });
-      setOrderReference("");
-      setNotice("Existing gateway order matched. Payment remains unverified until a fresh gateway status check.");
-      await load();
-    }catch(e){
-      setError(e instanceof Error?e.message:"Gateway order could not be reconciled");
-    }finally{setBusy(null);}
-  }
-
-  async function verifyExistingPayment(){
-    const payment=data?.payment?.payments?.[0];
-    if(!payment||!payment.orderReference||busy!==null)return;
-    setBusy("verify");setError(null);setNotice(null);
-    try{
-      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/verify",{});
-      await load();
-      setNotice("The existing order was checked with the gateway. PENDING is not payment confirmation.");
-    }catch(e){setError(e instanceof Error?e.message:"Unable to verify existing gateway order");}
-    finally{setBusy(null);}
-  }
-
   const quote=data?.quotation;
     const purchase=data?.purchase;
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
@@ -208,6 +178,36 @@ export function ChatJourneyControls({
       setError(e instanceof Error?e.message:"OTP was not verified");
       setOtp("");
     }finally{setBusy(null);}
+  }
+
+  async function reconcileOrder(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    const payment=data?.payment?.payments?.[0];
+    if(!payment||payment.state!=="unknown_outcome"||payment.orderReference||
+       busy!==null||!/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim()))return;
+    setBusy("reconcile");setError(null);setNotice(null);
+    try{
+      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/reconcile",{
+        orderReference:orderReference.trim(),
+      });
+      setOrderReference("");
+      setNotice("Existing gateway order matched. Payment remains unverified until a fresh gateway status check.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Gateway order could not be reconciled");
+    }finally{setBusy(null);}
+  }
+
+  async function verifyExistingPayment(){
+    const payment=data?.payment?.payments?.[0];
+    if(!payment||!payment.orderReference||busy!==null)return;
+    setBusy("verify");setError(null);setNotice(null);
+    try{
+      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/verify",{});
+      await load();
+      setNotice("The existing order was checked with the gateway. PENDING is not payment confirmation.");
+    }catch(e){setError(e instanceof Error?e.message:"Unable to verify existing gateway order");}
+    finally{setBusy(null);}
   }
 
   const quote=data?.quotation;
