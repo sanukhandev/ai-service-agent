@@ -227,3 +227,33 @@ An exhausted lookup budget does not reset with time. Any recovery budget reset
 must be privileged, one-shot, scoped to the exact payment after confirmed
 provider identity, and must not create an order or invoice. Do not use a
 customer-provided value alone to bypass that limit.
+
+### Verified missing ExternalReference in authenticated provider GET
+
+On 17 November 2026, an authenticated **GET of the existing RefNo**
+`qMuVt5OEA` returned RefNo=`qMuVt5OEA`, GrossPrice=`30150.00`,
+Currency=`AED`, Status=`PENDING` but **ExternalReference was empty**.
+The transaction dashboard's original request details showed
+`ANCFZ-4005adcb5f5446f89635a671cea8957d` supplied as
+`ExternalReference`. This proves the prior 500 was caused by a provider
+response-template identity mismatch, not failure to create the order.
+
+This MockGateway instance currently uses `{{merchant_order_id}}` for
+`ExternalReference` in BOTH Init and Verify Response Templates. The live
+authenticated GET does not resolve that placeholder for this request.
+Use the MockGateway Schema > Response Templates > **Var** selector to choose
+the **original request's ExternalReference** field in BOTH templates. Do not
+guess placeholder spelling or hardcode the ANCFZ reference. Save the templates.
+
+Next, **GET the same RefNo again** (never POST). Reconcile only if the
+authenticated GET returns the precise original external reference in addition
+to RefNo, exact amount/currency, and supported status. Template changes
+might not repair old orders; if the GET remains blank, keep the payment
+`unknown_outcome` and use a narrowly authorized, independently evidenced
+recovery workflow instead of bypassing identity validation. An existing
+`PENDING` order cannot issue a test invoice.
+
+Customer-side reconciliation can exhaust its bounded five-attempt budget.
+Do not reset that budget or the dead order outbox merely to try again; any
+one-time operator recovery must be scoped to this exact payment and separately
+audited after provider identity has been confirmed.
