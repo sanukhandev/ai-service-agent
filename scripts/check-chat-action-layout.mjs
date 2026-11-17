@@ -79,6 +79,20 @@ assert.doesNotMatch(chat,/schedulePanelRefresh|eventRevision/,
   "Remove action-panel-specific refresh state and timers");
 assert.ok(chat.includes("useTicketEvents("),
   "Continue receiving verified workflow status events over SSE");
+
+// New assistant messages may arrive through SSE or catch-up refresh. Both
+// trigger focus once; loading historical replies and older pages must not.
+assert.match(chat,/seenAssistantMessages\.current = new Set\(/);
+assert.match(chat,/if \(novelReplies\.length\) setFocusReplyId\(/);
+assert.match(chat,/if \(!seenAssistantMessages\.current\.has\(incomingMessage\.id\)\)/);
+assert.match(chat,/focusReplyId=\{focusReplyId\}/);
+const composer=readFileSync("apps/web/components/chat-composer.tsx","utf8");
+assert.match(composer,/if \(!focusReplyId \|\| disabled \|\| sending/);
+assert.match(composer,/handledReplyId\.current === focusReplyId/);
+assert.match(composer,/document\.visibilityState !== "visible"/);
+assert.match(composer,/Secure in-chat journey/);
+assert.match(composer,/textarea\.focus\(\{ preventScroll: true \}\)/);
+console.log("Chat focus PASS: one focus per new reply, locked-turn deferral, secure-input protection");
 console.log("Chat-only layout PASS: legacy action panel absent, transcript and SSE preserved");
 
 
