@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import type { ChatMessage, SourceReference } from "../lib/chat-api";
 import { conversationalText } from "../lib/chat-display";
 
@@ -438,13 +438,21 @@ function Citation({
 export function MessageBubble({
   message,
   ticketId,
+  consentText,
+  consentDisabled = false,
+  onConsent,
 }: {
   message: ChatMessage;
   ticketId?: string;
+  consentText?: string;
+  consentDisabled?: boolean;
+  onConsent?: (text: string) => Promise<void>;
 }) {
   const assistant = message.role === "assistant";
   const [copied, setCopied] = useState(false);
   const [showSources, setShowSources] = useState(false);
+  const [submittingConsent, setSubmittingConsent] = useState(false);
+  const consentInFlight = useRef(false);
   const references = assistant
     ? message.sourceReferences?.filter((ref) => ref.sourceId.trim()) ?? []
     : [];
@@ -460,6 +468,21 @@ export function MessageBubble({
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // Clipboard copy fallback if blocked
+    }
+  }
+
+  async function sendConsent() {
+    if (!consentText || !onConsent || consentDisabled || consentInFlight.current) return;
+    consentInFlight.current = true;
+    setSubmittingConsent(true);
+    try {
+      // Use the normal customer-message endpoint, never an action/consent API.
+      await onConsent(consentText);
+    } catch {
+      // The parent composer preserves the retry key and displays the API error.
+    } finally {
+      consentInFlight.current = false;
+      setSubmittingConsent(false);
     }
   }
 
@@ -510,14 +533,26 @@ export function MessageBubble({
             sourceReferences={SHOW_CHAT_SOURCES ? references : []}
           />
 
-          {/* Action footer for assistant responses */}
+          {/* Chat-only confirmation: send the displayed exact consent text
+              through the same customer message transport as the composer. */}
           {assistant && (
-            <div className="mt-3 flex items-center justify-end border-t border-zinc-200/50 pt-2 text-[0.72rem] text-zinc-400">
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200/50 pt-2 text-[0.72rem] text-zinc-400">
+              {consentText && onConsent && (
+                <button type="button"
+                  onClick={()=>{void sendConsent();}}
+                  disabled={consentDisabled||submittingConsent}
+                  aria-label="I Consent — send the exact confirmation to Sara"
+                  title="Sends the confirmation text to Sara in this conversation"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-800 disabled:cursor-not-allowed disabled:opacity-50">
+                  <CheckIcon className="size-3.5" />
+                  <span>{submittingConsent?"Sending…":"I Consent"}</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={copyContent}
                 aria-label={copied ? "Copied to clipboard" : "Copy response"}
-                className="inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus-visible:outline-2 focus-visible:outline-zinc-800"
+                className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus-visible:outline-2 focus-visible:outline-zinc-800"
               >
                 {copied ? (
                   <>
