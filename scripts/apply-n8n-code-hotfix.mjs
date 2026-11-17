@@ -18,8 +18,21 @@ function docker(args,input){
     cwd,input,encoding:"utf8",stdio:["pipe","pipe","pipe"],
     timeout:90000,maxBuffer:8*1024*1024,
   });
-  if(x.error||x.status!==0)
+  if(x.error)throw Error("Private n8n container operation unavailable");
+  if(x.status!==0){
+    // The n8n-side updater prints a deliberately redacted JSON code/message.
+    // Surface it to the operator instead of hiding WORKFLOW_ACTIVE and drift.
+    let failure;
+    try{failure=JSON.parse(x.stdout.trim());}catch{/* no safe JSON */}
+    if(failure?.ok===false && typeof failure.code==="string" &&
+       /^[A-Z][A-Z0-9_]{2,63}$/.test(failure.code)){
+      const detail=typeof failure.error==="string"
+        ?failure.error.replace(/[^a-zA-Z0-9_ .:/-]/g,"").slice(0,180)
+        :"See private n8n updater log";
+      throw Error("n8n "+failure.code+": "+detail);
+    }
     throw Error("Private n8n operation failed; inspect container state and key locally");
+  }
   return x.stdout.trim();
 }
 function helper(action,key,expected){
@@ -66,6 +79,13 @@ export function main(args=process.argv.slice(2)){
   if(action==="--inspect"){
     console.log(JSON.stringify(helper("inspect",key.trim())));
     return;
+  }
+  if(action==="--apply"){
+    const inspected=helper("inspect",key.trim());
+    const blocked=inspected.workflows.filter(w=>w.status==="needs_patch" && w.active===true);
+    if(blocked.length)
+      throw Error("WORKFLOW_ACTIVE: Unpublish only workflows requiring updates: "+
+        blocked.map(w=>w.path).join(", ")+". Already-patched active workflows are untouched.");
   }
   const snapshot=helper("snapshot",key.trim()).snapshot;
   const backup=saveBackups(snapshot);
