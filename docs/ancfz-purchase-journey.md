@@ -82,6 +82,15 @@ image rebuild alone does not rewrite saved n8n workflows.
    verified quote, full configured document set and exact quote confirmation.
    Synthetic OTP is recorded only to the private n8n test Data Table with
    rate limiting, HMAC digest, expiration and max failures.
+   If an earlier OTP dispatcher recorded a one-shot start marker but failed
+   **before creating an OTP database row**, the worker may recover at most
+   twice, at least 90 seconds between durable attempts, after rechecking the
+   approved quotation and pre-validating synthetic billing input. This is
+   safe because the external n8n delivery call only occurs after the OTP row
+   is committed. Existing OTP rows, even failed or expired, prohibit this
+   automatic recovery; operators must use a separately authorized issuance
+   process. The dispatcher logs finite error classifications rather than
+   billing names, recipient addresses or OTP values.
 7. Successful OTP authorizes exactly one durable sandbox order POST.
    The returned checkout URL is **not** evidence of payment.
 8. After order creation, a bounded worker polls the private n8n authenticated

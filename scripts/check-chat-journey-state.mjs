@@ -50,6 +50,7 @@ let approvals=[{
   proposal:{kind:"lead_quote",data:leadQuoteData,fingerprint:hash(leadQuoteData)},
 }];
 let leadState=null,quotation=null,confirmed=false,otpMarker=null;
+let otpRowPersisted=false,otpRetryCount=0,otpRetryLast=null,failPreInsert=false;
 let leadSubmits=0,quoteSubmits=0,purchaseConfirms=0,otpIssues=0;
 let seq=5;
 const query=async(sql,params=[])=>{
@@ -76,7 +77,12 @@ const query=async(sql,params=[])=>{
   if(sql.includes("SELECT id,ticket_id,payload,sequence::text FROM ticket_events"))
     return {rows:otpMarker?[otpMarker]:[]};
   if(sql.includes("SELECT 1 FROM ticket_payment_otps"))
-    return {rows:[]};
+    return {rows:otpRowPersisted?[{id:"existing-otp"}]:[]};
+  if(sql.includes("SELECT count(*)::int AS attempts")){
+    const last=otpRetryLast??otpMarker?.created_at;
+    return {rows:[{attempts:(otpMarker?1:0)+otpRetryCount,
+      ready:Boolean(last&&Date.now()-last.getTime()>90000)}]};
+  }
   if(sql.includes("UPDATE tickets SET last_event_sequence")){
     seq++;return {rows:[{last_event_sequence:String(seq)}]};
   }
@@ -84,6 +90,9 @@ const query=async(sql,params=[])=>{
     const row={id:randomUUID(),ticket_id:ticketId,sequence:String(seq),
       event_type:params[3],payload:JSON.parse(params[4]),created_at:new Date()};
     if(row.event_type==="chat.otp.dispatch_started")otpMarker=row;
+    if(row.event_type==="chat.otp.preinsert_retry_started"){
+      otpRetryCount++;otpRetryLast=row.created_at;
+    }
     return {rows:[row]};
   }
   throw Error("Unexpected mock SQL: "+sql.slice(0,125));
@@ -145,7 +154,9 @@ try{
   PaymentOperations.prototype.issueOtp=async(_scope,_ticket,payload)=>{
     assert.equal(payload.email,"billing@example.invalid");
     assert.equal(payload.quotationId,quotationId);
-    otpIssues++;return {challengeId:randomUUID(),status:"mock_recorded"};
+    otpIssues++;
+    if(failPreInsert)throw Error("Simulated pre-insert failure");
+    return {challengeId:randomUUID(),status:"mock_recorded"};
   };
   TicketMessageRepository.prototype.createAssistantMessage=async()=>({duplicated:false});
   const journey=new ChatJourney(db);
@@ -178,6 +189,31 @@ try{
     "No unexpected state-machine errors");
   assert.equal(problems.filter(item=>/Synthetic OTP recorded/.test(item.message)).length,1,
     "Successful one-shot OTP issuance should be observed once");
+  // A pre-insert crash commits the marker but NO OTP row. The durable guard
+  // must permit bounded recovery after cooling down, without reusing consent.
+  otpMarker=null;otpRowPersisted=false;otpRetryCount=0;otpRetryLast=null;
+  otpIssues=0;failPreInsert=true;
+  await journey.advance(log);
+  assert.equal(otpIssues,1);
+  assert.ok(otpMarker,"Crash marker is retained for the existing ticket");
+  await journey.advance(log);
+  assert.equal(otpIssues,1,"A fresh marker must not be retried immediately");
+  otpMarker.created_at=new Date(Date.now()-120_000);
+  failPreInsert=false;
+  await journey.advance(log);
+  assert.equal(otpIssues,2,"A stale pre-insert marker with no row may recover");
+  assert.equal(otpRetryCount,1,"Retry must be recorded durably");
+  await journey.advance(log);
+  assert.equal(otpIssues,2,"Recovery marker cooldown prevents repeated dispatch");
+  otpRowPersisted=true;
+  otpRetryLast=new Date(Date.now()-120_000);
+  await journey.advance(log);
+  assert.equal(otpIssues,2,"An existing OTP row must forbid another issuance");
+  otpRowPersisted=false;otpRetryCount=2;
+  await journey.advance(log);
+  assert.equal(otpIssues,2,"Retry cap must prevent unlimited OTP attempts");
+  assert.equal(problems.filter(item=>item.detail.reason==="UNEXPECTED").length,1,
+    "The pre-insert failure is surfaced without logging private billing facts");
 }finally{
   for(const [klass,key,fn] of originals)klass.prototype[key]=fn;
   for(const name of envNames){

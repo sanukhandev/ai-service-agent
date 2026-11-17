@@ -32,6 +32,10 @@ const otpBody={
   consent:true,consentText:PAYMENT_CONSENT,
 };
 assert.equal(parseStartOtp(otpBody).amount,"425.25");
+assert.equal(parseStartOtp({...otpBody,firstName:"José"}).firstName,"José");
+assert.equal(parseStartOtp({...otpBody,firstName:"أحمد"}).firstName,"أحمد");
+assert.throws(()=>parseStartOtp({...otpBody,firstName:"<script>"}));
+assert.throws(()=>parseStartOtp({...otpBody,firstName:"1234"}));
 for(const bad of [
   {email:"customer@example.com"},{countryCode:"US"},{currency:"USD"},
   {acceptedAmount:"425.250"},{acceptedAmount:"426.25"},
