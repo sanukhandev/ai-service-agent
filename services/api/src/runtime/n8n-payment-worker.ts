@@ -146,11 +146,11 @@ export class N8nPaymentWorker {
       if(r.rows[0]?.state!=="creating")return;
       await client.query(
         `UPDATE ticket_payment_attempts SET state=$3,order_reference=$4,
-          checkout_url=$5,provider_status=$6,updated_at=now()
+          checkout_url=$5,provider_payment_id=$6,provider_status=$7,updated_at=now()
           WHERE agent_id=$1 AND id=$2`,
         [c.agentId,c.paymentId,
           created?.state??"unknown_outcome",created?.orderReference??null,
-          created?.checkoutUrl??null,
+          created?.checkoutUrl??null,created?.providerPaymentId??null,
           created?"order_created_not_paid":result.reason],
       );
       await client.query(
