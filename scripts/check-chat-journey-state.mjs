@@ -209,9 +209,18 @@ try{
   otpRetryLast=new Date(Date.now()-120_000);
   await journey.advance(log);
   assert.equal(otpIssues,2,"An existing OTP row must forbid another issuance");
+  // The database privilege fix grants one additional bounded recovery for
+  // tickets that exhausted their earlier two attempts before that fix.
   otpRowPersisted=false;otpRetryCount=2;
+  otpRetryLast=new Date(Date.now()-120_000);
   await journey.advance(log);
-  assert.equal(otpIssues,2,"Retry cap must prevent unlimited OTP attempts");
+  assert.equal(otpIssues,3,"One additional no-row recovery repairs the old stuck ticket");
+  assert.equal(otpRetryCount,3);
+  otpRetryLast=new Date(Date.now()-120_000);
+  await journey.advance(log);
+  assert.equal(otpIssues,3,"The expanded retry cap remains strict");
+  assert.equal(problems.filter(item=>item.detail.reason==="DATABASE_ERROR").length,0,
+    "No unexpected database failure is allowed");
   assert.equal(problems.filter(item=>item.detail.reason==="UNEXPECTED").length,1,
     "The pre-insert failure is surfaced without logging private billing facts");
 }finally{
