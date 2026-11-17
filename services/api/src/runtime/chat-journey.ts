@@ -14,7 +14,7 @@ import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/mess
 import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, type LeadFields } from "./lead-operations.js";
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
-import { PaymentOperations } from "./payment-operations.js";
+import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
 import { PAYMENT_CONSENT, paymentEnabled } from "./payment-evidence.js";
 import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
@@ -481,28 +481,56 @@ export class ChatJourney {
               });
             }
             if(!paymentEnabled())continue;
-            // A crash after the dispatch-start marker must NOT issue another
-            // code automatically; manual review can use the existing secure UI.
+            const firstName=x.billingName.trim().split(/\s+/)[0]??"";
+            const otpRequest={
+              requestId:item.proposal_id,quotationId:x.quotationId,
+              acceptedAmount:x.amount,currency:x.currency,
+              email:x.testEmail,firstName,countryCode:"AE",
+              consent:true,consentText:PAYMENT_CONSENT,
+            };
+            // Reject malformed OCR names or billing facts BEFORE committing
+            // the one-shot dispatch marker. A failed preflight never calls n8n.
+            parseStartOtp(otpRequest);
+            // An OTP row is committed BEFORE the external mock-delivery POST.
+            // Therefore, if an old dispatch marker has NO OTP row, dispatch
+            // cannot have happened: a bounded, cooled-down retry is safe.
+            // An existing OTP row (including failed/expired) is never replayed.
             const started=await this.db.withAgent(agentId,async client=>{
               await authorizedTicket(client,scope,item.ticket_id,true);
-              const earlier=await latestEvent(client,agentId,item.ticket_id,"chat.otp.dispatch_started");
               const existing=await client.query(
                 "SELECT 1 FROM ticket_payment_otps WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 LIMIT 1",
                 [agentId,item.ticket_id,x.quotationId]);
-              if(earlier||existing.rows.length)return true;
+              if(existing.rows.length)return true;
+              const earlier=await latestEvent(client,agentId,item.ticket_id,"chat.otp.dispatch_started");
+              if(earlier){
+                if(earlier.payload.quotationId!==x.quotationId)return true;
+                const retries=await client.query<{attempts:number;ready:boolean}>(
+                  `SELECT count(*)::int AS attempts,
+                      COALESCE(max(created_at)<now()-interval '90 seconds',false) AS ready
+                     FROM ticket_events
+                     WHERE agent_id=$1 AND ticket_id=$2
+                       AND event_type IN ('chat.otp.dispatch_started','chat.otp.preinsert_retry_started')
+                       AND payload->>'quotationId'=$3`,
+                  [agentId,item.ticket_id,x.quotationId],
+                );
+                const state=retries.rows[0];
+                // Maximum two recovery attempts, 90 seconds apart. The ticket
+                // lock serializes competing workers before the durable claim.
+                if(!state?.ready||state.attempts>=3)return true;
+                await appendEventTx(client,agentId,item.ticket_id,
+                  "chat.otp.preinsert_retry_started",{
+                    quotationId:x.quotationId,proposalId:item.proposal_id,
+                    attempt:state.attempts,
+                  });
+                return false;
+              }
               await appendEventTx(client,agentId,item.ticket_id,"chat.otp.dispatch_started",{
                 quotationId:x.quotationId,proposalId:item.proposal_id,
               });
               return false;
             });
             if(started)continue;
-            const firstName=x.billingName.split(/\s+/)[0]??"";
-            await new PaymentOperations(this.db).issueOtp(scope,item.ticket_id,{
-              requestId:item.proposal_id,quotationId:x.quotationId,
-              acceptedAmount:x.amount,currency:x.currency,
-              email:x.testEmail,firstName,countryCode:"AE",
-              consent:true,consentText:PAYMENT_CONSENT,
-            });
+            await new PaymentOperations(this.db).issueOtp(scope,item.ticket_id,otpRequest);
             // Only status/challenge ID is exposed to the browser; code stays
             // exclusively in n8n's private mock table and an HMAC in Node.
             try {
@@ -516,8 +544,25 @@ export class ChatJourney {
             log({ticketId:item.ticket_id},"Synthetic OTP recorded for secure in-chat entry");
           }
         }catch(error){
-          log({ticketId:item.ticket_id,code:(error as Error).name},
-            "Chat-authorized workflow paused; preserve provider/idempotency state");
+          // Finite classifications only: never log billing names, email, OTP
+          // contents, source documents or arbitrary database error messages.
+          const reasons:Record<string,string>={
+            "Invalid synthetic billing identity or accepted quote":"INVALID_OTP_INPUT",
+            "Verified quotation PDF is required before payment":"QUOTE_NOT_VERIFIED",
+            "Select a purchase-enabled intent and obtain a verified quotation":"PURCHASE_NOT_ELIGIBLE",
+            "Customer purchase confirmation is required before OTP":"PURCHASE_NOT_CONFIRMED",
+            "Both ID documents must be read before purchase":"IDENTITY_DOCUMENTS_NOT_READY",
+            "Passport and Emirates ID holder names differ; request review":"IDENTITY_MISMATCH",
+            "OTP request rate limit; retry after cooldown":"OTP_RATE_LIMIT",
+            "Test OTP could not be recorded. No payment is authorized":"OTP_DELIVERY_FAILED",
+            "Persistence constraint rejected the operation":"PERSISTENCE_CONSTRAINT",
+            "Database operation failed":"DATABASE_ERROR",
+          };
+          const reason=error instanceof PersistenceError
+            ?reasons[error.message]??error.code:"UNEXPECTED";
+          log({ticketId:item.ticket_id,code:(error as Error).name,
+            ...(item.kind==="purchase_payment"?{reason}:{}),
+          },"Chat-authorized workflow paused; preserve provider/idempotency state");
         }
       }
     }
