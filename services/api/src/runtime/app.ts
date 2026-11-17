@@ -438,6 +438,16 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     return reply.code(result.duplicated?200:201).send(result);
   });
 
+  // Public POC notification sink for MockGateway's required webhook setting.
+  // The merchant has not supplied a verifiable signature algorithm, so this
+  // intentionally does not store, look up, authorize, or mutate ANY payment.
+  // Webhook events and redirect query strings are untrusted; only the separate
+  // private authenticated GET may advance a payment to COMPLETE.
+  app.post("/api/v1/mockgateway/notifications",{bodyLimit:8192},
+    async(_request,reply)=>reply.code(200)
+      .header("Cache-Control","no-store")
+      .send({received:true,paymentVerified:false}));
+
   // Test-only payment endpoints. Each requires the same authenticated ticket
   // ownership as lead/quotation requests. No model-executed payment functions.
   app.post("/api/v1/tickets/:ticketId/payments/otp",async(request,reply)=>{
@@ -464,6 +474,15 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       rejectCrossSite(request);
       const scope=await scopeFromCookie(db,request);
       return payments.verify(scope,idParam(request),request.params.paymentId);
+    });
+
+  // Never creates or retries an order: checks an EXISTING provider reference
+  // against the stored ticket/quote/price through authenticated backend GET.
+  app.post<{Params:{ticketId:string;paymentId:string}}>(
+    "/api/v1/tickets/:ticketId/payments/:paymentId/reconcile",async(request)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      return payments.reconcile(scope,idParam(request),request.params.paymentId,request.body);
     });
 
   app.get<{Params:{ticketId:string;invoiceId:string}}>(

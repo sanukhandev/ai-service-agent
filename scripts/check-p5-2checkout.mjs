@@ -4,7 +4,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import {
-  paymentEnabled, PAYMENT_CONSENT, isCheckoutUrl, otpHmac,checkOtp,
+  paymentEnabled, paymentReadEnabled, inspectCreatedOrder,
+  PAYMENT_CONSENT, isCheckoutUrl, otpHmac,checkOtp,
   verifyCreatedOrder, verifyPaymentStatus,
 } from "../services/api/dist/runtime/payment-evidence.js";
 import {
@@ -27,6 +28,10 @@ const conf={
   ANCFZ_N8N_WEBHOOK_SECRET:"a".repeat(40),ANCFZ_OTP_PEPPER:"b".repeat(40),
 };
 assert.equal(paymentEnabled(conf),true);
+assert.equal(paymentReadEnabled(conf),true);
+assert.equal(paymentEnabled({...conf,ANCFZ_PAYMENT_DISPATCH_ENABLED:"false"}),false);
+assert.equal(paymentReadEnabled({...conf,ANCFZ_PAYMENT_DISPATCH_ENABLED:"false"}),true);
+assert.equal(paymentReadEnabled({...conf,ANCFZ_N8N_WEBHOOK_SECRET:"short"}),false);
 for(const patch of [
   {APP_ENV:"production"},{ANCFZ_PAYMENT_DISPATCH_ENABLED:"false"},
   {ANCFZ_TEST_OTP_ENABLED:"false"},{ANCFZ_OTP_MOCK_ENABLED:"false"},
@@ -73,6 +78,21 @@ for(const test of ["http://mockgateway.com/pg/pay/abc","https://evil.invalid/pg/
 const order={provider:"2checkout_mock",verified:false,orderReference:"123456789",
   ...expected,status:"checkout_available",checkoutUrl:url};
 assert.equal(verifyCreatedOrder(order,expected)?.checkoutUrl,url);
+assert.deepEqual(inspectCreatedOrder(order,expected),{
+  created:{orderReference:order.orderReference,checkoutUrl:url,state:"checkout_available"},
+  reason:"validated",
+});
+assert.equal(inspectCreatedOrder(null,expected).reason,"post_invalid_json_shape");
+assert.equal(inspectCreatedOrder({...order,provider:"wrong"},expected).reason,
+  "post_provider_contract_invalid");
+assert.equal(inspectCreatedOrder({...order,ticketId:randomUUID()},expected).reason,
+  "post_order_identity_mismatch");
+assert.equal(inspectCreatedOrder({...order,amount:"425.26"},expected).reason,
+  "post_order_price_mismatch");
+assert.equal(inspectCreatedOrder({...order,orderReference:123},expected).reason,
+  "post_order_reference_invalid");
+assert.equal(inspectCreatedOrder({...order,checkoutUrl:"https://evil.invalid"},expected).reason,
+  "post_checkout_contract_invalid");
 assert.equal(verifyCreatedOrder({...order,verified:true},expected),null);
 assert.equal(verifyCreatedOrder({...order,amount:"425.26"},expected),null);
 assert.equal(verifyCreatedOrder({...order,checkoutUrl:"https://evil.invalid/"},expected),null);

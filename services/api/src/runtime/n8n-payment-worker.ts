@@ -7,12 +7,14 @@ import { PersistenceDatabase } from "../database/pool.js";
 import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { workerTicketScope } from "../repositories/types.js";
-import { paymentEnabled, verifyCreatedOrder, type PaymentIdentity } from "./payment-evidence.js";
+import { paymentEnabled, inspectCreatedOrder, type PaymentIdentity,
+  type CreatedOrder } from "./payment-evidence.js";
 
 interface Claim extends PaymentIdentity {
   agentId:string;outboxId:string;paymentId:string;
   firstName:string;email:string;countryCode:string;
 }
+interface DispatchResult {created:CreatedOrder|null;reason:string}
 export class N8nPaymentWorker {
   private timer:ReturnType<typeof setInterval>|undefined;
   private stopped=false;
@@ -102,9 +104,9 @@ export class N8nPaymentWorker {
       };
     });
   }
-  private async send(c:Claim):Promise<ReturnType<typeof verifyCreatedOrder>>{
+  private async send(c:Claim):Promise<DispatchResult>{
     const secret=process.env.ANCFZ_N8N_WEBHOOK_SECRET;
-    if(!secret||secret.length<32)return null;
+    if(!secret||secret.length<32)return {created:null,reason:"n8n_secret_missing"};
     const controller=new AbortController();const timer=setTimeout(()=>controller.abort(),30000);
     try{
       const response=await fetch("http://n8n:5678/webhook/ancfz/payment-link",{
@@ -117,16 +119,25 @@ export class N8nPaymentWorker {
           otpVerified:true,customerConsent:true,
         }),
       });
-      if(!response.ok)return null;
+      // HTTP status is non-sensitive; never log the response body or headers.
+      if(!response.ok)return {created:null,reason:"n8n_http_"+response.status};
       const length=Number(response.headers.get("content-length"));
-      if(Number.isFinite(length)&&length>8192)return null;
-      const text=await response.text();
-      if(text.length>8192)return null;
-      return verifyCreatedOrder(JSON.parse(text) as unknown,c);
-    }catch{return null;}
-    finally{clearTimeout(timer);}
+      if(Number.isFinite(length)&&length>8192)
+        return {created:null,reason:"n8n_response_oversize"};
+      const body=await response.text();
+      if(body.length>8192)return {created:null,reason:"n8n_response_oversize"};
+      let raw:unknown;
+      try{raw=JSON.parse(body);}catch{
+        return {created:null,reason:"n8n_response_not_json"};
+      }
+      return inspectCreatedOrder(raw,c);
+    }catch(err){
+      return {created:null,reason:err instanceof Error&&err.name==="AbortError"
+        ?"n8n_timeout":"n8n_network_or_redirect_error"};
+    }finally{clearTimeout(timer);}
   }
-  private async finalize(c:Claim,created:ReturnType<typeof verifyCreatedOrder>){
+  private async finalize(c:Claim,result:DispatchResult){
+    const created=result.created;
     await this.db.withAgent(c.agentId,async client=>{
       const r=await client.query<{state:string}>(
         "SELECT state FROM ticket_payment_attempts WHERE agent_id=$1 AND id=$2 FOR UPDATE",
@@ -140,7 +151,7 @@ export class N8nPaymentWorker {
         [c.agentId,c.paymentId,
           created?.state??"unknown_outcome",created?.orderReference??null,
           created?.checkoutUrl??null,
-          created?"order_created_not_paid":"post_result_unverified"],
+          created?"order_created_not_paid":result.reason],
       );
       await client.query(
         "UPDATE event_outbox SET status=$3,lease_until=NULL WHERE agent_id=$1 AND id=$2",
@@ -150,7 +161,7 @@ export class N8nPaymentWorker {
         created?"payment.order_created":"payment.unknown_outcome",{
           paymentId:c.paymentId,quotationId:c.quotationId,
           status:created?.state??"unknown_outcome",
-          verified:false,
+          verified:false,...(created?{}:{reason:result.reason}),
         });
       if(created?.checkoutUrl){
         // A checkout link is NOT evidence of payment. Payment verification
@@ -174,9 +185,11 @@ export class N8nPaymentWorker {
         await this.quarantine(id);this.lastSweep=Date.now();
       }
       const claim=await this.claim(id);if(!claim)return;
-      const created=await this.send(claim);
-      await this.finalize(claim,created);
-      this.log({paymentId:claim.paymentId,status:created?.state??"unknown_outcome"},
+      const result=await this.send(claim);
+      await this.finalize(claim,result);
+      this.log({paymentId:claim.paymentId,
+        status:result.created?.state??"unknown_outcome",
+        outcomeCode:result.reason},
         "ANCFZ sandbox order attempt recorded");
     }catch(e){
       this.log({errorCode:(e as Error).name},"2Checkout worker failed; reconcile unknown state");

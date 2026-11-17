@@ -12,7 +12,7 @@ import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/mess
 import { createHash } from "node:crypto";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
-import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled,
+import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled, paymentReadEnabled,
   verifyPaymentStatus, type PaymentIdentity } from "./payment-evidence.js";
 
 const EMAIL=/^[A-Za-z0-9._%+-]+@example\.invalid$/i;
@@ -139,6 +139,10 @@ export class PaymentOperations {
   constructor(private readonly db:PersistenceDatabase){}
   private requireEnabled():void {
     if(!paymentEnabled())throw new PersistenceError("NOT_CONFIGURED","Development sandbox payments are disabled");
+  }
+  private requireReadEnabled():void {
+    if(!paymentReadEnabled())throw new PersistenceError("NOT_CONFIGURED",
+      "Development sandbox order verification is disabled");
   }
   async issueOtp(scope:TicketScope,ticketId:string,raw:unknown){
     this.requireEnabled();
@@ -317,8 +321,93 @@ export class PaymentOperations {
         }:null};
     });
   }
+  /** Repair an UNKNOWN outcome with a fresh authenticated provider GET.
+   * Caller supplies an existing provider order number, NEVER a new order request.
+   * Matching reference, ticket, quotation, currency and amount are mandatory.
+   * Recovery only attaches a reference. A second independent GET through
+   * verify() is required before an invoice can be authorized. */
+  async reconcile(scope:TicketScope,ticketId:string,paymentId:string,raw:unknown){
+    this.requireReadEnabled();
+    requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
+    if(!raw||typeof raw!=="object"||Array.isArray(raw)||
+       Object.keys(raw as Record<string,unknown>).some(k=>k!=="orderReference"))
+      throw new PersistenceError("INVALID_INPUT","Existing provider order reference required");
+    const orderReference=(raw as Record<string,unknown>).orderReference;
+    if(typeof orderReference!=="string"||!/^[A-Za-z0-9_-]{1,120}$/.test(orderReference))
+      throw new PersistenceError("INVALID_INPUT","Invalid existing provider order reference");
+    const claim=await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      await requireAncfz(client,scope.agentId);
+      const row=await client.query<{
+        quotation_id:string;external_reference:string;amount:string;currency:string;
+        state:string;order_reference:string|null;outbox_status:string;
+        attempts:number;verification_attempts:number;next_verification_at:Date;
+      }>(
+        `SELECT p.quotation_id,p.external_reference,p.amount::text,p.currency,
+           p.state,p.order_reference,e.status AS outbox_status,e.attempts,
+           p.verification_attempts,p.next_verification_at
+           FROM ticket_payment_attempts p
+           JOIN event_outbox e ON e.agent_id=p.agent_id AND e.ticket_id=p.ticket_id
+             AND e.id=p.outbox_id AND e.event_type='ancfz_2checkout_create'
+           WHERE p.agent_id=$1 AND p.ticket_id=$2 AND p.id=$3 FOR UPDATE OF p`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      const p=row.rows[0];
+      if(!p)throw new PersistenceError("NOT_FOUND","Payment attempt not found");
+      if(p.state!=="unknown_outcome"||p.order_reference!==null||
+         p.outbox_status!=="dead"||p.attempts!==1)
+        throw new PersistenceError("CONFLICT","Payment is not eligible for read-only reconciliation");
+      if(p.verification_attempts>=5||new Date(p.next_verification_at).getTime()>Date.now())
+        throw new PersistenceError("CONFLICT","Provider lookup cooldown or limit reached");
+      // Charge a bounded lookup before the external GET, even on timeout or
+      // mismatch. Prevent arbitrary order-number enumeration by ticket owners.
+      await client.query(
+        `UPDATE ticket_payment_attempts SET
+           verification_attempts=verification_attempts+1,
+           next_verification_at=now()+interval '60 seconds',updated_at=now()
+           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
+        [scope.agentId,ticketId,paymentId],
+      );
+      return {ticketId,quotationId:p.quotation_id,externalReference:p.external_reference,
+        amount:p.amount,currency:p.currency.trim(),orderReference};
+    });
+    let verified:ReturnType<typeof verifyPaymentStatus>=null;
+    try{
+      const response=await requestJson("ancfz/payment-verify",{agentKey:"ancfz",...claim});
+      verified=verifyPaymentStatus(response,claim);
+    }catch{/* No provider raw error/response is exposed to the customer. */}
+    if(!verified)throw new PersistenceError("CONFLICT",
+      "Provider order could not be independently matched; no reconciliation performed");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      const result=await client.query<{state:string;order_reference:string|null}>(
+        `SELECT state,order_reference FROM ticket_payment_attempts
+           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3 FOR UPDATE`,
+        [scope.agentId,ticketId,paymentId]);
+      const p=result.rows[0];
+      if(!p||p.state!=="unknown_outcome"||p.order_reference!==null)
+        throw new PersistenceError("CONFLICT","Payment changed during reconciliation");
+      // Even if the existing order already says COMPLETE, do not authorize an
+      // invoice based on this recovery step. The normal read-only verifier
+      // must recheck it after the durable reference has been stored.
+      await client.query(
+        `UPDATE ticket_payment_attempts SET order_reference=$4,
+           state='order_created_checkout_unavailable',
+           provider_status='reconciled_' || $5, next_verification_at=now(),
+           updated_at=now()
+           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
+        [scope.agentId,ticketId,paymentId,orderReference,verified.providerStatus]);
+      await appendEventTx(client,scope.agentId,ticketId,"payment.order_reconciled",{
+        paymentId,orderReference,providerStatus:verified.providerStatus,
+        verifiedPayment:false,testOnly:true,
+      });
+      return {reconciled:true,paymentId,orderReference,
+        providerStatus:verified.providerStatus,paymentCompleted:false};
+    });
+  }
+
   async verify(scope:TicketScope,ticketId:string,paymentId:string){
-    this.requireEnabled();requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
+    this.requireReadEnabled();requireUuid(ticketId,"ticketId");requireUuid(paymentId,"paymentId");
     const claim=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       await requireAncfz(client,scope.agentId);

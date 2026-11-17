@@ -6,7 +6,7 @@
 import { PersistenceDatabase } from "../database/pool.js";
 import { workerTicketScope } from "../repositories/types.js";
 import { PaymentOperations } from "./payment-operations.js";
-import { paymentEnabled } from "./payment-evidence.js";
+import { paymentReadEnabled } from "./payment-evidence.js";
 
 export class N8nPaymentVerificationWorker {
   private timer:ReturnType<typeof setInterval>|undefined;
@@ -18,7 +18,7 @@ export class N8nPaymentVerificationWorker {
     private readonly log:(data:Record<string,unknown>,message:string)=>void,
   ){this.payments=new PaymentOperations(db);}
   start():void {
-    if(!paymentEnabled()){
+    if(!paymentReadEnabled()){
       this.log({enabled:false},"Automatic 2Checkout verification disabled");
       return;
     }
@@ -49,7 +49,7 @@ export class N8nPaymentVerificationWorker {
     });
   }
   private async tick(){
-    if(this.busy||this.stopped||!paymentEnabled())return;
+    if(this.busy||this.stopped||!paymentReadEnabled())return;
     this.busy=true;
     try{
       const agent=await this.agentId();if(!agent)return;

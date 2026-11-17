@@ -36,19 +36,40 @@ export function isCheckoutUrl(value:unknown):value is string {
       u.pathname.startsWith("/pg/pay/") && !u.username && !u.password && !u.hash;
   } catch {return false;}
 }
-export function verifyCreatedOrder(raw:unknown,expected:PaymentIdentity):CreatedOrder|null {
-  if(!raw||typeof raw!=="object"||Array.isArray(raw))return null;
+/** Only finite failure categories are retained. Never log provider bodies, URL query
+ * parameters, billing data, credentials, or customer identifiers. */
+export function inspectCreatedOrder(raw:unknown,expected:PaymentIdentity):
+  {created:CreatedOrder|null;reason:string}{
+  if(!raw||typeof raw!=="object"||Array.isArray(raw))
+    return {created:null,reason:"post_invalid_json_shape"};
   const v=raw as Record<string,unknown>;
-  if(v.provider!=="2checkout_mock"||v.verified!==false||
-     v.ticketId!==expected.ticketId||v.quotationId!==expected.quotationId||
-     v.externalReference!==expected.externalReference||v.amount!==expected.amount||
-     v.currency!==expected.currency||typeof v.orderReference!=="string"||
-     !ref.test(v.orderReference))return null;
-  if(v.status==="checkout_available" && isCheckoutUrl(v.checkoutUrl))
-    return {state:"checkout_available",orderReference:v.orderReference,checkoutUrl:v.checkoutUrl};
-  if(v.status==="order_created_checkout_unavailable" && v.checkoutUrl===null)
-    return {state:"order_created_checkout_unavailable",orderReference:v.orderReference,checkoutUrl:null};
-  return null;
+  if(v.provider!=="2checkout_mock"||v.verified!==false)
+    return {created:null,reason:"post_provider_contract_invalid"};
+  if(v.ticketId!==expected.ticketId||v.quotationId!==expected.quotationId||
+     v.externalReference!==expected.externalReference)
+    return {created:null,reason:"post_order_identity_mismatch"};
+  if(v.amount!==expected.amount||v.currency!==expected.currency)
+    return {created:null,reason:"post_order_price_mismatch"};
+  if(typeof v.orderReference!=="string"||!ref.test(v.orderReference))
+    return {created:null,reason:"post_order_reference_invalid"};
+  if(v.status==="checkout_available"&&isCheckoutUrl(v.checkoutUrl))
+    return {created:{state:"checkout_available",orderReference:v.orderReference,
+      checkoutUrl:v.checkoutUrl},reason:"validated"};
+  if(v.status==="order_created_checkout_unavailable"&&v.checkoutUrl===null)
+    return {created:{state:"order_created_checkout_unavailable",
+      orderReference:v.orderReference,checkoutUrl:null},reason:"validated"};
+  return {created:null,reason:"post_checkout_contract_invalid"};
+}
+export function verifyCreatedOrder(raw:unknown,expected:PaymentIdentity):CreatedOrder|null {
+  return inspectCreatedOrder(raw,expected).created;
+}
+/** Read-only order checks may continue after outbound order POSTs are disabled.
+ * This lets operators quarantine a faulty integration without losing the
+ * ability to verify existing orders. */
+export function paymentReadEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
+  return env.APP_ENV==="development" &&
+    typeof env.ANCFZ_N8N_WEBHOOK_SECRET==="string" &&
+    env.ANCFZ_N8N_WEBHOOK_SECRET.length>=32;
 }
 export function verifyPaymentStatus(raw:unknown,expected:PaymentIdentity & {orderReference:string}):VerifiedStatus|null {
   if(!raw||typeof raw!=="object"||Array.isArray(raw))return null;
