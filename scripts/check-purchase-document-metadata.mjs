@@ -39,9 +39,9 @@ const sanitized=preparePurchaseDocumentUpload(payload(pdf,{
   fileName:"..\\..\\test/Passport (1).pdf",
 }));
 assert.equal(sanitized.fileName,".._.._test_Passport (1).pdf");
-assert.equal(preparePurchaseDocumentUpload(payload(pdf,{
-  fileName:"😀".repeat(100)+"-passport.pdf",
-})).fileName.length<=300,true);
+assert.equal(Array.from(preparePurchaseDocumentUpload(payload(pdf,{
+  fileName:"😀".repeat(160)+"-passport.pdf",
+})).fileName).length,150);
 
 const jpg=preparePurchaseDocumentUpload(payload(jpeg,{
   fileName:"ID Front (1).jpeg",
