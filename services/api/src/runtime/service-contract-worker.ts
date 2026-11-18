@@ -82,11 +82,14 @@ function page(content:string):string{
     '</style></head><body>'+content+'</body></html>';
 }
 function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;number:string}):string{
-  const services=(proposal.packageDescription.trim().split(/\n+/)
-    .map(v=>v.replace(/^\s*[-*•]\s*/,"").trim()).filter(Boolean));
-  // Every service line is taken verbatim from the approved quotation snapshot,
-  // not invented from customer preferences or model-generated prose.
-  const items=services.length?services:["The published package scope was not itemized"];
+  // Extract only explicit "Includes ..." items from the frozen quotation.
+  // Price tiers, exclusions and preferences are not secretly converted into
+  // billable or promised services. Retain the complete original scope below.
+  const description=proposal.packageDescription.trim();
+  const included=description.match(/(?:^|[.;]\\s*)Includes\\s+([^;.]+)/i)?.[1]??"";
+  const items=included
+    ?included.split(/,\\s*|\\s+and\\s+/i).map(v=>v.trim()).filter(Boolean)
+    :description.split(/\\n+/).map(v=>v.replace(/^\\s*[-*•]\\s*/,"").trim()).filter(Boolean);
   const requirements=proposal.requirements.map(r=>
     "<tr><td>"+short(r.label,140)+"</td><td>"+short(r.value,400)+"</td></tr>").join("");
   const now=new Date().toISOString().slice(0,10);
@@ -105,7 +108,8 @@ function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;numb
     ". The quotation's published scope and pricing revision govern this draft.</p>"+
     "<h2>3. Services included in the purchased package</h2>"+
     "<ol>"+items.map(v=>"<li>"+short(v)+"</li>").join("")+"</ol>"+
-    "<p>These are the descriptions supplied by the purchased quotation. No additional"+
+    "<h3>Complete approved package description</h3><p>"+short(description)+"</p>"+
+    "<p>These inclusions are extracted solely from the purchased quotation. No additional"+
     " visa, workspace, licence, third-party charge or approval is implied.</p>"+
     "<h2>4. Customer requirements recorded with the quotation</h2>"+
     (requirements?"<table><tr><th>Requirement</th><th>Requested selection</th></tr>"+
