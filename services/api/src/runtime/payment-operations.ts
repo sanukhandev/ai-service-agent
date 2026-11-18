@@ -10,7 +10,7 @@ import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { createHash } from "node:crypto";
-import { PurchaseOperations } from "./purchase-operations.js";
+import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled, paymentReadEnabled,
   verifyPaymentStatus, existingCheckoutUrl, type PaymentIdentity } from "./payment-evidence.js";
@@ -365,7 +365,22 @@ export class PaymentOperations {
              JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id AND p.ticket_id=i.ticket_id
                AND p.id=i.payment_id
              WHERE i.agent_id=$1 AND i.ticket_id=$2 LIMIT 1`,[scope.agentId,ticketId]);
+      const contract=await client.query<{
+        id:string;payment_id:string;state:string;document_number:string;payment_state:string;
+      }>(
+        `SELECT c.id,c.payment_id,c.state,c.document_number,p.state AS payment_state
+         FROM ticket_service_contracts c
+         JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id
+           AND p.id=c.payment_id
+         WHERE c.agent_id=$1 AND c.ticket_id=$2 ORDER BY c.created_at DESC LIMIT 1`,
+        [scope.agentId,ticketId]);
       return {enabled:paymentEnabled(),payments:rows.rows.map(paymentView),
+        contract:contract.rows[0]?{
+          id:contract.rows[0].id,paymentId:contract.rows[0].payment_id,
+          state:contract.rows[0].state,documentNumber:contract.rows[0].document_number,
+          pdfAvailable:contract.rows[0].state==="verified_completed" &&
+            contract.rows[0].payment_state==="verified_test_payment",
+        }:null,
         invoice:invoice.rows[0] ? {
           id:invoice.rows[0].id,paymentId:invoice.rows[0].payment_id,
           state:invoice.rows[0].state,documentNumber:invoice.rows[0].document_number,
@@ -688,6 +703,22 @@ export class PaymentOperations {
             queued.rows[0]?.id,docNumber],
         );
         }
+        // Only the explicitly consented purchase can include private ID
+        // copies inside a contract; legacy consent does not silently opt in.
+        const contractConsent=await client.query(
+          `SELECT 1 FROM ticket_purchase_confirmations
+           WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND consent_text=$4`,
+          [scope.agentId,ticketId,expected.quotationId,PURCHASE_CONSENT]);
+        if(contractConsent.rows.length){
+          const contractId=randomUUID();
+          await client.query(
+            `INSERT INTO ticket_service_contracts
+              (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
+             VALUES($1,$2,$3,$4,$5,$6)
+             ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
+            [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
+              "ANCFZ-TEST-SC-"+contractId]);
+        }
         if(claim.previousState!=="verified_test_payment") {
           await appendEventTx(client,scope.agentId,ticketId,"payment.verified",{
             paymentId,quotationId:expected.quotationId,testOnly:true,
@@ -738,6 +769,25 @@ export class PaymentOperations {
     }
     return this.get(scope,ticketId);
   }
+  async contractPdf(scope:TicketScope,ticketId:string,contractId:string){
+    requireUuid(ticketId,"ticketId");requireUuid(contractId,"contractId");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      await requireAncfz(client,scope.agentId);
+      const r=await client.query<{bytes:Buffer;sha256:string;document_number:string}>(
+        `SELECT c.bytes,c.sha256,c.document_number FROM ticket_service_contracts c
+         JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id
+           AND p.id=c.payment_id AND p.state='verified_test_payment'
+         WHERE c.agent_id=$1 AND c.ticket_id=$2 AND c.id=$3
+           AND c.state='verified_completed' AND c.bytes IS NOT NULL`,
+        [scope.agentId,ticketId,contractId]);
+      const x=r.rows[0];
+      if(!x||createHash("sha256").update(x.bytes).digest("hex")!==x.sha256)
+        throw new PersistenceError("NOT_FOUND","Private TEST service contract unavailable");
+      return {bytes:x.bytes,documentNumber:x.document_number};
+    });
+  }
+
   async invoicePdf(scope:TicketScope,ticketId:string,invoiceId:string){
     requireUuid(ticketId,"ticketId");requireUuid(invoiceId,"invoiceId");
     return this.db.withAgent(scope.agentId,async client=>{
