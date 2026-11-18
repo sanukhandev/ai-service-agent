@@ -9,7 +9,7 @@ import {PersistenceDatabase} from "../database/pool.js";
 import {appendEventTx} from "../repositories/events.js";
 import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
-import {paymentEnabled} from "./payment-evidence.js";
+
 import {PURCHASE_CONSENT} from "./purchase-operations.js";
 import {allowUnnamedSyntheticPassport} from "./identity-extractor.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
@@ -168,6 +168,16 @@ async function annexPdf(file:IdentityFile):Promise<Buffer>{
     "Annex B — Emirates ID copy")+"</h1><img alt=\"Private identity document\" src=\""+src+"\"/>"));
 }
 
+/** Existing TEST agreements can be rendered from independently verified
+ * PostgreSQL payment + invoice evidence even when new payment dispatch or OTP
+ * creation has since been disabled. Strict sandbox-only opt-in remains.
+ * Explicit false pauses generation without losing the existing queue.
+ */
+export function contractPostPaymentEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
+  return env.APP_ENV==="development" &&
+    env.ANCFZ_CONTRACT_RENDER_ENABLED!=="false";
+}
+
 export class ServiceContractWorker{
   private timer:ReturnType<typeof setInterval>|undefined;
   private busy=false;
@@ -175,7 +185,12 @@ export class ServiceContractWorker{
   constructor(private readonly db:PersistenceDatabase,
     private readonly log:(data:Record<string,unknown>,message:string)=>void){}
   start():void{
-    if(!paymentEnabled())return;
+    if(!contractPostPaymentEnabled()){
+      this.log({enabled:false,appEnv:process.env.APP_ENV??"unset"},
+        "ANCFZ TEST contract worker disabled");
+      return;
+    }
+    this.log({enabled:true},"ANCFZ TEST contract worker started");
     this.timer=setInterval(()=>{void this.tick();},4000);
     this.timer.unref();void this.tick();
   }
@@ -464,7 +479,7 @@ export class ServiceContractWorker{
     });
   }
   private async tick():Promise<void>{
-    if(this.stopped||this.busy||!paymentEnabled())return;
+    if(this.stopped||this.busy||!contractPostPaymentEnabled())return;
     this.busy=true;
     try{
       const agentId=await this.agentId();if(!agentId)return;
