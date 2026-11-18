@@ -321,7 +321,7 @@ export class PurchaseOperations {
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||!q.purchase_enabled||!q.currency||q.id!==v.quotationId||q.state!=="verified_completed"||
+      if(!q||!q.id||!q.purchase_enabled||!q.currency||q.id!==v.quotationId||q.state!=="verified_completed"||
          q.amount!==v.amount||q.currency?.trim()!==v.currency)
         throw new PersistenceError("CONFLICT","Verified quoted amount and intent do not match");
       if(!await quoteConfirmedTx(client,scope.agentId,ticketId,q.id))
