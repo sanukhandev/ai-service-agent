@@ -8,6 +8,7 @@ import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
 import { quoteConfirmedTx } from "./quotation-confirmation.js";
+import {RENEWAL_PURCHASE_CONSENT} from "./renewal-operations.js";
 import { extractIdentityDocument, nameKey, allowUnnamedSyntheticPassport, type ExtractedIdentity, type IdentityKind } from "./identity-extractor.js";
 
 export const PURCHASE_CONSENT =
@@ -24,7 +25,7 @@ export type PurchaseStatus={
   requirements:Array<{key:string;label:string;guidance:string|null;required:boolean;
     uploaded:boolean;fileName:string|null;documentId:string|null;status:string}>;
   confirmed:boolean;readyForOtp:boolean;missing:string[];billingName:string|null;
-  persona:{name:string;tone:string};
+  persona:{name:string;tone:string};renewalAgreementNumber?:string|null;
 };
 async function findQuote(client:PoolClient,agentId:string,ticketId:string):Promise<PurchaseQuote|null>{
   const r=await client.query<PurchaseQuote>(
@@ -62,9 +63,19 @@ async function getRequirements(client:PoolClient,agentId:string,ticketId:string,
        d.file_name,d.content_type,d.state,d.created_at,
        d.extracted_full_name,d.extraction_status,d.extraction_model
      FROM intent_document_requirements r
-     LEFT JOIN ticket_purchase_documents d
-       ON d.agent_id=r.agent_id AND d.ticket_id=$2
-       AND d.intent_id=r.intent_id AND d.requirement_id=r.id
+     LEFT JOIN ticket_renewals rn ON rn.agent_id=r.agent_id
+       AND rn.renewal_ticket_id=$2 AND rn.status<>'cancelled'
+     LEFT JOIN service_agreements a ON a.agent_id=rn.agent_id AND a.id=rn.agreement_id
+     LEFT JOIN LATERAL (
+       SELECT doc.* FROM ticket_purchase_documents doc
+       JOIN intent_document_requirements original ON original.agent_id=doc.agent_id
+         AND original.intent_id=doc.intent_id AND original.id=doc.requirement_id
+       WHERE doc.agent_id=r.agent_id
+         AND doc.ticket_id=COALESCE(a.initial_ticket_id,$2::uuid)
+         AND original.requirement_key=r.requirement_key
+         AND (rn.id IS NOT NULL OR doc.intent_id=r.intent_id)
+       ORDER BY doc.created_at DESC LIMIT 1
+     ) d ON true
      WHERE r.agent_id=$1 AND r.intent_id=$3
      ORDER BY r.sort_order,r.requirement_key`,
     [agentId,ticketId,intentId],
@@ -217,16 +228,23 @@ export class PurchaseOperations {
       let billingName:string|null=null;
       try{billingName=extractedBillingName(documents);}catch{/* Keep checklist pending on mismatch. */}
       if(!billingName && missing.length===0)missing.push("identity_name_mismatch");
+      const linked=await client.query<{agreement_number:string}>(
+        `SELECT a.agreement_number FROM ticket_renewals rn
+         JOIN service_agreements a ON a.agent_id=rn.agent_id AND a.id=rn.agreement_id
+         WHERE rn.agent_id=$1 AND rn.renewal_ticket_id=$2 AND rn.status<>'cancelled'
+         LIMIT 1`,[scope.agentId,ticketId]);
+      const renewalAgreementNumber=linked.rows[0]?.agreement_number??null;
       const reqs=documents.map(d=>({
         key:d.requirement_key,label:d.label,guidance:d.guidance,required:d.required,
         uploaded:documentReady(d),fileName:d.file_name??null,
-        documentId:d.state==="received"?d.id:null,
+        documentId:renewalAgreementNumber?null:d.state==="received"?d.id:null,
         status:unnamedSyntheticPassport(d)?"synthetic_name_unverified":d.state??"missing",
       }));
       return {supported:true,intentKey:q.intent_key,quotationId:q.id??null,
         amount:q.amount??null,currency:q.currency?.trim()??null,
         requirements:reqs,confirmed,readyForOtp:q.purchase_enabled&&confirmed&&documents.length>0&&missing.length===0
-          &&billingName!==null&&q.state==="verified_completed",missing,billingName,persona:branding};
+          &&billingName!==null&&q.state==="verified_completed",missing,billingName,persona:branding,
+        renewalAgreementNumber};
     });
   }
   async upload(scope:TicketScope,ticketId:string,raw:unknown){
@@ -240,6 +258,11 @@ export class PurchaseOperations {
       const q=await findQuote(client,scope.agentId,ticketId);
       if(!q)
         throw new PersistenceError("CONFLICT","Select a document-enabled service before uploading documents");
+      const renewal=await client.query(
+        "SELECT 1 FROM ticket_renewals WHERE agent_id=$1 AND renewal_ticket_id=$2 AND status='requested'",
+        [scope.agentId,ticketId]);
+      if(renewal.rows.length)
+        throw new PersistenceError("CONFLICT","Renewal reuses approved identity documents; no reupload is needed");
       // Non-quotation service requests use this intake too. Quote OTP is
       // required only where a formal quotation actually exists.
       if(q.id && (q.state!=="verified_completed"||
@@ -259,6 +282,11 @@ export class PurchaseOperations {
       const q=await findQuote(client,scope.agentId,ticketId);
       if(!q)
         throw new PersistenceError("CONFLICT","Select a document-enabled service before uploading documents");
+      const renewal=await client.query(
+        "SELECT 1 FROM ticket_renewals WHERE agent_id=$1 AND renewal_ticket_id=$2 AND status='requested'",
+        [scope.agentId,ticketId]);
+      if(renewal.rows.length)
+        throw new PersistenceError("CONFLICT","Renewal reuses approved identity documents; no reupload is needed");
       // Non-quotation service requests use this intake too. Quote OTP is
       // required only where a formal quotation actually exists.
       if(q.id && (q.state!=="verified_completed"||
@@ -324,7 +352,8 @@ export class PurchaseOperations {
        typeof v.requestId!=="string"||!uuid.test(v.requestId)||
        typeof v.quotationId!=="string"||!uuid.test(v.quotationId)||
        typeof v.amount!=="string"||!/^\d{1,12}\.\d{2}$/.test(v.amount)||
-       v.currency!=="AED"||v.consent!==true||v.consentText!==PURCHASE_CONSENT)
+       v.currency!=="AED"||v.consent!==true||
+       ![PURCHASE_CONSENT,RENEWAL_PURCHASE_CONSENT].includes(v.consentText as string))
       throw new PersistenceError("INVALID_INPUT","Exact-amount purchase consent required");
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
@@ -334,6 +363,12 @@ export class PurchaseOperations {
         throw new PersistenceError("CONFLICT","Verified quoted amount and intent do not match");
       if(!await quoteConfirmedTx(client,scope.agentId,ticketId,q.id))
         throw new PersistenceError("CONFLICT","Verify the quotation OTP before purchase consent");
+      const renewal=await client.query(
+        "SELECT 1 FROM ticket_renewals WHERE agent_id=$1 AND renewal_ticket_id=$2 AND status='requested'",
+        [scope.agentId,ticketId]);
+      const renewalTicket=renewal.rows.length>0;
+      if((v.consentText===RENEWAL_PURCHASE_CONSENT)!==renewalTicket)
+        throw new PersistenceError("CONFLICT","Purchase consent must match new purchase or renewal");
       const docs=await getRequirements(client,scope.agentId,ticketId,q.intent_id);
       // Validation uses OCR-derived names, not untrusted chat or uploaded filenames.
       extractedBillingName(docs);
@@ -351,7 +386,7 @@ export class PurchaseOperations {
         `INSERT INTO ticket_purchase_confirmations(
           agent_id,ticket_id,quotation_id,intent_id,request_id,amount,currency,consent_text)
           VALUES($1,$2,$3,$4,$5,$6,$7,$8)`,
-        [scope.agentId,ticketId,q.id,q.intent_id,v.requestId,q.amount,q.currency.trim(),PURCHASE_CONSENT],
+        [scope.agentId,ticketId,q.id,q.intent_id,v.requestId,q.amount,q.currency.trim(),v.consentText],
       );
       await appendEventTx(client,scope.agentId,ticketId,"purchase.confirmed",{
         quotationId:q.id,intentKey:q.intent_key,amount:q.amount,currency:q.currency.trim()});
