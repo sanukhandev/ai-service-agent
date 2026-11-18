@@ -160,6 +160,16 @@ export class PaymentOperations {
       await assertPurchaseReady(client,scope.agentId,ticketId,input.quotationId);
       if(q.amount!==input.amount||q.currency.trim()!==input.currency)
         throw new PersistenceError("CONFLICT","Price or currency changed; request a fresh quote");
+      const existingPayment=await client.query<{state:string;provider_status:string|null}>(
+        `SELECT state,provider_status FROM ticket_payment_attempts
+         WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3
+         ORDER BY created_at DESC,id DESC LIMIT 1`,
+        [scope.agentId,ticketId,input.quotationId]);
+      const lastPayment=existingPayment.rows[0];
+      if(lastPayment && (lastPayment.state!=="payment_declined" ||
+          lastPayment.provider_status!=="DECLINED"))
+        throw new PersistenceError("CONFLICT",
+          "Resolve the current payment before requesting a fresh OTP");
       const count=await client.query<{count:string;last:Date|null}>(
         `SELECT count(*)::text AS count,max(created_at) AS last
           FROM ticket_payment_otps
@@ -213,6 +223,38 @@ export class PaymentOperations {
     return {challengeId,quotationId:input.quotationId,expiresAt:created.expiresAt,
       status:"mock_recorded",delivery:"n8n_test_table_only",realDelivery:false};
   }
+  /** Owner-requested fresh challenge. Never replay a previous OTP or outbound POST. */
+  async renewOtp(scope:TicketScope,ticketId:string,raw:unknown){
+    this.requireEnabled();requireUuid(ticketId,"ticketId");
+    if(!raw||typeof raw!=="object"||Array.isArray(raw))
+      throw new PersistenceError("INVALID_INPUT","A new OTP request ID is required");
+    const v=raw as Record<string,unknown>;
+    if(Object.keys(v).some(k=>k!=="requestId")||
+       typeof v.requestId!=="string"||!uuid.test(v.requestId))
+      throw new PersistenceError("INVALID_INPUT","Invalid OTP retry request");
+    const previous=await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      await requireAncfz(client,scope.agentId);
+      const r=await client.query<OtpRow>(
+        `SELECT id,quotation_id,request_id,otp_hmac,state,failed_attempts,expires_at,
+           created_at,amount::text,currency,email,first_name,country_code
+         FROM ticket_payment_otps
+         WHERE agent_id=$1 AND ticket_id=$2
+         ORDER BY created_at DESC,id DESC LIMIT 1`,
+        [scope.agentId,ticketId]);
+      return r.rows[0]??null;
+    });
+    if(!previous)throw new PersistenceError("CONFLICT",
+      "Purchase payment authorization must be completed before OTP retry");
+    return this.issueOtp(scope,ticketId,{
+      requestId:v.requestId,quotationId:previous.quotation_id,
+      acceptedAmount:previous.amount,currency:previous.currency.trim(),
+      email:previous.email,firstName:previous.first_name,
+      countryCode:previous.country_code.trim(),
+      consent:true,consentText:PAYMENT_CONSENT,
+    });
+  }
+
   async authorize(scope:TicketScope,ticketId:string,raw:unknown){
     this.requireEnabled();
     requireUuid(ticketId,"ticketId");
@@ -257,36 +299,44 @@ export class PaymentOperations {
       }
       if(row.amount!==q.amount||row.currency.trim()!==q.currency.trim())
         throw new PersistenceError("CONFLICT","Quotation changed after OTP issuance");
-      const other=await client.query<{id:string}>(
-        `SELECT id FROM ticket_payment_attempts
-          WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3`,
+      const other=await client.query<{id:string;state:string;provider_status:string|null}>(
+        `SELECT id,state,provider_status FROM ticket_payment_attempts
+          WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3
+          ORDER BY created_at DESC,id DESC LIMIT 1`,
         [scope.agentId,ticketId,input.quotationId]);
-      if(other.rows.length)throw new PersistenceError("CONFLICT","A payment order already exists for this quote");
+      const previous=other.rows[0];
+      if(previous && (previous.state!=="payment_declined" ||
+          previous.provider_status!=="DECLINED"))
+        throw new PersistenceError("CONFLICT",
+          "The earlier payment must be confirmed declined before retry");
       const event=await client.query<{id:string}>(
         `INSERT INTO event_outbox(agent_id,ticket_id,event_type,payload,idempotency_key)
           VALUES($1,$2,'ancfz_2checkout_create',$3::jsonb,$4) RETURNING id`,
         [scope.agentId,ticketId,JSON.stringify({paymentId:attemptId}),
-          "2checkout-create:"+input.quotationId],
+          "2checkout-create:"+attemptId],
       );
       const outbox=event.rows[0]?.id;
       if(!outbox)throw new PersistenceError("DATABASE_ERROR","Payment outbox unavailable");
       const paid=await client.query<PaymentRow>(
         `INSERT INTO ticket_payment_attempts
           (id,agent_id,ticket_id,quotation_id,otp_id,request_id,outbox_id,
-           external_reference,amount,currency,first_name,email,country_code)
-          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+           external_reference,amount,currency,first_name,email,country_code,retry_of_payment_id)
+          VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
           RETURNING id,quotation_id,request_id,external_reference,amount::text,
             currency,state,order_reference,provider_payment_id,checkout_url,provider_status,verified_at,created_at`,
         [attemptId,scope.agentId,ticketId,input.quotationId,row.id,input.requestId,outbox,
-          externalReference,q.amount,q.currency.trim(),row.first_name,row.email,row.country_code.trim()],
+          externalReference,q.amount,q.currency.trim(),row.first_name,row.email,row.country_code.trim(),
+           previous?.id??null],
       );
       await client.query(
         `UPDATE ticket_payment_otps SET state='consumed',consumed_at=now()
           WHERE agent_id=$1 AND ticket_id=$2 AND id=$3`,
         [scope.agentId,ticketId,row.id]);
-      await appendEventTx(client,scope.agentId,ticketId,"payment.queued",{
-        paymentId:attemptId,quotationId:input.quotationId,
-      });
+      await appendEventTx(client,scope.agentId,ticketId,
+        previous?"payment.retry_queued":"payment.queued",{
+          paymentId:attemptId,quotationId:input.quotationId,
+          ...(previous?{replacesDeclinedPaymentId:previous.id}:{}),
+        });
       // OTP verification, payment queue and assistant message commit atomically.
       await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
         client,scope,ticketId,lifecycleNoticeId("otp.verified",row.id),
@@ -673,8 +723,8 @@ export class PaymentOperations {
       const formal=brand.persona.tone==="formal";
       const copy=finalState==="payment_declined"
         ? (formal
-          ? "The gateway has declined the test payment. The quotation remains available; no paid invoice has been issued. Please contact the service team to review the next available options."
-          : "The test payment was declined by the gateway. Your quotation is still available, and no invoice has been issued. I can help you review the next steps.")
+          ? "The gateway declined this test payment. Your quotation remains available and no invoice has been issued. If you want to retry, request a new secure OTP and I will create a fresh sandbox payment link after verification."
+          : "The test payment was declined. Your quotation and documents remain available; no invoice was issued. You can request a new secure OTP here, then get a fresh payment link.")
         : (formal
           ? "The gateway now reports this test payment as refunded. The TEST invoice download is no longer available. Please contact the service team for assistance."
           : "The gateway reports that your test payment was refunded. I've disabled access to the earlier TEST invoice; I can help you with the next steps.");
