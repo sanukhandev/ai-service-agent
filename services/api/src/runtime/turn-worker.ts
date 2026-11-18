@@ -12,7 +12,7 @@ import { workerTicketScope, type SourceReference } from "../repositories/types.j
 import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
-import { ConversationActionHandoff, shouldShowAuthoritativeStatus } from "./conversation-action-handoff.js";
+import { ConversationActionHandoff, shouldShowAuthoritativeStatus, isConversationContinuation } from "./conversation-action-handoff.js";
 import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
 import { recoverSourcedAnswer } from "./chat-fact-reconciliation.js";
 import { validateConversationFact, normalizeContactPhone } from "./fact-validation.js";
@@ -342,7 +342,7 @@ export class TurnWorker {
         // The hint contains no submitted phone/email or other private values.
         responseText=validationIssues[0]!.clarificationHint;
       }
-      const continuation=/^(?:(?:yes|yes please|sure|ok|okay)[.! ]*|(?:please\s+)?(?:go ahead|proceed|continue|confirm)(?:\s+(?:with|the|my|that|it|please|quotation|quote|request|proposal))*[.! ]*)$/i.test(text.trim());
+      const continuation=isConversationContinuation(text,displayedAssistant);
       const shouldPrepare=requestedAction.action && (
         requestedAction.explicit || continuation ||
         (savedThisTurn && !text.includes("?"))
