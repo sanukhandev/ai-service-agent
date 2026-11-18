@@ -260,3 +260,16 @@ export function shouldShowAuthoritativeStatus(
     "payment_processing","invoice_ready","invoice_processing",
   ]).has(next.stage);
 }
+
+/** Short continuation is allowed to reveal a proposal, not approve it.
+ * A bare "yes" only continues when the last visible question was specifically
+ * about preparing that quote/enquiry, not a different informational FAQ. */
+export function isConversationContinuation(text:string,lastAssistant:string|null):boolean{
+  const answer=text.trim();
+  if(/^(?:(?:ok(?:ay)?\s+)?(?:please\s+)?(?:go ahead|proceed|continue|confirm)(?:\s+(?:with|the|my|that|it|please|quotation|quote|request|proposal))*[.! ]*)$/i.test(answer))
+    return true;
+  return /^(?:yes|yes please|yes, please|sure|ok|okay)[.! ]*$/i.test(answer) &&
+    Boolean(lastAssistant &&
+      /\b(?:quote|quotation|enquiry|proposal)\b/i.test(lastAssistant) &&
+      /\b(?:prepare|generate|shall i|would you like|ready to proceed|proceed)\b/i.test(lastAssistant));
+}
