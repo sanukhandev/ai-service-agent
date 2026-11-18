@@ -7,7 +7,7 @@ import {registerIntentTools} from "../services/api/dist/agent/intent-tools.js";
 import {validateConversationFact, normalizeContactPhone,
   extractCompoundPackageFacts} from "../services/api/dist/runtime/fact-validation.js";
 import {recoverSourcedAnswer} from "../services/api/dist/runtime/chat-fact-reconciliation.js";
-import {shouldShowAuthoritativeStatus} from "../services/api/dist/runtime/conversation-action-handoff.js";
+import {shouldShowAuthoritativeStatus,isConversationContinuation} from "../services/api/dist/runtime/conversation-action-handoff.js";
 
 const phone=(raw)=>normalizeContactPhone(raw);
 assert.deepEqual({status:phone("-4957").status,reason:phone("-4957").reasonCode},
@@ -103,6 +103,10 @@ output=await submit([{key:"business_activity",value:"IT company"}]);
 assert.equal(output.data.issues[0].reasonCode,"BUSINESS_ACTIVITY_TOO_BROAD");
 assert.equal(saved.get("business_activity"),"IT consulting services",
   "An ambiguous correction must never erase the last valid fact");
+assert.equal(isConversationContinuation("ok proceed",null),true);
+assert.equal(isConversationContinuation("yes","Would you like to prepare a quotation?"),true);
+assert.equal(isConversationContinuation("yes","Would you like the document requirements explained?"),false);
+assert.equal(isConversationContinuation("yes","What is your email?"),false);
 const statuses={stage:"lead_facts",response:"What is your email?",missingCount:2,
   missingKeys:["customer_email"]};
 assert.equal(shouldShowAuthoritativeStatus("continue",true,statuses),false,
