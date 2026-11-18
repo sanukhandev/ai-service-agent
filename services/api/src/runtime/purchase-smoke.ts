@@ -96,7 +96,11 @@ async function run(){
       globalThis.fetch=async(url,init)=>{
         assert.equal(String(url),"http://n8n:5678/webhook/ancfz/otp-email");
         const body=JSON.parse(String(init?.body)) as Record<string,unknown>;
-        assert.equal(body.email,"demo@example.invalid");
+        // Real contact remains in the quote confirmation DB record; n8n gets
+        // only a challenge-scoped synthetic alias accepted by its test table.
+        assert.match(String(body.email),/^quote-[a-f0-9]{32}@example\.invalid$/);
+        assert.notEqual(body.email,"demo@example.invalid");
+        assert.equal(body.ticketId,ticketId);
         assert.equal(body.testOnly,true);
         capturedOtp=String(body.otp);
         return new Response(JSON.stringify({

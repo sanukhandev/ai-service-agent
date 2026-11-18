@@ -46,6 +46,8 @@ jobs:
         run: node scripts/check-p5-2checkout.mjs
       - name: Validate declined-payment retries and private demo contract gates
         run: node scripts/check-payment-retry-contract.mjs
+      - name: Validate quote OTP synthetic recipient and shared n8n Data Table contract
+        run: node scripts/check-quote-mock-otp.mjs
       - name: Validate detailed invoice scope, private Emirates ID and renderer gate
         run: node scripts/check-invoice-detailed-pdf.mjs
       - name: Validate tolerant upload metadata and strict document signatures
