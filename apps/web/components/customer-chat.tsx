@@ -685,6 +685,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               revision={journeyRevision} conversationBusy={locked||isSending}
               onTransactionStateChange={updateTransactionState}
               onDocumentsUpdated={()=>{setOperationNotice(null);void refresh();}}
+              onRenewalCreated={newId=>{rememberTicket(agentKey,newId);restart();}}
               onContinuePurchase={()=>send(
                 "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
               )} />
