@@ -21,7 +21,8 @@ type IdentityFile={
 type Claim={
   id:string;agentId:string;ticketId:string;quotationId:string;
   paymentId:string;documentNumber:string;offering:string;
-  amount:string;currency:string;quoteNumber:string;quotePayload:unknown;
+  amount:string;currency:string;quoteNumber:string;invoiceNumber:string;
+  agreementNumber:string;revision:number;quotePayload:unknown;
   documents:IdentityFile[];
 };
 const sha=(bytes:Buffer)=>createHash("sha256").update(bytes).digest("hex");
@@ -96,7 +97,10 @@ function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;numb
   return page(
     '<p class="warning">DEMONSTRATION ONLY — NOT A LEGALLY EXECUTED AGREEMENT</p>'+
     "<h1>ANCFZ — Service Contract (TEST)</h1>"+
-    "<p>Contract reference: "+short(c.documentNumber,100)+" | Prepared: "+now+"</p>"+
+    "<p>Agreement number: "+short(c.agreementNumber,100)+" | Revision: "+String(c.revision)+
+    " | Prepared: "+now+"</p>"+
+    "<p>Quotation number: "+short(c.quoteNumber,100)+
+    " | Invoice number: "+short(c.invoiceNumber,100)+"</p>"+
     "<h2>1. Parties and identification</h2>"+
     "<p>Provider: ANCFZ (sandbox demonstration). Customer: "+short(id.name,150)+
     ". Emirates ID: "+short(id.number,20)+".</p>"+
@@ -105,6 +109,7 @@ function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;numb
     "<table><tr><th>Package</th><th>Amount</th></tr><tr><td>"+
     short(c.offering,200)+"</td><td>"+short(c.currency,3)+" "+short(c.amount,20)+"</td></tr></table>"+
     "<p>Approved quotation: "+short(c.quoteNumber,100)+
+    " | Paid invoice: "+short(c.invoiceNumber,100)+
     ". The quotation's published scope and pricing revision govern this draft.</p>"+
     "<h2>3. Services included in the purchased package</h2>"+
     "<ol>"+items.map(v=>"<li>"+short(v)+"</li>").join("")+"</ol>"+
@@ -170,12 +175,18 @@ export class ServiceContractWorker{
       const r=await client.query<{
         id:string;ticket_id:string;quotation_id:string;payment_id:string;
         document_number:string;offering_label:string;amount:string;
-        currency:string;quote_document_number:string;quote_payload:unknown;
+        currency:string;quote_document_number:string;invoice_document_number:string;
+        agreement_number:string;revision:number;quote_payload:unknown;
       }>(
         "SELECT c.id,c.ticket_id,c.quotation_id,c.payment_id,c.document_number,"+
+        "a.agreement_number,c.revision,i.document_number AS invoice_document_number,"+
         "q.offering_label,q.amount::text AS amount,q.currency,"+
         "q.document_number AS quote_document_number,qe.payload AS quote_payload "+
         "FROM ticket_service_contracts c "+
+        "JOIN service_agreements a ON a.agent_id=c.agent_id AND a.id=c.agreement_id "+
+        "JOIN ticket_payment_invoices i ON i.agent_id=c.agent_id AND i.ticket_id=c.ticket_id "+
+        "AND i.id=c.invoice_id AND i.payment_id=c.payment_id AND i.quotation_id=c.quotation_id "+
+        "AND i.state='verified_completed' AND i.bytes IS NOT NULL "+
         "JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id "+
         "AND p.id=c.payment_id AND p.quotation_id=c.quotation_id "+
         "AND p.state='verified_test_payment' "+
@@ -215,7 +226,8 @@ export class ServiceContractWorker{
         id:x.id,agentId,ticketId:x.ticket_id,quotationId:x.quotation_id,
         paymentId:x.payment_id,documentNumber:x.document_number,
         offering:x.offering_label,amount:x.amount,currency:x.currency.trim(),
-        quoteNumber:x.quote_document_number,quotePayload:x.quote_payload,
+        quoteNumber:x.quote_document_number,invoiceNumber:x.invoice_document_number,
+        agreementNumber:x.agreement_number,revision:x.revision,quotePayload:x.quote_payload,
         documents:docs.rows.map(d=>({
           kind:d.requirement_key,name:d.file_name,contentType:d.content_type,
           bytes:d.bytes,sha256:d.sha256,extractedName:d.extracted_full_name,
@@ -227,17 +239,24 @@ export class ServiceContractWorker{
   private async render(c:Claim):Promise<Buffer>{
     assertFiles(c.documents);
     const emirates=c.documents.find(f=>f.kind==="emirates_id")!;
-    const extracted=await extractInvoiceEmiratesId(emirates.bytes);
-    if(extracted.last4!==emirates.last4||
-       nameKey(extracted.fullName)!==nameKey(emirates.extractedName))
-      throw new Error("emirates_id_ocr_mismatch");
+    // Preserve previously validated OCR evidence if a second OCR pass
+    // fails. Never fabricate a full identity number.
+    if(!/^[0-9]{4}$/.test(emirates.last4??""))
+      throw new Error("emirates_id_evidence_missing");
+    let identityNumber="XXXX-XXXX-XXXX-"+emirates.last4;
+    try{
+      const extracted=await extractInvoiceEmiratesId(emirates.bytes);
+      if(extracted.last4===emirates.last4 &&
+         nameKey(extracted.fullName)===nameKey(emirates.extractedName))
+        identityNumber=extracted.number;
+    }catch{/* Prior verified last-four remains safe. */}
     const proposal=invoiceQuoteDetails(c.quotePayload,{
       quotationDocumentNumber:c.quoteNumber,amount:c.amount,currency:c.currency,
     });
     if(!proposal||!proposal.packageDescription.trim())
       throw new Error("approved_package_scope_missing");
     const contract=await htmlPdf(contractHtml(c,proposal,{
-      name:extracted.fullName,number:extracted.number,
+      name:emirates.extractedName,number:identityNumber,
     }));
     const passport=c.documents.find(f=>f.kind==="passport")!;
     const parts=[contract,await annexPdf(passport),await annexPdf(emirates)];
@@ -295,6 +314,13 @@ export class ServiceContractWorker{
           "UPDATE ticket_service_contracts SET state=$3,bytes=$4,sha256=$5,updated_at=now() "+
           "WHERE agent_id=$1 AND id=$2",
           [agentId,claim.id,next,good?bytes:null,good?sha(bytes!):null]);
+        if(good){
+          await client.query(
+            "UPDATE service_agreements SET current_revision=GREATEST(current_revision,$3),"+
+            "sync_state='pending',sync_attempts=0,next_sync_at=now(),updated_at=now() "+
+            "WHERE agent_id=$1 AND agreement_number=$2",
+            [agentId,claim.agreementNumber,claim.revision]);
+        }
         await appendEventTx(client,agentId,claim.ticketId,
           good?"contract.generated":next==="queued"?"contract.retry_scheduled":"contract.needs_review",
           {contractId:claim.id,paymentId:claim.paymentId,testOnly:true});
