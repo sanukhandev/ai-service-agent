@@ -48,6 +48,8 @@ jobs:
         run: node scripts/check-payment-retry-contract.mjs
       - name: Validate contract number, quote/invoice references and private n8n registry
         run: node scripts/check-contract-registry.mjs
+      - name: Validate contract document compatibility and one-shot recovery
+        run: node scripts/check-contract-document-recovery.mjs
       - name: Validate quote OTP synthetic recipient and shared n8n Data Table contract
         run: node scripts/check-quote-mock-otp.mjs
       - name: Validate detailed invoice scope, private Emirates ID and renderer gate
