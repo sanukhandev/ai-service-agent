@@ -163,8 +163,15 @@ const wrongTicket="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const quoteId="cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 const quoteLink="[Download verified quotation](/api/v1/tickets/"+ownTicket+"/quotations/"+quoteId+"/pdf)";
 const invoiceLink="[Download TEST invoice](/api/v1/tickets/"+ownTicket+"/invoices/"+quoteId+"/pdf)";
+const contractUrl="/api/v1/tickets/"+ownTicket+"/contracts/"+quoteId+"/pdf";
+const contractLink="[Download private TEST contract]("+contractUrl+")";
 assert.equal(helpers.conversationalText(quoteLink,ownTicket),quoteLink);
 assert.equal(helpers.conversationalText(invoiceLink,ownTicket),invoiceLink);
+assert.equal(helpers.conversationalText(contractLink,ownTicket),contractLink);
+assert.equal(helpers.safeChatTransactionUrl(contractUrl,ownTicket),true);
+assert.equal(helpers.safeChatTransactionUrl(contractUrl,wrongTicket),false);
+assert.equal(helpers.safeChatTransactionUrl(contractUrl+"/download",ownTicket),false);
+assert.ok(!helpers.conversationalText(contractLink,wrongTicket).includes("Download"));
 assert.ok(!helpers.conversationalText(quoteLink,wrongTicket).includes("Download"));
 assert.ok(!helpers.conversationalText(quoteLink).includes("Download"));
 assert.ok(!helpers.conversationalText("[Download report](https://private.search.windows.net/file.pdf)",ownTicket)
@@ -175,6 +182,9 @@ assert.ok(!helpers.conversationalText("See https://private.search.windows.net/do
   .includes("search.windows.net"));
 const component=readFileSync("apps/web/components/chat-message.tsx","utf8");
 assert.match(component,/SHOW_CHAT_SOURCES = process\.env\.NEXT_PUBLIC_SHOW_CHAT_SOURCES === "true"/);
+assert.match(component,/safeChatTransactionUrl\(linkUrl, ticketId\)/);
+assert.ok(!component.includes('(?:quotations|invoices)/[0-9a-f-]{36}/pdf'),
+  "Do not special-case only quotations and invoices; private contracts need the direct PDF route");
 assert.match(component,/conversationalText\(message\.text,\s*ticketId\)/);
 assert.match(component,/SHOW_CHAT_SOURCES && references\.length > 0/);
 const worker=readFileSync("services/api/src/runtime/turn-worker.ts","utf8");
