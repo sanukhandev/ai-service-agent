@@ -14,6 +14,7 @@
 | [Tools and workflows](05-tools-actions-workflows.md) | Read functions, proposals and n8n |
 | [Security and privacy](06-security-and-privacy.md) | Identity, PII, consent and credentials |
 | [Docker and Nginx](07-docker-and-deployment.md) | One public port, local Azure CLI volume |
+| [Prime Docker recovery point](prime-recovery-point.md) | Capture running images as prime and safely restore api/web/nginx with exact PowerShell Compose command |
 | [Customer UI](08-ui-guidelines.md) | Minimal Next.js, Tailwind and self-hosted Inter |
 | [Testing and acceptance](09-testing-and-acceptance.md) | Smoke vs deferred H1 hardening |
 | [Flow reliability and recovery](flow-reliability-hardening.md) | Uncertain turns, event recovery, document correction and cursor pagination |
