@@ -58,7 +58,7 @@ assert.match(contracts,/kind==="passport"/);
 assert.match(contracts,/kind==="emirates_id"/);
 assert.match(contracts,/NOT CRYPTOGRAPHICALLY SIGNED \/ NOT LEGALLY EXECUTED/);
 assert.match(contracts,/forms\/pdfengines\/merge/);
-assert.match(contracts,/pc\.consent_text LIKE/);
+assert.match(contracts,/pc\.consent_text=\$5/);
 assert.match(contractSql,/FORCE ROW LEVEL SECURITY/);
 assert.match(contractSql,/UNIQUE\(agent_id,ticket_id,payment_id\)/);
 assert.match(pay,/async contractPdf\(/);
