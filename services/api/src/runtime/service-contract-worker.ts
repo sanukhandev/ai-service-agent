@@ -11,13 +11,15 @@ import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
 import {paymentEnabled} from "./payment-evidence.js";
 import {PURCHASE_CONSENT} from "./purchase-operations.js";
+import {allowUnnamedSyntheticPassport} from "./identity-extractor.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
 import {invoiceQuoteDetails} from "./invoice-details.js";
 import type {QuoteProposalDetails} from "./quote-proposal.js";
 
 type IdentityFile={
   kind:"passport"|"emirates_id";name:string;contentType:string;
-  bytes:Buffer;sha256:string;extractedName:string;last4:string|null;
+  bytes:Buffer;sha256:string;extractedName:string|null;last4:string|null;
+  extractionStatus:"extracted"|"pending";extractionModel:string|null;
 };
 type Claim={
   id:string;agentId:string;ticketId:string;quotationId:string;
@@ -36,18 +38,35 @@ function validPdf(bytes:Buffer):boolean{
     bytes.toString("ascii",0,5)==="%PDF-" &&
     bytes.subarray(Math.max(0,bytes.length-1024)).toString("ascii").includes("%%EOF");
 }
-function assertFiles(files:IdentityFile[]):void{
+/** Match the same explicit sandbox passport exception already authorized by
+ * the purchase preflight. The Emirates ID must still be OCR-extracted and its
+ * name and last four verified; never accept a contradictory passport name.
+ */
+export function validateContractDocuments(
+  files:IdentityFile[],permitUnnamedSyntheticPassport=allowUnnamedSyntheticPassport(),
+):void{
   if(files.length!==2||!files.some(f=>f.kind==="passport")||
      !files.some(f=>f.kind==="emirates_id"))
     throw new Error("required_private_documents_missing");
   for(const f of files){
-    if(!f.extractedName||f.bytes.length<100||f.bytes.length>1048576||
+    const synthetic=f.kind==="passport"&&permitUnnamedSyntheticPassport&&
+      f.extractionStatus==="pending"&&f.extractionModel==="prebuilt-idDocument"&&
+      f.extractedName===null;
+    if((!f.extractedName&&!synthetic)||
+       (f.extractedName!==null&&f.extractionStatus!=="extracted")||
+       f.bytes.length<100||f.bytes.length>1048576||
        sha(f.bytes)!==f.sha256||
        !["application/pdf","image/png","image/jpeg"].includes(f.contentType)||
        (f.contentType==="application/pdf"&&!validPdf(f.bytes)))
       throw new Error("private_document_evidence_mismatch");
   }
-  if(nameKey(files[0]!.extractedName)!==nameKey(files[1]!.extractedName))
+  const passport=files.find(f=>f.kind==="passport")!;
+  const emirates=files.find(f=>f.kind==="emirates_id")!;
+  if(!emirates.extractedName||emirates.extractionStatus!=="extracted"||
+     !emirates.last4||!/^\d{4}$/.test(emirates.last4))
+    throw new Error("verified_emirates_last4_missing");
+  if(passport.extractedName&&
+     nameKey(passport.extractedName)!==nameKey(emirates.extractedName))
     throw new Error("identity_names_do_not_match");
 }
 async function gotenberg(path:string,files:Array<{name:string;type:string;bytes:Buffer}>):Promise<Buffer>{
@@ -206,6 +225,39 @@ export class ServiceContractWorker{
       }
     });
   }
+  /**
+   * Only one additional recovery attempt for pre-diagnostic stuck agreements.
+   * This does not touch paid status, quotes, invoices, consents or PDF bytes.
+   * Persisting the sentinel before queueing makes the recovery one-shot across
+   * restarts; subsequent failures retain a concrete failure_code.
+   */
+  private async recoverUndiagnosedContract(agentId:string):Promise<void>{
+    await this.db.withAgent(agentId,async client=>{
+      const updated=await client.query<{id:string;ticket_id:string}>(
+        `UPDATE ticket_service_contracts SET
+           state='queued',render_attempts=0,
+           failure_code='legacy_retry_queued',updated_at=now()
+         WHERE agent_id=$1 AND id=(
+           SELECT c.id FROM ticket_service_contracts c
+           JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id
+             AND p.ticket_id=c.ticket_id AND p.id=c.payment_id
+             AND p.state='verified_test_payment'
+           JOIN ticket_payment_invoices i ON i.agent_id=c.agent_id
+             AND i.ticket_id=c.ticket_id AND i.payment_id=c.payment_id
+             AND i.state='verified_completed' AND i.bytes IS NOT NULL
+           JOIN ticket_purchase_confirmations pc ON pc.agent_id=c.agent_id
+             AND pc.ticket_id=c.ticket_id AND pc.quotation_id=c.quotation_id
+             AND pc.consent_text=$2
+           WHERE c.agent_id=$1 AND c.state='needs_review'
+             AND c.render_attempts=3 AND c.failure_code IS NULL
+             AND c.bytes IS NULL
+           ORDER BY c.created_at,c.id FOR UPDATE OF c SKIP LOCKED LIMIT 1
+         ) RETURNING id,ticket_id`,[agentId,PURCHASE_CONSENT]);
+      const row=updated.rows[0];if(!row)return;
+      await appendEventTx(client,agentId,row.ticket_id,
+        "contract.legacy_retry_queued",{contractId:row.id,testOnly:true});
+    });
+  }
   private async claim(agentId:string):Promise<Claim|null>{
     return this.db.withAgent(agentId,async client=>{
       await client.query(
@@ -244,11 +296,13 @@ export class ServiceContractWorker{
       const x=r.rows[0];if(!x)return null;
       const docs=await client.query<{
         requirement_key:"passport"|"emirates_id";file_name:string;content_type:string;
-        bytes:Buffer;sha256:string;extracted_full_name:string;
+        bytes:Buffer;sha256:string;extracted_full_name:string|null;
         document_number_last4:string|null;
+        extraction_status:"extracted"|"pending";extraction_model:string|null;
       }>(
         "SELECT req.requirement_key,d.file_name,d.content_type,d.bytes,d.sha256,"+
-        "d.extracted_full_name,d.document_number_last4 "+
+        "d.extracted_full_name,d.document_number_last4,"+
+        "d.extraction_status,d.extraction_model "+
         "FROM ticket_purchase_documents d "+
         "JOIN intent_document_requirements req ON req.agent_id=d.agent_id "+
         "AND req.intent_id=d.intent_id AND req.id=d.requirement_id "+
@@ -256,10 +310,14 @@ export class ServiceContractWorker{
         "AND pc.ticket_id=d.ticket_id AND pc.intent_id=d.intent_id "+
         "AND pc.quotation_id=$3 "+
         "WHERE d.agent_id=$1 AND d.ticket_id=$2 AND d.state='received' "+
-        "AND d.extraction_status='extracted' "+
+        "AND (d.extraction_status='extracted' OR "+
+        "(req.requirement_key='passport' AND $4::boolean "+
+        "AND d.extraction_status='pending' "+
+        "AND d.extraction_model='prebuilt-idDocument' "+
+        "AND d.extracted_full_name IS NULL)) "+
         "AND req.requirement_key IN ('passport','emirates_id') "+
-        "AND pc.consent_text LIKE '%nonbinding TEST service contract%'",
-        [agentId,x.ticket_id,x.quotation_id]);
+        "AND pc.consent_text=$5",
+        [agentId,x.ticket_id,x.quotation_id,allowUnnamedSyntheticPassport(),PURCHASE_CONSENT]);
       await client.query(
         "UPDATE ticket_service_contracts SET state='running',render_attempts=render_attempts+1,"+
         "updated_at=now() WHERE agent_id=$1 AND id=$2",
@@ -275,13 +333,16 @@ export class ServiceContractWorker{
           kind:d.requirement_key,name:d.file_name,contentType:d.content_type,
           bytes:d.bytes,sha256:d.sha256,extractedName:d.extracted_full_name,
           last4:d.document_number_last4,
+          extractionStatus:d.extraction_status,extractionModel:d.extraction_model,
         })),
       };
     });
   }
   private async render(c:Claim):Promise<Buffer>{
-    assertFiles(c.documents);
+    validateContractDocuments(c.documents);
     const emirates=c.documents.find(f=>f.kind==="emirates_id")!;
+    if(!emirates.extractedName)
+      throw new Error("private_document_evidence_mismatch");
     // Do not fail an independently verified invoice for transient repeat OCR.
     // The previously verified last four is displayed masked on a retry.
     if(!emirates.last4||!/^\d{4}$/.test(emirates.last4))
@@ -408,6 +469,7 @@ export class ServiceContractWorker{
     try{
       const agentId=await this.agentId();if(!agentId)return;
       await this.recoverMissingContract(agentId);
+      await this.recoverUndiagnosedContract(agentId);
       const claim=await this.claim(agentId);
       if(!claim){await this.recoverNotice(agentId);await this.syncRegistry(agentId);return;}
       let bytes:Buffer|null=null;
