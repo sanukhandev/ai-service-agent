@@ -49,7 +49,7 @@ export class QuotationConfirmationOperations{
         [scope.agentId,ticketId,quotationId]);
       const challenge=latest.rows[0];
       const contact=await client.query<{value:unknown;verification_status:string}>(
-        "SELECT value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key='customer_email'",
+        "SELECT value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key IN ('customer_email','email') AND verification_status<>'disputed' ORDER BY CASE fact_key WHEN 'customer_email' THEN 0 ELSE 1 END LIMIT 1",
         [scope.agentId,ticketId]);
       const candidate=contact.rows[0];
       const decision=validateConversationFact("customer_email",candidate?.value as string,"email");
@@ -92,7 +92,7 @@ export class QuotationConfirmationOperations{
          (rate.rows[0]?.last && Date.now()-rate.rows[0]!.last!.getTime()<60000))
         throw new PersistenceError("CONFLICT","Quote OTP request limit reached; retry after cooldown");
       const contact=await client.query<{value:unknown;verification_status:string}>(
-        "SELECT value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key='customer_email'",
+        "SELECT value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key IN ('customer_email','email') AND verification_status<>'disputed' ORDER BY CASE fact_key WHEN 'customer_email' THEN 0 ELSE 1 END LIMIT 1",
         [scope.agentId,ticketId]);
       const fact=contact.rows[0];
       const decision=validateConversationFact("customer_email",fact?.value as string,"email");
