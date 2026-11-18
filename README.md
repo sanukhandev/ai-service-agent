@@ -41,6 +41,12 @@ Ticket creation remains a **direct Node/PostgreSQL operation**. ANCFZ has a sepa
 
 See [ANCFZ P4 business workflow contract](docs/ancfz-p4-workflow-contract.md), [n8n import templates](infra/n8n/ancfz/README.md) and [n8n owner/project seed](infra/n8n/ancfz/SEEDING.md). The workflow JSON is **inactive** and not yet connected to Node, so do not enable it prematurely. The ANCFZ MockGateway demo Orders POST is configured, but checkout URL and payment verification remain unavailable until the matching provider response/status API is validated.
 
+## Prime Docker recovery point
+
+The committed Compose checkpoint files (`docker-compose.prime.base.yml` and `docker-compose.prime.yml`) and `scripts/save-prime.ps1` provide an application-image rollback path called **prime**. First run the PowerShell capture script against a known-good **running** stack; Git stores configuration and instructions, not Docker images, credentials, or database state. The saved `:prime` images must exist locally before recovery.
+
+See [Prime recovery point: snapshot, rollback commands and database limitations](docs/prime-recovery-point.md).
+
 ## Local P0 configuration
 
 ```bash

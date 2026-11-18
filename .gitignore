@@ -51,3 +51,7 @@ temp/
 .cache/
 *.sqlite
 *.db
+
+# Local prime rollback artifacts (images/backups must not enter Git)
+prime-images*.tar
+prime-postgres*.dump

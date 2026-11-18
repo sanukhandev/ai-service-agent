@@ -7,6 +7,9 @@ on:
       - "apps/web/**"
       - "infra/**"
       - "docker-compose.yml"
+      - "docker-compose.prime.base.yml"
+      - "docker-compose.prime.yml"
+      - "scripts/save-prime.ps1"
       - "scripts/p3-integration-smoke.sh"
       - ".github/workflows/p3-runtime-integration.yml"
   workflow_dispatch:
@@ -67,6 +70,17 @@ jobs:
         run: |
           docker compose config --quiet
           docker compose config --format json | python3 -c 'import json,sys; d=json.load(sys.stdin); assert len(d["services"]["nginx"]["ports"])==1; assert all(not s.get("ports") for n,s in d["services"].items() if n!="nginx")'
+      - name: Validate prime recovery Compose and pinned image tags
+        run: |
+          docker compose -f docker-compose.prime.base.yml -f docker-compose.prime.yml config --quiet
+          docker compose -f docker-compose.prime.base.yml -f docker-compose.prime.yml config --format json | python3 -c 'import json,sys; s=json.load(sys.stdin)["services"]; assert all(s[k]["image"]=="ai-service-agent-"+k+":prime" for k in ("api","web","nginx"))'
+      - name: Parse prime capture PowerShell script
+        shell: pwsh
+        run: |
+          $tokens = $null
+          $parseErrors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile((Resolve-Path "scripts/save-prime.ps1").Path, [ref]$tokens, [ref]$parseErrors) | Out-Null
+          if ($parseErrors.Count -gt 0) { $parseErrors | Out-String | Write-Host; exit 1 }
       - name: Start isolated integration containers
         run: bash scripts/p0-smoke.sh
       - name: Exercise guest ticket to durable message and SSE

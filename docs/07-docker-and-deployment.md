@@ -21,7 +21,7 @@ Compose uses `frontend` for Nginx, Next.js and Node, plus `backend` for Node, Po
 
 ## P0 infrastructure files
 
-- `docker-compose.yml` is the single Compose definition.
+- `docker-compose.yml` is the active development Compose definition. The frozen `docker-compose.prime.base.yml` plus `docker-compose.prime.yml` are recovery-only files; do not use them during ordinary development.
 - `infra/nginx/default.conf` handles reverse proxy and SSE.
 - `infra/nginx/Dockerfile` builds Nginx only.
 - `services/api/Dockerfile` runs Node/Fastify; P1 must add Azure CLI to this image.
@@ -55,6 +55,23 @@ bash scripts/p0-smoke.sh
 ```
 
 Expected public endpoints *after images start*: `http://localhost/` (customer shell), `http://localhost/api/health` (Fastify health). The actual Foundry chat is not present until P1/P2.
+
+## Prime recovery point (PowerShell)
+
+The repository includes an **immutable local image checkpoint** named **prime**. Run `./scripts/save-prime.ps1` from PowerShell **before** a risky upgrade while the known-good api, web and nginx containers are running. It tags their actual image IDs. Image tags and Docker volumes are *not* saved into Git.
+
+To restore only the app containers using the pre-tagged images:
+
+~~~powershell
+docker compose `
+  -f docker-compose.prime.base.yml `
+  -f docker-compose.prime.yml `
+  up -d --no-build --no-deps --force-recreate api web nginx
+~~~
+
+This bypasses the migration dependency and does not reset PostgreSQL, Redis or n8n. **It also does not undo schema changes or external business operations.** Keep a separate tested database backup and the matching private `.env`; never use `down -v` as a rollback.
+
+Follow the detailed capture/verify/restore guidance in [Prime Docker recovery point](prime-recovery-point.md).
 
 ## POC safety and constraints
 
