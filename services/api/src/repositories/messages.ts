@@ -65,6 +65,16 @@ export class TicketMessageRepository {
     return this.write(scope, ticketId, "customer", requestId, text, []);
   }
 
+  /** Trusted, explicitly authorized customer operation. Writes the exact
+   * consent text and its durable message in the same transaction as a renewal. */
+  async createCustomerMessageTx(
+    client: PoolClient, scope: TicketScope, ticketId: string, requestId: string, text: string,
+  ): Promise<{ message: MessageRecord; duplicated: boolean }> {
+    requireUuid(requestId, "requestId");
+    requireBounded(text, "message", 12_000);
+    return this.writeInTx(client, scope, ticketId, "customer", requestId, text, []);
+  }
+
   async createAssistantMessage(
     scope: TicketScope, ticketId: string, requestId: string, text: string,
     sourceReferences: readonly SourceReference[],
