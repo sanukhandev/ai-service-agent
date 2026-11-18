@@ -114,6 +114,9 @@ assert.equal(shouldShowAuthoritativeStatus("continue",true,statuses),false,
 assert.equal(shouldShowAuthoritativeStatus("What is an invoice?",false,
   {...statuses,stage:"invoice_processing"}),false,
   "An unrelated FAQ should not be hijacked by previous workflow state");
+assert.equal(shouldShowAuthoritativeStatus("Please explain checkout",false,
+  {...statuses,stage:"payment_processing"}),false,
+  "Informational questions must not be overwritten by payment state");
 assert.equal(shouldShowAuthoritativeStatus("Please check my invoice status",true,
   {...statuses,stage:"invoice_processing"}),true);
 
