@@ -37,7 +37,7 @@ export function recoverSourcedAnswer(input:{
     out.push({key:"customer_phone",value:raw});
   if(/\b(?:business activity|what (?:work|services|products)|company (?:do|provide|sell)|business (?:do|provide|sell))\b/i.test(question) &&
      input.missingRequirements.includes("business_activity") &&
-     /^[\p{L}\d][\p{L}\d &(),.+/'-]{2,160}$/u.test(raw) &&
+     /^\p{L}[\p{L}\d &(),.+/'-]{2,160}$/u.test(raw) &&
      !/\b(?:quote|quotation|invoice|payment|consent|approve|otp|salesforce)\b/i.test(raw))
     out.push({key:"business_activity",value:raw});
   if(/\b(?:email|e-mail)\b/i.test(question) &&
