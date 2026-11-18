@@ -247,7 +247,7 @@ export function shouldShowAuthoritativeStatus(
   message:string,explicit:boolean,next:HandoffStep|null,
 ):boolean {
   if(!next)return false;
-  if(!(explicit||/\\b(?:what next|what's next|status|continue|proceed|go ahead|confirm|invoice|checkout)\\b/i.test(message)))
+  if(!(explicit||/\b(?:what next|what's next|status|continue|proceed|go ahead|confirm|invoice|checkout)\b/i.test(message)))
     return false;
   return new Set([
     "unsupported","lead_review","lead_processing","lead_disabled",
