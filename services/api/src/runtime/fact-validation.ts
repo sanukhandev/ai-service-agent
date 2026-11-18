@@ -101,10 +101,12 @@ export function validateConversationFact(
       "Could you confirm the shareholder's nationality (for example, Indian or Emirati)?");
   if(key==="office_preference"){
     const office=text.toLowerCase();
+    // Office selection is descriptive, not a catalog SKU. Preserve existing
+    // human-readable values used by quote/smoke contracts.
     const normalized=
-      /^(?:flexi(?:[- ]?desk)?)$/i.test(office)?"flexi_desk":
-      /^(?:private(?: office)?)$/i.test(office)?"private_office":
-      /^(?:shared(?: office| workspace)?)$/i.test(office)?"shared_office":text;
+      /^(?:flexi(?:[- ]?desk)?)$/i.test(office)?"flexi-desk":
+      /^(?:private(?: office)?)$/i.test(office)?"private office":
+      /^(?:shared(?: office| workspace)?)$/i.test(office)?"shared office":text;
     return {key,status:"accepted",value:normalized};
   }
   return {key,status:"accepted",value:text};
