@@ -47,6 +47,13 @@ migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_
   -c 'SELECT count(*) FROM public.schema_migrations')
 # The additive declined-payment and service-contract migrations follow 016 OTP.
 test "$migrations" = 18
+agreement_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname IN ('service_agreements','ticket_renewals') AND relrowsecurity AND relforcerowsecurity")
+test "$agreement_rls" = 2
+agreement_ref_fk=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_constraint WHERE conname IN ('ticket_service_contracts_agreement_fk','ticket_service_contracts_invoice_fk','ticket_service_contracts_agreement_revision_uq')")
+test "$agreement_ref_fk" = 3
+
 contract_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname='ticket_service_contracts' AND relrowsecurity AND relforcerowsecurity")
 test "$contract_rls" = 1
