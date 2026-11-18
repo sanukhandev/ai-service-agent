@@ -89,6 +89,7 @@ export function registerIntentTools(
   ticketIntents: TicketIntentRepository,
   purchaseReadiness?: () => Promise<unknown>,
   actionReadiness?: () => Promise<unknown>,
+  onFactIssues?: (issues:ReadonlyArray<{key:string;reasonCode:string;clarificationHint:string}>)=>void,
 ): void {
   const handlers: ToolHandler[] = [
     {
@@ -249,12 +250,15 @@ export function registerIntentTools(
             saved=await facts.recordCustomerFacts(
               ctx.agentId,ctx.ticketId,ctx.sourceCustomerMessageId,updates);
           }catch{
+            const problem={key:"record_ticket_facts",status:"rejected",
+              reasonCode:"FACT_WRITE_FAILED",
+              clarificationHint:"I couldn't save the details, so I won't treat them as recorded. Please retry or ask for staff review."};
+            onFactIssues?.([...issues,problem]);
             return {status:"persistence_failed",intentKey,facts:[],
-              issues:[...issues,{key:"record_ticket_facts",status:"rejected",
-                reasonCode:"FACT_WRITE_FAILED",
-                clarificationHint:"I couldn't save the details, so I won't treat them as recorded. Please retry or ask for staff review."}]};
+              issues:[...issues,problem]};
           }
         }
+        if(issues.length)onFactIssues?.(issues);
         return {
           status:issues.length?(saved.length?"partially_recorded":"needs_clarification"):
             "recorded_as_customer_stated",
