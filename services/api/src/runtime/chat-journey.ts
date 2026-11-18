@@ -14,6 +14,7 @@ import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/mess
 import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, parseSalesforceLeadName, type LeadFields } from "./lead-operations.js";
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
+import {RENEWAL_PURCHASE_CONSENT} from "./renewal-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
 import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
 import { normalizeContactPhone, validateConversationFact } from "./fact-validation.js";
@@ -481,7 +482,8 @@ export class ChatJourney {
               paymentPhase="purchase_confirm";
               await new PurchaseOperations(this.db).confirm(scope,item.ticket_id,{
                 requestId:item.proposal_id,quotationId:x.quotationId,amount:x.amount,
-                currency:x.currency,consent:true,consentText:PURCHASE_CONSENT,
+                currency:x.currency,consent:true,
+                consentText:purchase.renewalAgreementNumber?RENEWAL_PURCHASE_CONSENT:PURCHASE_CONSENT,
               });
             }
             if(!paymentEnabled())continue;
