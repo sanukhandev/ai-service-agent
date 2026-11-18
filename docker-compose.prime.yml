@@ -1,0 +1,15 @@
+﻿services:
+  api:
+    image: ai-service-agent-api:prime
+  web:
+    image: ai-service-agent-web:prime
+  nginx:
+    image: ai-service-agent-nginx:prime
+  postgres:
+    image: ai-service-agent-postgres:prime
+  redis:
+    image: ai-service-agent-redis:prime
+  n8n:
+    image: ai-service-agent-n8n:prime
+  gotenberg:
+    image: ai-service-agent-gotenberg:prime
