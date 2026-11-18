@@ -55,7 +55,7 @@ For P0–P7, prioritize functionality, successful builds/migrations and minimal 
 ## 7. Engineering discipline
 
 1. Read [docs/README.md](docs/README.md), [architecture](docs/02-architecture.md) and the [implementation plan](docs/10-implementation-plan.md) before implementing.
-2. Keep one authoritative conversation path; don't add compatibility wrappers or parallel planners.
+2. Keep one authoritative conversation path; don't add compatibility wrappers or parallel planners. **Model-led conversation:** Node validates and persists customer-stated facts and returns typed missing/invalid/conflicting status; Foundry owns ordinary response wording. Never reinstate a Node-ordered missing-field questionnaire or silently repeat the same question after failed validation.
 3. Freeze API/tool/event contracts before concurrent work; maintain a single owner for shared contracts/Compose/Nginx.
 4. Never claim live Foundry, n8n or Docker success when only a scaffold or mock exists. Give exact SHA, commands actually executed, outcomes and blockers.
 5. Avoid destructive migrations/data resets without explicit approval. Do not commit real secrets, personal data or production customer documents.
