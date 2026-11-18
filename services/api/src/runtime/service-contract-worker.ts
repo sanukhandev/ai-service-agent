@@ -341,6 +341,8 @@ export class ServiceContractWorker{
   private async render(c:Claim):Promise<Buffer>{
     validateContractDocuments(c.documents);
     const emirates=c.documents.find(f=>f.kind==="emirates_id")!;
+    if(!emirates.extractedName)
+      throw new Error("private_document_evidence_mismatch");
     // Do not fail an independently verified invoice for transient repeat OCR.
     // The previously verified last four is displayed masked on a retry.
     if(!emirates.last4||!/^\d{4}$/.test(emirates.last4))
