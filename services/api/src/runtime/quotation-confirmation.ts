@@ -18,6 +18,13 @@ type ChallengeRow={
   otp_hmac:string;expires_at:Date;failed_attempts:number;created_at:Date;
 };
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** The n8n test table accepts synthetic recipients only. Retain the actual
+ * customer-confirmed contact address in PostgreSQL for quote consent, but
+ * NEVER forward it to sandbox OTP delivery or persist it in the n8n table. */
+export function quoteMockDeliveryEmail(challengeId:string):string{
+  if(!uuid.test(challengeId))throw new PersistenceError("INVALID_INPUT","Invalid quotation challenge");
+  return "quote-"+challengeId.replace(/-/g,"").toLowerCase()+"@example.invalid";
+}
 function configured():void{
   if(!paymentEnabled() || process.env.ANCFZ_OTP_MOCK_ENABLED!=="true" ||
      !process.env.ANCFZ_OTP_PEPPER || process.env.ANCFZ_OTP_PEPPER.length<32)
@@ -111,7 +118,7 @@ export class QuotationConfirmationOperations{
           otpHmac(pepper,challengeId,code).toString("hex"),expires]);
       await appendEventTx(client,scope.agentId,ticketId,"quotation.confirmation.otp_requested",
         {quotationId,challengeId,expiresAt:expires.toISOString()});
-      return {email,expiresAt:expires.toISOString()};
+      return {expiresAt:expires.toISOString()};
     });
     // The same bounded private sandbox recording mechanism as payment OTP.
     // On an ambiguous POST result, fail closed and NEVER auto-retry it.
@@ -124,7 +131,8 @@ export class QuotationConfirmationOperations{
         const response=await fetch("http://n8n:5678/webhook/ancfz/otp-email",{
           method:"POST",redirect:"error",signal:controller.signal,
           headers:{"Content-Type":"application/json","X-ANCFZ-Workflow-Key":secret},
-          body:JSON.stringify({agentKey:"ancfz",ticketId,email:initiated.email,otp:code,
+          body:JSON.stringify({agentKey:"ancfz",ticketId,
+            email:quoteMockDeliveryEmail(challengeId),otp:code,
             testOnly:true,deliveryMode:"mock_datatable"}),
         });
         if(response.ok){
