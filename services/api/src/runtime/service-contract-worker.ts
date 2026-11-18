@@ -11,6 +11,7 @@ import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
 import {paymentEnabled} from "./payment-evidence.js";
 import {PURCHASE_CONSENT} from "./purchase-operations.js";
+import {RENEWAL_PURCHASE_CONSENT} from "./renewal-operations.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
 import {invoiceQuoteDetails} from "./invoice-details.js";
 import type {QuoteProposalDetails} from "./quote-proposal.js";
@@ -208,17 +209,20 @@ export class ServiceContractWorker{
       }>(
         "SELECT req.requirement_key,d.file_name,d.content_type,d.bytes,d.sha256,"+
         "d.extracted_full_name,d.document_number_last4 "+
-        "FROM ticket_purchase_documents d "+
+        "FROM ticket_purchase_confirmations pc "+
+        "LEFT JOIN ticket_renewals rn ON rn.agent_id=pc.agent_id "+
+        "AND rn.renewal_ticket_id=pc.ticket_id AND rn.status='requested' "+
+        "LEFT JOIN service_agreements a ON a.agent_id=rn.agent_id AND a.id=rn.agreement_id "+
+        "JOIN ticket_purchase_documents d ON d.agent_id=pc.agent_id "+
+        "AND d.ticket_id=COALESCE(a.initial_ticket_id,pc.ticket_id) "+
         "JOIN intent_document_requirements req ON req.agent_id=d.agent_id "+
         "AND req.intent_id=d.intent_id AND req.id=d.requirement_id "+
-        "JOIN ticket_purchase_confirmations pc ON pc.agent_id=d.agent_id "+
-        "AND pc.ticket_id=d.ticket_id AND pc.intent_id=d.intent_id "+
-        "AND pc.quotation_id=$3 "+
-        "WHERE d.agent_id=$1 AND d.ticket_id=$2 AND d.state='received' "+
-        "AND d.extraction_status='extracted' "+
-        "AND req.requirement_key IN ('passport','emirates_id') "+
-        "AND pc.consent_text LIKE '%nonbinding TEST service contract%'",
-        [agentId,x.ticket_id,x.quotation_id]);
+        "WHERE pc.agent_id=$1 AND pc.ticket_id=$2 AND pc.quotation_id=$3 "+
+        "AND ((rn.id IS NULL AND pc.consent_text=$4) OR "+
+        "(rn.id IS NOT NULL AND pc.consent_text=$5)) "+
+        "AND d.state='received' AND d.extraction_status='extracted' "+
+        "AND req.requirement_key IN ('passport','emirates_id')",
+        [agentId,x.ticket_id,x.quotation_id,PURCHASE_CONSENT,RENEWAL_PURCHASE_CONSENT]);
       await client.query(
         "UPDATE ticket_service_contracts SET state='running',render_attempts=render_attempts+1,"+
         "updated_at=now() WHERE agent_id=$1 AND id=$2",
@@ -447,6 +451,11 @@ export class ServiceContractWorker{
             "sync_state='pending',sync_attempts=0,next_sync_at=now(),updated_at=now() "+
             "WHERE agent_id=$1 AND agreement_number=$2",
             [agentId,claim.agreementNumber,claim.revision]);
+          await client.query(
+            "UPDATE ticket_renewals SET status='completed',completed_at=now() "+
+            "WHERE agent_id=$1 AND renewal_ticket_id=$2 AND source_revision=$3 "+
+            "AND status='requested'",
+            [agentId,claim.ticketId,claim.revision-1]);
         }
         await appendEventTx(client,agentId,claim.ticketId,
           good?"contract.generated":next==="queued"?"contract.retry_scheduled":"contract.needs_review",
