@@ -738,8 +738,6 @@ export function ChatJourneyControls({
               className="inline-block text-sm font-semibold text-indigo-700 underline">
               Download your private TEST service agreement
             </a>
-            {!purchase?.renewalAgreementNumber && (
-              <>
                 <label className="flex items-start gap-2 text-xs text-zinc-700">
                   <input type="checkbox" checked={renewalConsent}
                     onChange={e=>setRenewalConsent(e.target.checked)}
@@ -751,8 +749,6 @@ export function ChatJourneyControls({
                   className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
                   {busy==="renewal"?"Creating renewal…":"Renew this agreement"}
                 </button>
-              </>
-            )}
           </div>
         )}
         {contract?.state==="needs_review" && (
