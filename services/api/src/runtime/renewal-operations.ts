@@ -23,7 +23,7 @@ export class RenewalOperations{
     requireUuid(sourceTicketId,"sourceTicketId");
     if(!raw||typeof raw!=="object"||Array.isArray(raw))
       throw new PersistenceError("INVALID_INPUT","Explicit renewal consent required");
-    const v=raw as Record<string,unknown>;
+    const v=raw as Record<string,unknown> & {requestId:string;agreementNumber:string};
     if(Object.keys(v).some(k=>!["requestId","agreementNumber","consent","consentText"].includes(k))||
        typeof v.requestId!=="string"||!requestPattern.test(v.requestId)||
        typeof v.agreementNumber!=="string"||!agreementPattern.test(v.agreementNumber)||
