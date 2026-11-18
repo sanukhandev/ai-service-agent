@@ -296,13 +296,78 @@ export class ServiceContractWorker{
     });
     if(r)await this.notify({id:r.id,agentId,ticketId:r.ticket_id,contractNumber:r.contract_number});
   }
+  /**
+   * n8n Data Table is a disposable, idempotent projection. PostgreSQL is
+   * authoritative for contract numbers, ownership, renewal links and PDFs.
+   * Only non-PII document references are dispatched. Missing n8n is nonfatal.
+   */
+  private async syncRegistry(agentId:string):Promise<void>{
+    const next=await this.db.withAgent(agentId,async client=>{
+      const result=await client.query<{
+        id:string;ticket_id:string;contract_number:string;agreement_revision:number;
+        quote_number:string;invoice_number:string;
+      }>(
+        `SELECT c.id,c.ticket_id,c.contract_number,c.agreement_revision,
+           q.document_number AS quote_number,i.document_number AS invoice_number
+         FROM ticket_service_contracts c
+         JOIN ticket_quotations q ON q.agent_id=c.agent_id AND q.ticket_id=c.ticket_id
+           AND q.id=c.quotation_id
+         JOIN ticket_payment_invoices i ON i.agent_id=c.agent_id AND i.ticket_id=c.ticket_id
+           AND i.payment_id=c.payment_id AND i.state='verified_completed'
+         WHERE c.agent_id=$1 AND c.state='verified_completed'
+           AND c.registry_sync_state='pending'
+         ORDER BY c.created_at,c.id LIMIT 1`,[agentId]);
+      return result.rows[0]??null;
+    });
+    if(!next)return;
+    const secret=process.env.ANCFZ_N8N_WEBHOOK_SECRET;
+    if(!secret||secret.length<32)return;
+    const ctrl=new AbortController();
+    const timeout=setTimeout(()=>ctrl.abort(),12000);
+    let saved=false;
+    try{
+      const response=await fetch("http://n8n:5678/webhook/ancfz/contract-registry",{
+        method:"POST",redirect:"error",signal:ctrl.signal,
+        headers:{"Content-Type":"application/json","X-ANCFZ-Workflow-Key":secret},
+        body:JSON.stringify({
+          agentKey:"ancfz",testOnly:true,contractId:next.id,
+          contractNumber:next.contract_number,revision:next.agreement_revision,
+          ticketId:next.ticket_id,quoteNumber:next.quote_number,
+          invoiceNumber:next.invoice_number,status:"verified_completed",
+        }),
+      });
+      if(response.ok){
+        const raw=await response.text();
+        if(raw.length<=2048){
+          const answer=JSON.parse(raw) as Record<string,unknown>;
+          saved=answer.status==="upserted"&&answer.testOnly===true&&
+            answer.contractId===next.id;
+        }
+      }
+    }catch{/* Uncertain webhook outcome: upsert replays by contractId only. */}
+    finally{clearTimeout(timeout);}
+    if(!saved){
+      this.log({contractId:next.id},"Contract registry n8n sync pending");
+      return;
+    }
+    await this.db.withAgent(agentId,async client=>{
+      await client.query(
+        "UPDATE ticket_service_contracts SET registry_sync_state='synced',updated_at=now() "+
+        "WHERE agent_id=$1 AND id=$2 AND state='verified_completed' "+
+        "AND registry_sync_state='pending'",[agentId,next.id]);
+      await appendEventTx(client,agentId,next.ticket_id,"contract.registry_synced",{
+        contractId:next.id,contractNumber:next.contract_number,
+        revision:next.agreement_revision,testOnly:true,
+      });
+    });
+  }
   private async tick():Promise<void>{
     if(this.stopped||this.busy||!paymentEnabled())return;
     this.busy=true;
     try{
       const agentId=await this.agentId();if(!agentId)return;
       const claim=await this.claim(agentId);
-      if(!claim){await this.recoverNotice(agentId);return;}
+      if(!claim){await this.recoverNotice(agentId);await this.syncRegistry(agentId);return;}
       let bytes:Buffer|null=null;
       let failureCode:string|null=null;
       try{bytes=await this.render(claim);}catch(e){
@@ -341,6 +406,9 @@ export class ServiceContractWorker{
       if(published){
         try{await this.notify(claim);}catch{
           this.log({contractId:claim.id},"Private contract chat notice pending recovery");
+        }
+        try{await this.syncRegistry(agentId);}catch{
+          this.log({contractId:claim.id},"Contract registry sync pending recovery");
         }
       }
       this.log({contractId:claim.id,contractNumber:claim.contractNumber,
