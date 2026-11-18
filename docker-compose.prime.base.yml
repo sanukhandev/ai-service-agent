@@ -1,0 +1,174 @@
+name: ai-service-agent
+
+services:
+  nginx:
+    build:
+      context: .
+      dockerfile: infra/nginx/Dockerfile
+    ports:
+      # Local POC only: editor and customer portal must not bind the LAN interface.
+      - "127.0.0.1:80:80"
+    depends_on:
+      - web
+      - api
+    # nginx must resolve n8n on the private backend network; n8n has no published ports.
+    networks: [frontend, backend]
+    restart: unless-stopped
+
+  web:
+    build:
+      context: ./apps/web
+    environment:
+      NODE_ENV: production
+    networks: [frontend]
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./services/api
+    environment:
+      API_HOST: 0.0.0.0
+      API_PORT: "4000"
+      AZURE_CONFIG_DIR: /home/app/.azure
+      APP_ENV: ${APP_ENV:-development}
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost}
+      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
+      FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
+      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
+      FOUNDRY_TURN_CONCURRENCY: ${FOUNDRY_TURN_CONCURRENCY:-1}
+      # Azure ID OCR is mandatory for uploaded POC passport and Emirates ID data.
+      AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT: ${AZURE_DOCUMENT_INTELLIGENCE_ENDPOINT:-}
+      AZURE_DOCUMENT_INTELLIGENCE_KEY: ${AZURE_DOCUMENT_INTELLIGENCE_KEY:-}
+      ANCFZ_DEV_ACCEPT_UNNAMED_PASSPORT: ${ANCFZ_DEV_ACCEPT_UNNAMED_PASSPORT:-false}
+      # P4 ANCFZ Salesforce lead worker is opt-in and disabled by default.
+      ANCFZ_LEAD_DISPATCH_ENABLED: ${ANCFZ_LEAD_DISPATCH_ENABLED:-false}
+      ANCFZ_QUOTE_DISPATCH_ENABLED: ${ANCFZ_QUOTE_DISPATCH_ENABLED:-false}
+      ANCFZ_N8N_WEBHOOK_SECRET: ${ANCFZ_N8N_WEBHOOK_SECRET:-}
+      # P5 sandbox-only 2Checkout path. All opt-ins must be enabled explicitly.
+      ANCFZ_PAYMENT_DISPATCH_ENABLED: ${ANCFZ_PAYMENT_DISPATCH_ENABLED:-false}
+      ANCFZ_TEST_OTP_ENABLED: ${ANCFZ_TEST_OTP_ENABLED:-false}
+      ANCFZ_OTP_MOCK_ENABLED: ${ANCFZ_OTP_MOCK_ENABLED:-false}
+      ANCFZ_OTP_PEPPER: ${ANCFZ_OTP_PEPPER:-}
+      REDIS_URL: redis://redis:6379
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
+      PGUSER: agent_runtime
+      PGPASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in your local .env file}
+    volumes:
+      - azure-cli-auth:/home/app/.azure
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    networks: [frontend, backend]
+    restart: unless-stopped
+
+  # One-off migration owner. Never give its password to the Node runtime.
+  migrate:
+    image: postgres:16-alpine
+    entrypoint: ["/bin/sh", "/scripts/apply-migrations.sh"]
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: ${POSTGRES_DB:-ai_service_agent}
+      PGUSER: postgres
+      PGPASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in your local .env file}
+      FOUNDRY_PROJECT_ENDPOINT: ${FOUNDRY_PROJECT_ENDPOINT:-}
+      FOUNDRY_AGENT_NAME: ${FOUNDRY_AGENT_NAME:-anfz-sara01-agent}
+      FOUNDRY_AGENT_VERSION: ${FOUNDRY_AGENT_VERSION:-}
+    volumes:
+      - ./infra/postgres:/migrations:ro
+      - ./infra/bootstrap:/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [backend]
+    restart: "no"
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-ai_service_agent}
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in a local .env file}
+      POSTGRES_APP_PASSWORD: ${POSTGRES_APP_PASSWORD:?Set POSTGRES_APP_PASSWORD in a local .env file}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./infra/postgres/001_core.sql:/docker-entrypoint-initdb.d/001_core.sql:ro
+      - ./infra/postgres/002_intents_and_ticket_facts.sql:/docker-entrypoint-initdb.d/002_intents_and_ticket_facts.sql:ro
+      - ./infra/bootstrap/003-app-runtime-role.sh:/docker-entrypoint-initdb.d/003-app-runtime-role.sh:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ${POSTGRES_DB:-ai_service_agent}"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [backend]
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    networks: [backend]
+    restart: unless-stopped
+
+  n8n:
+    profiles: ["workflows"]
+    image: docker.n8n.io/n8nio/n8n:stable
+    environment:
+      N8N_HOST: localhost
+      # Public editor is /n8n/ behind Nginx; private webhooks retain root paths.
+      N8N_PATH: /n8n/
+      N8N_EDITOR_BASE_URL: http://localhost/n8n/
+      N8N_WEBHOOK_URL: http://n8n:5678/
+      N8N_PROXY_HOPS: "1"
+      N8N_PORT: "5678"
+      N8N_PROTOCOL: http
+      N8N_SECURE_COOKIE: "false"
+      # Configure a persistent private key before importing any credentials.
+      N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY:-}
+      # Official n8n >=2.17 owner provisioning; activated only by the private seed script.
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: ${N8N_INSTANCE_OWNER_MANAGED_BY_ENV:-false}
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_INSTANCE_OWNER_EMAIL:-}
+      N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_INSTANCE_OWNER_FIRST_NAME:-}
+      N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_INSTANCE_OWNER_LAST_NAME:-}
+      N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_INSTANCE_OWNER_PASSWORD_HASH:-}
+      # Optional ANCFZ configuration. Keep provider secrets in n8n credentials.
+      ANCFZ_OTP_FROM_EMAIL: ${ANCFZ_OTP_FROM_EMAIL:-}
+      # Explicit local POC-only mock OTP recording. Disabled unless opted in.
+      APP_ENV: ${APP_ENV:-development}
+      ANCFZ_OTP_MOCK_ENABLED: ${ANCFZ_OTP_MOCK_ENABLED:-false}
+    volumes:
+      - n8n-data:/home/node/.n8n
+      - ./infra/n8n/ancfz:/workflows/ancfz:ro
+    depends_on:
+      - gotenberg
+    networks: [backend]
+    restart: unless-stopped
+
+  # ANCFZ PDF renderer. Internal-only; no host port and no browser access.
+  gotenberg:
+    profiles: ["workflows"]
+    image: gotenberg/gotenberg:8
+    networks: [backend]
+    restart: unless-stopped
+
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+
+volumes:
+  postgres-data:
+  redis-data:
+  n8n-data:
+  azure-cli-auth:
