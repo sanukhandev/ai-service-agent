@@ -20,6 +20,7 @@ export type HandoffStep={
   stage:string;
   response:string;
   missingCount:number;
+  missingKeys:string[];
 };
 
 const ACTION_EVENT="customer.action.requested";
@@ -68,39 +69,14 @@ export function requestedBusinessAction(
   return null;
 }
 
-export function nextQuestion(missing:readonly {key:string;label:string}[]):string|null {
-  const order=[
-    "business_activity","preferred_company_name","shareholder_nationality",
-    "customer_email","shareholder_count","visa_count","term_years","office_preference",
-  ];
-  const ranked=[...missing].sort((a,b)=>{
-    const idx=(key:string)=>order.includes(key)?order.indexOf(key):order.length;
-    return idx(a.key)-idx(b.key) || a.key.localeCompare(b.key);
-  });
-  const first=ranked[0];
-  if(!first)return null;
-  const questions:Record<string,string>={
-    business_activity:"What business activity will your company carry out?",
-    preferred_company_name:"What company name would you like to register?",
-    shareholder_nationality:"What is the shareholder's nationality?",
-    customer_email:"What email address should ANCFZ use for your enquiry?",
-    shareholder_count:"How many shareholders will the company have?",
-    visa_count:"How many visas will you need?",
-    term_years:"Would you prefer a one-year, two-year or longer package?",
-    office_preference:"Which workspace would you prefer: flexi-desk, shared office or private office?",
-  };
-  return questions[first.key]??(first.label.trim().endsWith("?")
-    ?first.label.trim():"Could you tell me "+first.label.trim().replace(/[.?]+$/,"").toLowerCase()+"?");
-}
-
 type Action={actionKey:string;kind:string;ready:boolean;missing:string[];
   requirements:{key:string;label:string;present:boolean}[]};
 function missingFor(action:Action):{key:string;label:string}[] {
   return action.requirements.filter(r=>!r.present&&action.missing.includes(r.key))
     .map(r=>({key:r.key,label:r.label}));
 }
-function step(stage:string,response:string,missingCount=0):HandoffStep {
-  return {stage,response,missingCount};
+function step(stage:string,response:string,missingCount=0,missingKeys:string[]=[]):HandoffStep {
+  return {stage,response,missingCount,missingKeys};
 }
 const cancelled=/^(?:never mind|nevermind|stop|cancel(?: the (?:quote|quotation|request|application|purchase))?|forget (?:the|my) (?:quote|quotation|request|purchase))[.!\s]*$/i;
 
@@ -196,8 +172,7 @@ export class ConversationActionHandoff {
         return step("lead_processing","Your Salesforce enquiry is being processed. Once it is verified, we can prepare the formal quotation.");
       const missing=missingFor(lead);
       if(missing.length){
-        const q=nextQuestion(missing);
-        return step("lead_facts",q??"What details should I use for your enquiry?",missing.length);
+        return step("lead_facts","Some contact or company requirements are still missing; ask a relevant, natural clarification without losing earlier facts.",missing.length,missing.map(f=>f.key));
       }
       if(!leadDispatchEnabled())
         return step("lead_disabled","Salesforce enquiry submission is currently unavailable. Your details are saved, and no lead has been submitted.");
@@ -209,8 +184,7 @@ export class ConversationActionHandoff {
     if(quotation) {
       const missing=missingFor(quotation);
       if(missing.length){
-        const q=nextQuestion(missing);
-        return step("quote_facts",q??"Which package details would you prefer?",missing.length);
+        return step("quote_facts","One or more quotation requirements remain incomplete; answer the customer's question and ask about the most relevant missing detail.",missing.length,missing.map(f=>f.key));
       }
     }
     const quote=await new QuotationOperations(this.db).get(scope,ticketId);
@@ -266,21 +240,19 @@ export class ConversationActionHandoff {
   }
 }
 
-/** A short answer to a previously asked question should continue the user's
- * action request only when it actually updated persisted prerequisite facts.
- * Unrelated FAQs must still be answered naturally.
- */
-export function shouldUseHandoff(
-  message:string,explicit:boolean,before:HandoffStep|null,after:HandoffStep|null,
+/** Preserve deterministic responses for provider/safety states only.
+ * Missing-field turns belong to GPT, never a Node-authored question list.
+ * Unrelated FAQs must not be overwritten by an old action request. */
+export function shouldShowAuthoritativeStatus(
+  message:string,explicit:boolean,next:HandoffStep|null,
 ):boolean {
-  if(!after)return false;
-  if(explicit)return true;
-  if(/\b(?:what next|what's next|next step|continue|proceed)\b/i.test(message))return true;
-  if(before && after.missingCount<before.missingCount && !/\?/.test(message))return true;
-  // If an answer did not persist, repeat the SAME authoritative missing
-  // question instead of inventing a fact or pretending the stage advanced.
-  return Boolean(before && /^(lead_facts|quote_facts)$/.test(before.stage)
-    && /^(lead_facts|quote_facts)$/.test(after.stage)
-    && !/\?/.test(message) && message.length<=150
-    && !/^(?:thanks|thank you|hello|hi|okay|ok|bye|goodbye)[.! ]*$/i.test(message.trim()));
+  if(!next)return false;
+  if(!(explicit||/\\b(?:what next|what's next|status|continue|proceed|go ahead|confirm|invoice|checkout)\\b/i.test(message)))
+    return false;
+  return new Set([
+    "unsupported","lead_review","lead_processing","lead_disabled",
+    "quote_review","quote_processing","quote_disabled","quote_ready",
+    "purchase_unsupported","payment_disabled","payment_review",
+    "payment_processing","invoice_ready","invoice_processing",
+  ]).has(next.stage);
 }
