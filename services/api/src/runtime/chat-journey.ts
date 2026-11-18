@@ -15,6 +15,7 @@ import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, parseSalesforce
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
+import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
 import { normalizeContactPhone, validateConversationFact } from "./fact-validation.js";
 import { PAYMENT_CONSENT, paymentEnabled, paymentReadEnabled } from "./payment-evidence.js";
 import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
@@ -345,15 +346,26 @@ export class ChatJourney {
     if(!eligiblePurchase||!purchase.supported||purchase.confirmed||purchase.missing.length||
        !purchase.quotationId||!purchase.amount||purchase.currency!=="AED"||
        !purchase.billingName)return null;
+    // Reuse the customer contact already supplied during the enquiry.
+    // A sandbox-only alias uses the same local part but never a real domain.
+    // The exact alias is displayed in the purchase consent proposal so the
+    // customer can review/confirm it; never ask for their address again.
     const testEmail=await this.db.withAgent(scope.agentId,async client=>{
-      const r=await client.query<{value:unknown;verification_status:string}>(
-        "SELECT value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key='customer_test_email'",
+      const r=await client.query<{fact_key:string;value:unknown;verification_status:string}>(
+        "SELECT fact_key,value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key IN ('customer_test_email','customer_email','email')",
         [scope.agentId,ticketId]);
-      return r.rows[0]?.verification_status!=="disputed"&&
-        typeof r.rows[0]?.value==="string"?r.rows[0].value:"";
+      const accepted=new Map(r.rows.filter(x=>x.verification_status!=="disputed"&&typeof x.value==="string")
+        .map(x=>[x.fact_key,String(x.value).trim().toLowerCase()]));
+      const prior=accepted.get("customer_test_email");
+      if(prior&&/^[A-Za-z0-9._%+-]+@example\.invalid$/i.test(prior))return prior;
+      const contact=accepted.get("customer_email")??accepted.get("email")??"";
+      if(validateConversationFact("customer_email",contact,"email").status!=="accepted")
+        return "";
+      const local=contact.split("@")[0]!.slice(0,64).replace(/[^a-z0-9._%+-]/gi,"");
+      return local?local+"@example.invalid":"";
     });
-    if(!/^[A-Za-z0-9._%+-]+@example\.invalid$/i.test(testEmail))
-      return "For sandbox checkout, which synthetic billing email ending in @example.invalid should I use? Please don't share payment-card details or an OTP in chat.";
+    if(!testEmail)
+      return "I cannot locate a valid contact email in our conversation. Please confirm the email already supplied so I can prepare the sandbox review.";
     return this.stage(scope,ticketId,"purchase_payment",{
       quotationId:purchase.quotationId,amount:purchase.amount,currency:purchase.currency,
       billingName:purchase.billingName,testEmail,
@@ -575,6 +587,8 @@ export class ChatJourney {
     const quote=await new QuotationOperations(this.db).get(scope,ticketId);
     const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
     const payment=paymentReadEnabled()?await new PaymentOperations(this.db).get(scope,ticketId):null;
+    const quoteConfirmation=quote?.id && quote.state==="verified_completed" && quote.pdfAvailable
+      ?await new QuotationConfirmationOperations(this.db).read(scope,ticketId,quote.id):null;
     const challenge=await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
       const r=await client.query<{id:string;quotation_id:string;state:string;expires_at:Date}>(
@@ -600,7 +614,7 @@ export class ChatJourney {
         uploaded:x.uploaded,status:x.status})),
       missing:purchase.missing,confirmed:purchase.confirmed,readyForOtp:purchase.readyForOtp,
       reviewIssued,
-    },otp:challenge,payment};
+    },otp:challenge,payment,quoteConfirmation};
   }
 
   /** OTP stays outside chat messages and Foundry. Prior conversational
