@@ -372,12 +372,15 @@ export class PaymentOperations {
              FROM ticket_payment_invoices i
              JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id AND p.ticket_id=i.ticket_id
                AND p.id=i.payment_id
-             WHERE i.agent_id=$1 AND i.ticket_id=$2 LIMIT 1`,[scope.agentId,ticketId]);
+             WHERE i.agent_id=$1 AND i.ticket_id=$2 ORDER BY i.created_at DESC LIMIT 1`,[scope.agentId,ticketId]);
       const contract=await client.query<{
         id:string;payment_id:string;state:string;document_number:string;payment_state:string;
+        agreement_number:string;revision:number;sync_state:string;
       }>(
-        `SELECT c.id,c.payment_id,c.state,c.document_number,p.state AS payment_state
+        `SELECT c.id,c.payment_id,c.state,c.document_number,p.state AS payment_state,
+          a.agreement_number,c.revision,a.sync_state
          FROM ticket_service_contracts c
+         JOIN service_agreements a ON a.agent_id=c.agent_id AND a.id=c.agreement_id
          JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id
            AND p.id=c.payment_id
          WHERE c.agent_id=$1 AND c.ticket_id=$2 ORDER BY c.created_at DESC LIMIT 1`,
@@ -386,6 +389,8 @@ export class PaymentOperations {
         contract:contract.rows[0]?{
           id:contract.rows[0].id,paymentId:contract.rows[0].payment_id,
           state:contract.rows[0].state,documentNumber:contract.rows[0].document_number,
+          agreementNumber:contract.rows[0].agreement_number,
+          revision:contract.rows[0].revision,syncState:contract.rows[0].sync_state,
           pdfAvailable:contract.rows[0].state==="verified_completed" &&
             contract.rows[0].payment_state==="verified_test_payment",
         }:null,
@@ -729,14 +734,41 @@ export class PaymentOperations {
            WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND consent_text=$4`,
           [scope.agentId,ticketId,expected.quotationId,PURCHASE_CONSENT]);
         if(contractConsent.rows.length){
-          const contractId=randomUUID();
-          await client.query(
-            `INSERT INTO ticket_service_contracts
-              (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
-             VALUES($1,$2,$3,$4,$5,$6)
-             ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
-            [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
-              "ANCFZ-TEST-SC-"+contractId]);
+          // Agreement number belongs to the immutable paid purchase, not to
+          // n8n or a PDF renderer. Every verified repeat is idempotent.
+          const existingContract=await client.query<{id:string}>(
+            "SELECT id FROM ticket_service_contracts WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
+            [scope.agentId,ticketId,paymentId],
+          );
+          if(!existingContract.rows.length){
+            const agreementId=randomUUID();
+            const number=await client.query<{agreement_number:string}>(
+              "SELECT 'ANCFZ-AGR-' || to_char(now() AT TIME ZONE 'UTC','YYYY') || '-' || " +
+              "lpad(nextval('ancfz_agreement_number_seq')::text,6,'0') AS agreement_number");
+            const agreementNumber=number.rows[0]?.agreement_number;
+            if(!agreementNumber)throw new PersistenceError("DATABASE_ERROR","Agreement number unavailable");
+            await client.query(
+              `INSERT INTO service_agreements
+                (id,agent_id,initial_ticket_id,initial_payment_id,agreement_number)
+               VALUES($1,$2,$3,$4,$5)`,
+              [agreementId,scope.agentId,ticketId,paymentId,agreementNumber],
+            );
+            const associatedInvoice=await client.query<{id:string}>(
+              "SELECT id FROM ticket_payment_invoices WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
+              [scope.agentId,ticketId,paymentId]);
+            if(!associatedInvoice.rows[0])
+              throw new PersistenceError("DATABASE_ERROR","Agreement requires queued invoice");
+            const contractId=randomUUID();
+            await client.query(
+              `INSERT INTO ticket_service_contracts
+                (id,agent_id,ticket_id,quotation_id,payment_id,document_number,
+                 agreement_id,revision,invoice_id)
+               VALUES($1,$2,$3,$4,$5,$6,$7,1,$8)
+               ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
+              [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
+                agreementNumber,agreementId,associatedInvoice.rows[0].id],
+            );
+          }
         }
         if(claim.previousState!=="verified_test_payment") {
           await appendEventTx(client,scope.agentId,ticketId,"payment.verified",{
