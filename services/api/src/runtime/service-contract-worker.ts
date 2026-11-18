@@ -63,7 +63,7 @@ export function validateContractDocuments(
   const passport=files.find(f=>f.kind==="passport")!;
   const emirates=files.find(f=>f.kind==="emirates_id")!;
   if(!emirates.extractedName||emirates.extractionStatus!=="extracted"||
-     !emirates.last4||!/^\\d{4}$/.test(emirates.last4))
+     !emirates.last4||!/^\d{4}$/.test(emirates.last4))
     throw new Error("verified_emirates_last4_missing");
   if(passport.extractedName&&
      nameKey(passport.extractedName)!==nameKey(emirates.extractedName))
