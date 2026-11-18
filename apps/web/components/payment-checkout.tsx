@@ -131,21 +131,6 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
     }catch(e){setError(e instanceof Error?e.message:"OTP validation failed");setCode("");}
     finally{setBusy(false);}
   }
-  async function verify(){
-    if(!payment||busy)return;
-    setBusy(true);setError(null);setNotice(null);
-    try{
-      const result=await jsonRequest(
-        "/api/v1/tickets/"+encodeURIComponent(ticketId)+"/payments/"+
-        encodeURIComponent(payment.id)+"/verify","POST");
-      setSummary(result as Summary);
-      const state=(result as Summary).payments[0]?.state;
-      setNotice(state==="verified_test_payment"
-        ?"Matching sandbox COMPLETE status confirmed. TEST invoice is being generated."
-        :"Gateway status: "+String(state??"unavailable")+". No paid invoice unless independently verified.");
-    }catch(e){setError(e instanceof Error?e.message:"Payment status unavailable");}
-    finally{setBusy(false);}
-  }
   const invoice=summary?.invoice;
   return <section className="mb-3 rounded-xl border border-indigo-200 bg-white p-4 text-sm"
     aria-label="ANCFZ sandbox payment">
@@ -205,12 +190,8 @@ export function PaymentCheckout({ticketId,revision}:{ticketId:string;revision:nu
       {checkoutUrlSafe(payment.checkoutUrl)&&
         <a href={payment.checkoutUrl} target="_blank" rel="noopener noreferrer"
           className="inline-flex rounded-lg bg-indigo-700 px-3 py-2 font-semibold text-white">
-          Open 2Checkout test payment
+          Click to pay
         </a>}
-      {payment.orderReference&&<button type="button" disabled={busy} onClick={()=>void verify()}
-        className="ml-2 rounded-lg border border-indigo-300 px-3 py-2 font-medium text-indigo-800 disabled:opacity-50">
-        {busy?"Checking…":"Verify status with gateway"}
-      </button>}
       {payment.state==="unknown_outcome"&&<p className="text-amber-800">
         Provider outcome uncertain. Do not create another order without reconciling this attempt.
       </p>}

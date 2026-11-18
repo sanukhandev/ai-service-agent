@@ -225,3 +225,19 @@ console.log("Chat consent contracts PASS: exact/contextual approval, immutable s
 await import("./check-chat-journey-state.mjs");
 await import("./check-chat-consent-reconciliation.mjs");
 await import("./check-dev-synthetic-passport.mjs");
+
+
+// Customer checkout has one clear pay action. Gateway confirmation is automatic
+// and remains provider-verified in Node, not user-triggered from the browser.
+assert.match(inline,/"Click to pay"/);
+assert.doesNotMatch(inline,/Regenerate \/ reopen existing payment link/);
+assert.doesNotMatch(inline,/Verify status with gateway/);
+assert.doesNotMatch(inline,/verifyExistingPayment\(/);
+assert.match(inline,/Sara will keep checking the gateway automatically/);
+assert.match(inline,/checkout-closed/);
+assert.match(paymentUI,/>\s*Click to pay/);
+assert.doesNotMatch(paymentUI,/Verify status with gateway/);
+const paymentVerifier=readFileSync("services/api/src/runtime/n8n-payment-verification-worker.ts","utf8");
+assert.match(paymentVerifier,/this\.timer=setInterval\(\(\)=>\{void this\.tick\(\);\},15000\)/);
+assert.match(paymentVerifier,/await this\.payments\.verify\(/);
+console.log("Checkout UI PASS: Click to pay, no manual verify, automated read-only gateway verification retained");

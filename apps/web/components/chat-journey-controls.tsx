@@ -322,18 +322,6 @@ export function ChatJourneyControls({
     }finally{setBusy(null);}
   }
 
-  async function verifyExistingPayment(){
-    const payment=data?.payment?.payments?.[0];
-    if(!payment||!payment.orderReference||!payment.providerPaymentId||busy!==null)return;
-    setBusy("verify");setError(null);setNotice(null);
-    try{
-      await requestJson(root+"/payments/"+encodeURIComponent(payment.id)+"/verify",{});
-      await load();
-      setNotice("The existing order was checked with the gateway. PENDING is not payment confirmation.");
-    }catch(e){setError(e instanceof Error?e.message:"Unable to verify existing gateway order");}
-    finally{setBusy(null);}
-  }
-
   // A popup must be created synchronously during the user click. Fetching
   // the existing checkout link first would trigger browser popup blockers.
   // Popup close is NOT payment evidence; a separate server-side GET is required.
@@ -351,7 +339,7 @@ export function ChatJourneyControls({
           ?"The gateway still reports PENDING. You can reopen the existing checkout; no invoice has been issued."
           :state==="payment_declined"||state==="payment_refunded"
             ?"Gateway status: "+state.replaceAll("_"," ")+". You can request a new OTP after a confirmed decline; no new order was created."
-            :"Payment could not be independently confirmed. Use Verify status with gateway; no invoice has been issued.");
+            :"Payment is not yet confirmed. Sara will keep checking the gateway automatically; no invoice has been issued.");
     }catch(e){
       setError(e instanceof Error?e.message:"Unable to verify the existing checkout");
       setNotice("Checkout window closed. No payment is assumed complete.");
@@ -402,7 +390,7 @@ export function ChatJourneyControls({
         },750);
         setNotice("Existing sandbox checkout opened in a small window. Closing it will trigger an independent payment status check.");
       }else{
-        setNotice("The small checkout window was blocked or closed. Use the existing checkout link below, then select Verify status.");
+        setNotice("The checkout window was blocked or closed. Use the secure checkout link below. Sara will check payment status automatically.");
       }
     }catch(e){
       if(popup&&!popup.closed)popup.close();
@@ -655,9 +643,9 @@ export function ChatJourneyControls({
                 <button type="button" onClick={()=>{void reopenCheckout();}}
                   disabled={busy!==null||checkoutWatcher.current!==null}
                   className="inline-block rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                  {busy==="checkout"?"Recovering existing link…":
+                  {busy==="checkout"?"Opening secure checkout…":
                    checkoutWatcher.current?"Checkout window open":
-                   "Regenerate / reopen existing payment link"}
+                   "Click to pay"}
                 </button>
                 {safeCheckoutUrl(fallbackCheckoutUrl) && (
                   <a href={fallbackCheckoutUrl} target="_blank" rel="noopener noreferrer nofollow"
@@ -707,14 +695,6 @@ export function ChatJourneyControls({
                   </form>
                 )}
               </div>
-            )}
-            {currentPayment.orderReference && currentPayment.providerPaymentId &&
-              !["payment_refunded","payment_declined"].includes(currentPayment.state) && (
-              <button type="button" onClick={()=>{void verifyExistingPayment();}}
-                disabled={busy!==null}
-                className="block rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium disabled:opacity-40">
-                {busy==="verify"?"Verifying status…":"Verify status with gateway (GET only)"}
-              </button>
             )}
           </div>
         )}
