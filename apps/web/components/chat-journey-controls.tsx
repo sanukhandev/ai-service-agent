@@ -28,6 +28,7 @@ interface Invoice {
 }
 interface Summary {
   enabled:boolean;payments:Payment[];invoice:Invoice|null;
+  contract:Invoice|null;
 }
 interface Journey {
   lead:{state:string}|null;
@@ -416,6 +417,7 @@ export function ChatJourneyControls({
   const challenge=data?.otp;
   const currentPayment=data?.payment?.payments?.[0]??null;
   const invoice=data?.payment?.invoice??null;
+  const contract=data?.payment?.contract??null;
   const quoteOtpConfirmed=data?.quoteConfirmation?.verified===true;
   const quoteOtpChallenge=data?.quoteConfirmation?.challenge??null;
   // A quote is the only entry to the secure purchase controls; no document
@@ -715,6 +717,18 @@ export function ChatJourneyControls({
               </button>
             )}
           </div>
+        )}
+        {contract?.pdfAvailable===true && (
+          <a href={root+"/contracts/"+encodeURIComponent(contract.id)+"/pdf"}
+            className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">
+            Download private TEST service contract {contract.documentNumber}
+          </a>
+        )}
+        {contract?.state==="needs_review" && (
+          <p className="mt-3 text-xs text-amber-800">
+            Payment verified. Private contract preparation needs identity-document review;
+            no identity number has been fabricated.
+          </p>
         )}
         {invoice?.pdfAvailable===true && (
           <a href={root+"/invoices/"+encodeURIComponent(invoice.id)+"/pdf"}
