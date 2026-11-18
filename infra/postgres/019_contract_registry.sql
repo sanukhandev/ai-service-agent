@@ -34,6 +34,19 @@ CREATE UNIQUE INDEX ticket_contracts_number_revision_unique
 CREATE INDEX ticket_contracts_sync_pending
   ON ticket_service_contracts(agent_id,created_at)
   WHERE state='verified_completed' AND registry_sync_state='pending';
+-- A one-time bounded recovery for old contracts exhausted by the previous
+-- strict repeat-OCR requirement. Do not touch paid evidence or PDF data.
+UPDATE ticket_service_contracts c
+SET state='queued',render_attempts=0,failure_code=NULL,updated_at=now()
+WHERE c.state='needs_review' AND c.bytes IS NULL
+  AND EXISTS (
+    SELECT 1 FROM ticket_payment_attempts p
+    JOIN ticket_payment_invoices i ON i.agent_id=p.agent_id
+      AND i.ticket_id=p.ticket_id AND i.payment_id=p.id
+      AND i.state='verified_completed' AND i.bytes IS NOT NULL
+    WHERE p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id
+      AND p.id=c.payment_id AND p.state='verified_test_payment'
+  );
 GRANT USAGE ON SEQUENCE ancfz_service_contract_number_seq TO agent_runtime;
 GRANT UPDATE(failure_code,registry_sync_state) ON ticket_service_contracts TO agent_runtime;
 COMMIT;
