@@ -11,6 +11,7 @@ import { PaymentOperations } from "./payment-operations.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ChatJourney } from "./chat-journey.js";
+import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -138,6 +139,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const purchases=new PurchaseOperations(db);
   const intentActions=new IntentActionOperations(db);
   const chatJourney=new ChatJourney(db);
+  const quoteConfirmation=new QuotationConfirmationOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -318,6 +320,19 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     const scope=await scopeFromCookie(db,request);
     return reply.code(202).send(await chatJourney.verifySecureOtp(scope,
       idParam(request),request.body));
+  });
+
+  // The quotation OTP is a separate, ticket-owner-only challenge. It must be
+  // verified before the document intake endpoint may invoke private OCR.
+  app.post("/api/v1/tickets/:ticketId/quotations/confirmation/otp",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return reply.code(202).send(await quoteConfirmation.issue(scope,idParam(request),request.body));
+  });
+  app.post("/api/v1/tickets/:ticketId/quotations/confirmation/verify",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return reply.code(200).send(await quoteConfirmation.verify(scope,idParam(request),request.body));
   });
 
   // Customer-initiated operation only; never callable as a model tool.
