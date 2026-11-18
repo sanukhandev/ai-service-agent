@@ -75,6 +75,22 @@ ALTER TABLE ticket_service_contracts
 CREATE INDEX ticket_service_contracts_agreement_version
   ON ticket_service_contracts(agent_id,agreement_id,revision DESC);
 
--- No automatic retry of 'needs_review' historical cases: operators may need
--- to resolve mismatched identity evidence before a safe re-render.
+-- A single one-time migration recovery for *already* independently verified
+-- sandbox payments and completed invoices. The new renderer can reuse the
+-- previously verified masked Emirates ID if a second OCR call is unavailable.
+-- Never retry without the exact private document-annexure consent.
+UPDATE ticket_service_contracts c
+SET state='queued',render_attempts=0,updated_at=now()
+FROM ticket_payment_invoices i
+JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id
+  AND p.ticket_id=i.ticket_id AND p.id=i.payment_id
+JOIN ticket_purchase_confirmations pc ON pc.agent_id=i.agent_id
+  AND pc.ticket_id=i.ticket_id AND pc.quotation_id=i.quotation_id
+WHERE c.agent_id=i.agent_id AND c.ticket_id=i.ticket_id
+  AND c.payment_id=i.payment_id AND c.quotation_id=i.quotation_id
+  AND c.state='needs_review' AND c.bytes IS NULL
+  AND p.state='verified_test_payment'
+  AND i.state='verified_completed' AND i.bytes IS NOT NULL
+  AND pc.consent_text =
+    'I confirm this ANCFZ sandbox purchase for the exact approved quotation amount and consent to my uploaded passport and Emirates ID copies being included as private annexures in a nonbinding TEST service contract after independently verified sandbox payment.';
 COMMIT;
