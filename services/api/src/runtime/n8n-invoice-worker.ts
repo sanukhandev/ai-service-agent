@@ -9,7 +9,8 @@ import { TicketMessageRepository } from "../repositories/messages.js";
 import { workerTicketScope } from "../repositories/types.js";
 import { paymentEnabled } from "./payment-evidence.js";
 import { boundedJson, verifyInvoicePdf } from "./n8n-quote-worker.js";
-import { invoiceBillingName } from "./purchase-operations.js";
+import { invoiceBillingName,PURCHASE_CONSENT } from "./purchase-operations.js";
+import {RENEWAL_PURCHASE_CONSENT} from "./renewal-operations.js";
 import { extractInvoiceEmiratesId, nameKey } from "./identity-extractor.js";
 import { invoiceQuoteDetails } from "./invoice-details.js";
 import type { QuoteProposalDetails } from "./quote-proposal.js";
@@ -110,18 +111,23 @@ export class N8nInvoiceWorker {
         document_number_last4:string|null;
       }>(
         `SELECT d.bytes,d.sha256,d.extracted_full_name,d.document_number_last4
-          FROM ticket_purchase_documents d
+          FROM ticket_purchase_confirmations pc
+          LEFT JOIN ticket_renewals rn ON rn.agent_id=pc.agent_id
+            AND rn.renewal_ticket_id=pc.ticket_id AND rn.status='requested'
+          LEFT JOIN service_agreements a ON a.agent_id=rn.agent_id
+            AND a.id=rn.agreement_id
+          JOIN ticket_purchase_documents d ON d.agent_id=pc.agent_id
+            AND d.ticket_id=COALESCE(a.initial_ticket_id,pc.ticket_id)
           JOIN intent_document_requirements req
             ON req.agent_id=d.agent_id AND req.intent_id=d.intent_id
             AND req.id=d.requirement_id AND req.requirement_key='emirates_id'
-          JOIN ticket_purchase_confirmations pc
-            ON pc.agent_id=d.agent_id AND pc.ticket_id=d.ticket_id
-            AND pc.intent_id=d.intent_id AND pc.quotation_id=$3
-          WHERE d.agent_id=$1 AND d.ticket_id=$2
+          WHERE pc.agent_id=$1 AND pc.ticket_id=$2 AND pc.quotation_id=$3
+            AND ((rn.id IS NULL AND pc.consent_text=$4) OR
+                 (rn.id IS NOT NULL AND pc.consent_text=$5))
             AND d.state='received' AND d.extraction_status='extracted'
             AND d.extracted_full_name IS NOT NULL
             AND d.document_number_last4 IS NOT NULL LIMIT 1`,
-        [agentId,x.ticket_id,x.quotation_id],
+        [agentId,x.ticket_id,x.quotation_id,PURCHASE_CONSENT,RENEWAL_PURCHASE_CONSENT],
       );
       const idDoc=doc.rows[0];
       if(!idDoc || !/^[0-9]{4}$/.test(idDoc.document_number_last4?.trim()??"") ||
