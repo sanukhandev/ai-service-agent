@@ -70,6 +70,19 @@ async function run(){
       );
       await assert.rejects(()=>assertPurchaseReady(client,agent.id,ticketId,quoted.id),conflict);
     });
+    // Quote confirmation is a separate OTP gate for document collection.
+    // This is isolated CI evidence, never a provider/OTP bypass in runtime.
+    await assert.rejects(()=>purchases.upload(scope,ticketId,{
+      requirementKey:"passport",fileName:"blocked.pdf",
+      contentType:"application/pdf",
+      dataBase64:Buffer.from("%PDF-1.4\\n"+("A".repeat(260))+"\\n%%EOF\\n").toString("base64"),
+    }),conflict);
+    await db.withAgent(agent.id,async client=>{
+      await client.query(
+        "INSERT INTO ticket_quote_confirmation_otps(agent_id,ticket_id,quotation_id,request_id,email,otp_hmac,state,expires_at,verified_at) VALUES($1,$2,$3,$4,$5,$6,'verified',now()+interval '5 minutes',now())",
+        [agent.id,ticketId,quoted.id,randomUUID(),"ci@example.invalid","a".repeat(64)],
+      );
+    });
     const doc1=Buffer.from("%PDF-1.4\n"+("A".repeat(260))+"\n%%EOF\n");
     const doc2=Buffer.from("%PDF-1.4\n"+("B".repeat(260))+"\n%%EOF\n");
     const correctedPassport=Buffer.from("%PDF-1.4\n"+("C".repeat(260))+"\n%%EOF\n");
