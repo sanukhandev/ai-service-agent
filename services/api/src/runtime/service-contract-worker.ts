@@ -86,10 +86,10 @@ function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;numb
   // Price tiers, exclusions and preferences are not secretly converted into
   // billable or promised services. Retain the complete original scope below.
   const description=proposal.packageDescription.trim();
-  const included=description.match(/(?:^|[.;]\\s*)Includes\\s+([^;.]+)/i)?.[1]??"";
+  const included=description.match(/(?:^|[.;]\s*)Includes\s+([^;.]+)/i)?.[1]??"";
   const items=included
-    ?included.split(/,\\s*|\\s+and\\s+/i).map(v=>v.trim()).filter(Boolean)
-    :description.split(/\\n+/).map(v=>v.replace(/^\\s*[-*•]\\s*/,"").trim()).filter(Boolean);
+    ?included.split(/,\s*|\s+and\s+/i).map(v=>v.trim()).filter(Boolean)
+    :description.split(/\n+/).map(v=>v.replace(/^\s*[-*•]\s*/,"").trim()).filter(Boolean);
   const requirements=proposal.requirements.map(r=>
     "<tr><td>"+short(r.label,140)+"</td><td>"+short(r.value,400)+"</td></tr>").join("");
   const now=new Date().toISOString().slice(0,10);
