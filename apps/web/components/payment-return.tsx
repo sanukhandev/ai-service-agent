@@ -27,11 +27,11 @@ export function PaymentReturn() {
       <section aria-labelledby="payment-return-title"
         className="w-full max-w-md rounded-2xl border border-zinc-200 bg-white p-8 text-center shadow-sm">
         <div aria-hidden="true"
-          className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-indigo-50 text-indigo-700">
+          className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-zinc-100 text-zinc-700">
           <svg width="26" height="26" viewBox="0 0 24 24"
             fill="none" stroke="currentColor" strokeWidth="1.8"
             strokeLinecap="round" strokeLinejoin="round">
-            <path d="M20 7 10 17l-5-5" />
+            <path d="M4 12h16m-6-6 6 6-6 6" />
           </svg>
         </div>
         <h1 id="payment-return-title" className="text-xl font-semibold text-zinc-900">
