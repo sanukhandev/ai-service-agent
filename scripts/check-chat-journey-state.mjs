@@ -174,6 +174,10 @@ try{
   assert.equal(notReady,null,"Missing surname must not cause Node to emit a form question or proposal");
   assert.equal(leadSubmits,0,"No Salesforce submission when surname is missing");
   facts.customer_name="Test Customer";
+  facts.customer_phone="585751302";
+  assert.equal(await journey.prepare(scope,ticketId,"generate_quote"),null,
+    "A country-less phone must not reach Salesforce/quotation consent");
+  facts.customer_phone="+971500000000";
   const prepared=await journey.prepare(scope,ticketId,"generate_quote");
   assert.match(prepared,/Review your ANCFZ enquiry and quotation/);
   await journey.advance(log);
