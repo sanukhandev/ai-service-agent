@@ -40,7 +40,7 @@ For "software services, one visa, shared office", Sara should not request those 
 
 ## Customer-requested actions through sandbox invoice
 
-A company-formation conversation stays natural for FAQ/package requests. On an explicit quotation, lead, purchase, PDF or invoice request, Node persists a durable non-authorizing request event. After the Foundry turn and any `record_ticket_facts` calls, Node re-reads the ticket's **pinned** requirements and verified operation state to select exactly one missing question or next customer-authorized control. The dialogue is not a fixed questionnaire, and unrelated questions remain answerable.
+A company-formation conversation stays natural for FAQ/package requests. On an explicit quotation, lead, purchase, PDF or invoice request, Node persists a durable non-authorizing request event. After the Foundry turn and any `record_ticket_facts` calls, Node re-reads the **pinned** requirements and verified operation state. Missing facts, validation issues and action readiness are structured context for Sara; **the model chooses the next natural clarification instead of a fixed Node question list**. Node only overrides customer-facing prose with exact authorization proposals or independently verified/blocked provider states. Unrelated FAQs remain answerable even during a pending quotation.
 
 The supported POC business path is: **verified Salesforce lead → acknowledged quotation/PDF → private OCR document intake → purchase consent → synthetic OTP → sandbox gateway verification → verified test invoice**. The model may explain status but must not execute operations, mark payments complete, or expose the invoice before independent evidence.
 

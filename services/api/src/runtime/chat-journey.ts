@@ -15,6 +15,7 @@ import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, parseSalesforce
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
+import { normalizeContactPhone, validateConversationFact } from "./fact-validation.js";
 import { PAYMENT_CONSENT, paymentEnabled, paymentReadEnabled } from "./payment-evidence.js";
 import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
@@ -80,16 +81,18 @@ function proposalCopy(p:Base):string {
       "Customer: "+x.lead.name+" | Company: "+x.lead.company,
       "Contact: "+x.lead.email+" | "+x.lead.phone,
       "Activity: "+x.lead.description.split(";")[0],
-      "Selected package: "+x.offeringLabel+" ("+x.offeringKey+")",
-      "Quoted total: "+x.currency+" "+x.amount+
-        " | "+x.visaCount+" requested visa(s), "+x.termYears+" year(s)",
+      "Selected package: "+x.offeringLabel,
+      "Published test package total: "+x.currency+" "+x.amount+
+        " for "+x.visaCount+" visa(s) and "+x.termYears+" year(s).",
+      "Workspace requested: "+x.officePreference+
+        ". This preference is not a priced inclusion unless the published package explicitly says so.",
       quoteDetailsMarkdown(x.proposal),
-      "Next steps: after the quotation is independently verified, the sandbox"+
-        " purchase flow requests a synthetic passport and Emirates ID."+
-        " Identity uploads, payment details and OTP do not belong in chat text.",
-      "This is a non-binding test quotation. I will create one Salesforce enquiry"+
-        " and prepare this exact package only after your authorization.",
-      'To approve both actions, reply: "'+LEAD_QUOTE_APPROVAL+'"',
+      "This is a non-binding test quotation. Licensing, visa issuance and activities"+
+        " remain subject to authority approval. Full published scope and conditions"+
+        " will be included in the independently generated quotation PDF.",
+      "With your permission I will share the reviewed contact details with Salesforce"+
+        " once, then prepare this exact quotation only after its lead is verified.",
+      'To authorize these actions, reply: "'+LEAD_QUOTE_APPROVAL+'"',
     ].filter(Boolean).join("\n\n");
   }
   const x=p.payload.data as PurchaseData;
@@ -257,8 +260,13 @@ export class ChatJourney {
     // Do not issue a consent proposal that the n8n workflow would reject.
     if(!parseSalesforceLeadName(name)||!company||!phone||!email||!activity||!officePreference||
       visaCount===null||termYears===null)return null;
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-      !/^\+?[0-9 ()-]{7,40}$/.test(phone))return null;
+    // The conversational tool and transactional proposal MUST agree about
+    // valid contact metadata. Do not issue a proposal for a phone missing a
+    // country code merely because the old Salesforce regex would accept it.
+    const validatedPhone=normalizeContactPhone(phone);
+    const validatedEmail=validateConversationFact("customer_email",email,"email");
+    if(validatedPhone.status!=="accepted"||validatedEmail.status!=="accepted")
+      return null;
     const key="visa_"+visaCount+"_y"+termYears;
     const option=await client.query<OfferingRow>(
       "SELECT o.offering_key,o.label,o.description,p.amount::text,p.currency,p.revision,p.conditions FROM tickets t JOIN offering_catalog_versions cv ON cv.agent_id=t.agent_id AND cv.id=t.offering_catalog_version_id AND cv.status IN ('published','retired') JOIN offerings o ON o.agent_id=t.agent_id AND o.catalog_version_id=cv.id JOIN LATERAL (SELECT pr.currency,pr.amount,pr.revision,pr.conditions FROM offering_price_revisions pr WHERE pr.agent_id=o.agent_id AND pr.offering_id=o.id AND pr.effective_from<=now() AND (pr.effective_to IS NULL OR pr.effective_to>now()) ORDER BY pr.revision DESC LIMIT 1) p ON true WHERE t.agent_id=$1 AND t.id=$2 AND o.offering_key=$3 AND (o.intent_key=$4 OR ($4 IN ('quotation_request','package_comparison') AND o.intent_key IN ('company_formation','package_comparison'))) LIMIT 1",
@@ -269,7 +277,8 @@ export class ChatJourney {
     const description=[activity,"Visa count: "+visaCount,"Term years: "+termYears,
       "Office requested: "+officePreference].join("; ").slice(0,4000);
     const requirementsSnapshot=await quoteRequirementsTx(client,agentId,ticketId);
-    return {lead:{name,company,phone,email:email.toLowerCase(),description},
+    return {lead:{name,company,phone:String(validatedPhone.value),
+      email:String(validatedEmail.value),description},
       offeringKey:key,offeringLabel:price.label,priceRevision:price.revision,
       amount:price.amount,currency:price.currency.trim(),
       visaCount,termYears,officePreference,conditions:price.conditions,
@@ -317,42 +326,9 @@ export class ChatJourney {
         this.leadQuoteData(client,scope.agentId,ticketId));
       if(!leadDispatchEnabled()||!quoteDispatchEnabled())
         return "Salesforce or quotation generation is temporarily unavailable. I can collect the details, but no external enquiry or PDF will be submitted.";
-      if(!data){
-        const current=await this.db.withAgent(scope.agentId,async client=>{
-          const allowed=await client.query<{actions:string[]}>(
-            "SELECT i.allowed_actions AS actions FROM tickets t JOIN ticket_intents ti ON ti.agent_id=t.agent_id AND ti.ticket_id=t.id AND ti.status='active' JOIN intents i ON i.agent_id=ti.agent_id AND i.id=ti.intent_id WHERE t.agent_id=$1 AND t.id=$2 AND i.catalog_version_id=t.intent_catalog_version_id LIMIT 1",
-            [scope.agentId,ticketId],
-          );
-          if(!allowed.rows[0]?.actions.includes("create_lead")||
-             !allowed.rows[0]?.actions.includes("generate_quote"))return null;
-          const facts=await client.query<FactRow>(
-            "SELECT fact_key,value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2",
-            [scope.agentId,ticketId]);
-          return new Map(facts.rows.filter(x=>x.verification_status!=="disputed")
-            .map(x=>[x.fact_key,x.value] as [string,unknown]));
-        });
-        if(!current)return null;
-        const questions:[string[],string][]=[
-          [["business_activity"],"What business activity will your company perform?"],
-          [["preferred_company_name","company_name"],"What company name would you prefer?"],
-          [["shareholder_nationality"],"What nationality should I record for the shareholder?"],
-          [["shareholder_count"],"How many shareholders will the company have?"],
-          [["customer_name"],"What is your first name for the Salesforce enquiry?"],
-          [["customer_phone"],"What contact phone number should ANCFZ use?"],
-          [["customer_email","email"],"What email address should ANCFZ use for your enquiry?"],
-          [["visa_count"],"How many visas do you need (0–10)?"],
-          [["term_years"],"How many years should the licence cover (1–5)?"],
-          [["office_preference"],"What is your office preference: flexi-desk, shared office, or private office?"],
-        ];
-        const customerName=field(current,["customer_name"]);
-        if(customerName && !parseSalesforceLeadName(customerName))
-          return "What is your last name? Salesforce requires it to create the enquiry. I'll keep the first name and other details you've already provided.";
-        const missing=questions.find(([keys])=>keys.every(k=>{
-          const v=current.get(k);return v===undefined||v===null||v==="";
-        }));
-        if(missing)return missing[1];
-        return "There is no exact published test offering for those requirements, or a value is invalid. I won't substitute another visa count or price. Please correct the package details or request staff review.";
-      }
+      // Missing/invalid facts are exposed as structured Node readiness to the
+      // Foundry conversation. Never replace a model turn with a fixed form field.
+      if(!data)return null;
       return this.stage(scope,ticketId,"lead_quote",data);
     }
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||

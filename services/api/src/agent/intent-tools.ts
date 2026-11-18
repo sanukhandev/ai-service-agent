@@ -3,6 +3,7 @@
  * No ANCFZ-specific logic or direct n8n dispatch.
  */
 import { AgentToolRegistry, type ToolHandler } from "./tool-registry.js";
+import { validateConversationFact, type FactType } from "../runtime/fact-validation.js";
 
 export interface IntentRequirement {
   readonly key: string;
@@ -88,6 +89,7 @@ export function registerIntentTools(
   ticketIntents: TicketIntentRepository,
   purchaseReadiness?: () => Promise<unknown>,
   actionReadiness?: () => Promise<unknown>,
+  onFactIssues?: (issues:ReadonlyArray<{key:string;reasonCode:string;clarificationHint:string}>)=>void,
 ): void {
   const handlers: ToolHandler[] = [
     {
@@ -134,7 +136,7 @@ export function registerIntentTools(
     },
     {
       name: "get_intent_requirements",
-      description: "Retrieve a supported goal\'s requirements, current facts and (for purchase_quotation) private purchase checklist readiness. Ask only the next missing question. File uploads, purchase confirmation and payments are performed only by the authenticated customer through Node endpoints; never claim them completed from chat text.",
+      description: "Read the current accepted facts, missing operation requirements and action-readiness state. This is structured context, NOT an ordered questionnaire. Reuse facts from earlier chat. Ask only a helpful context-specific clarification when truly missing. Private uploads, approvals and payments occur through Node controls.",
       parameters: schema({
         intentKey: { type: "string", maxLength: 128 },
         operationKey: { type: "string", maxLength: 128 },
@@ -183,7 +185,7 @@ export function registerIntentTools(
     },
     {
       name: "record_ticket_facts",
-      description: "Persist customer-provided details from the latest message. For ANCFZ lead enquiries record customer_name and customer_phone. A first name alone may be recorded in customer_name; if the customer later supplies a surname, use the existing sourced first name and their new surname to update customer_name to the full name. Never invent surnames. For mock billing use customer_test_email (@example.invalid). Do not invent values or record OTP/card/identity contents. Every fact is linked to the customer's message.",
+      description: "Validate and save all explicit customer-provided or corrected details in the current message, including multiple facts together. Result includes accepted facts and precise validation issues. Explain invalid fields rather than repeating the same question; do not invent surnames, country codes, details or consent. Never record OTP, cards or identity bytes.",
       parameters: schema({
         intentKey: { type: "string", maxLength: 128 },
         facts: {
@@ -217,31 +219,53 @@ export function registerIntentTools(
           allowed.add("customer_phone");
           allowed.add("customer_test_email");
         }
-        const updates = args["facts"].map((candidate) => {
-          if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        const updates: Array<{key:string;value:string|number|boolean}> = [];
+        const issues: Array<{key:string;status:string;reasonCode:string;clarificationHint:string}> = [];
+        const seen = new Set<string>();
+        for(const candidate of args["facts"]){
+          if(!candidate || typeof candidate!=="object" || Array.isArray(candidate))
             throw new Error("Invalid customer fact");
+          const row=candidate as Record<string,unknown>;
+          const key=requireText(row["key"],"key",128);
+          if(!allowed.has(key)||seen.has(key))throw new Error("Unknown or duplicate fact key");
+          seen.add(key);
+          const value=row["value"];
+          if((typeof value!=="string"&&typeof value!=="number"&&typeof value!=="boolean")||
+             (typeof value==="string"&&value.length>1000)||
+             (typeof value==="number"&&!Number.isFinite(value)))
+            throw new Error("Invalid fact argument");
+          const expected=intent.requirements.find(req=>req.key===key)?.type??"text";
+          const decision=validateConversationFact(key,value,expected as FactType);
+          if(decision.status==="accepted")
+            updates.push({key,value:decision.value});
+          else
+            issues.push({key,status:decision.status,reasonCode:decision.reasonCode,
+              clarificationHint:decision.clarificationHint});
+        }
+        // An invalid contact must not discard valid package facts in the
+        // same turn. Do not claim persistence when the DB rejects a write.
+        let saved:TicketFact[]=[];
+        if(updates.length){
+          try{
+            saved=await facts.recordCustomerFacts(
+              ctx.agentId,ctx.ticketId,ctx.sourceCustomerMessageId,updates);
+          }catch{
+            const problem={key:"record_ticket_facts",status:"rejected",
+              reasonCode:"FACT_WRITE_FAILED",
+              clarificationHint:"I couldn't save the details, so I won't treat them as recorded. Please retry or ask for staff review."};
+            onFactIssues?.([...issues,problem]);
+            return {status:"persistence_failed",intentKey,facts:[],
+              issues:[...issues,problem]};
           }
-          const value = candidate as Record<string, unknown>;
-          const key = requireText(value["key"], "key", 128);
-          const factValue = value["value"];
-          if (!allowed.has(key)) throw new Error("Unknown requirement key");
-          if (
-            (typeof factValue !== "string" && typeof factValue !== "number" &&
-             typeof factValue !== "boolean") ||
-            (typeof factValue === "string" && factValue.length > 1000) ||
-            (typeof factValue === "number" && !Number.isFinite(factValue))
-          ) throw new Error("Invalid fact");
-          return { key, value: factValue };
-        });
-        const saved = await facts.recordCustomerFacts(
-          ctx.agentId, ctx.ticketId, ctx.sourceCustomerMessageId, updates,
-        );
+        }
+        if(issues.length)onFactIssues?.(issues);
         return {
-          status: "recorded_as_customer_stated",
+          status:issues.length?(saved.length?"partially_recorded":"needs_clarification"):
+            "recorded_as_customer_stated",
           intentKey,
-          facts: saved.map((item) => ({
-            key: item.key, value: item.value, verification: item.verification,
-          })),
+          facts:saved.map(item=>({key:item.key,value:item.value,
+            verification:item.verification})),
+          issues,
         };
       },
     },

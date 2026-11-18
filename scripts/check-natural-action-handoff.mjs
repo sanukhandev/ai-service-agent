@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import ts from "typescript";
 import {
-  ConversationActionHandoff, requestedBusinessAction, nextQuestion, shouldUseHandoff,
+  ConversationActionHandoff, requestedBusinessAction, shouldShowAuthoritativeStatus,
 } from "../services/api/dist/runtime/conversation-action-handoff.js";
 import { IntentActionOperations } from "../services/api/dist/runtime/intent-action-operations.js";
 import { LeadOperations } from "../services/api/dist/runtime/lead-operations.js";
@@ -36,18 +36,14 @@ assert.equal(requestedBusinessAction("Can you explain the quotation requirements
 assert.equal(requestedBusinessAction("How can I generate a formal quotation?"),null);
 assert.equal(requestedBusinessAction("I want to know the payment options"),null);
 assert.equal(requestedBusinessAction("Please send me a formal quotation"),"generate_quote");
-assert.equal(nextQuestion([
-  {key:"customer_email",label:"Email?"},{key:"preferred_company_name",label:"Company name?"}
-]),"What company name would you like to register?");
-assert.equal(shouldUseHandoff("My company is Example IT",false,
-  {stage:"lead_facts",response:"Name?",missingCount:3},
-  {stage:"lead_facts",response:"Nationality?",missingCount:2}),true);
-assert.equal(shouldUseHandoff("Which business structures are available?",false,
-  {stage:"lead_facts",response:"Name?",missingCount:3},
-  {stage:"lead_facts",response:"Name?",missingCount:3}),false);
-assert.equal(shouldUseHandoff("Example IT",false,
-  {stage:"lead_facts",response:"Name?",missingCount:3},
-  {stage:"lead_facts",response:"Name?",missingCount:3}),true);
+assert.equal(shouldShowAuthoritativeStatus("My company is Example IT",true,
+  {stage:"lead_facts",response:"Fill field?",missingCount:3,missingKeys:["customer_email"]}),false,
+  "Node must not override the model's missing-field conversation");
+assert.equal(shouldShowAuthoritativeStatus("What documents are needed?",false,
+  {stage:"lead_processing",response:"Processing",missingCount:0,missingKeys:[]}),false,
+  "An unrelated FAQ must never be overridden by old provider status");
+assert.equal(shouldShowAuthoritativeStatus("Please check status",true,
+  {stage:"lead_processing",response:"Processing",missingCount:0,missingKeys:[]}),true);
 
 const modules=[IntentActionOperations,LeadOperations,QuotationOperations,PurchaseOperations,PaymentOperations];
 const methods=["catalog","list","get","read","get"];
@@ -91,7 +87,8 @@ try {
   let stage=await handoff.status(scope,ticketId,"generate_quote");
   assert.equal(stage.stage,"lead_facts");
   assert.equal(stage.missingCount,3);
-  assert.match(stage.response,/company name/i);
+  assert.deepEqual(stage.missingKeys,["preferred_company_name","customer_email","shareholder_nationality"]);
+  assert.doesNotMatch(stage.response,/What company name would you/i);
 
   lead.missing=[];lead.requirements=lead.requirements.map(r=>({...r,present:true}));
   stage=await handoff.status(scope,ticketId,"generate_quote");
