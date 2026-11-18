@@ -1,0 +1,211 @@
+{
+  "name": "ANCFZ | Agreement Register Data Table (LOCAL ONLY)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "agreement-register-hook",
+      "webhookId": "2dc34d69-15da-4278-a83f-cf653ae320d9",
+      "name": "Receive Node Agreement",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        180,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/agreement-register",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "id": "agreement-register-validate",
+      "name": "Validate Agreement Sync",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        470,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const b=$input.first().json.body??{};\nif(b.agentKey!==\"ancfz\"||b.testOnly!==true)throw new Error(\"Sandbox agreement synchronization only\");\nif(typeof b.agreementNumber!==\"string\"||!/^ANCFZ-AGR-[0-9]{4}-[0-9]{6,}$/.test(b.agreementNumber))throw new Error(\"Invalid agreement reference\");\nif(!Number.isSafeInteger(b.revision)||b.revision<1||b.revision>9999)throw new Error(\"Invalid revision\");\nif(typeof b.ticketId!==\"string\"||!/^[a-f0-9]{8}(?:-[a-f0-9]{4}){3}-[a-f0-9]{12}$/i.test(b.ticketId))throw new Error(\"Invalid ticket\");\nif(typeof b.quotationNumber!==\"string\"||!/^ANCFZ-TEST-Q-[a-f0-9-]{36}$/i.test(b.quotationNumber))throw new Error(\"Invalid quotation number\");\nif(typeof b.invoiceNumber!==\"string\"||!/^ANCFZ-TEST-INV-[a-f0-9-]{36}$/i.test(b.invoiceNumber))throw new Error(\"Invalid invoice number\");\nif(b.status!==\"verified_completed\")throw new Error(\"Agreement must be verified completed\");\nreturn [{json:{agreementNumber:b.agreementNumber,revision:b.revision,ticketId:b.ticketId,quotationNumber:b.quotationNumber,invoiceNumber:b.invoiceNumber,status:b.status,recordedAt:new Date().toISOString()}}];"
+      }
+    },
+    {
+      "id": "agreement-register-upsert",
+      "name": "Upsert Agreement in Data Table",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        780,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ANCFZ_POC_AGREEMENTS"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "agreementNumber",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Agreement Sync').first().json.agreementNumber }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "agreementNumber": "={{ $('Validate Agreement Sync').first().json.agreementNumber }}",
+            "revision": "={{ $('Validate Agreement Sync').first().json.revision }}",
+            "ticketId": "={{ $('Validate Agreement Sync').first().json.ticketId }}",
+            "quotationNumber": "={{ $('Validate Agreement Sync').first().json.quotationNumber }}",
+            "invoiceNumber": "={{ $('Validate Agreement Sync').first().json.invoiceNumber }}",
+            "status": "={{ $('Validate Agreement Sync').first().json.status }}",
+            "recordedAt": "={{ $('Validate Agreement Sync').first().json.recordedAt }}"
+          },
+          "schema": [
+            {
+              "id": "agreementNumber",
+              "displayName": "agreementNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "revision",
+              "displayName": "revision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ticketId",
+              "displayName": "ticketId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quotationNumber",
+              "displayName": "quotationNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoiceNumber",
+              "displayName": "invoiceNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "recordedAt",
+              "displayName": "recordedAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "date",
+              "canBeUsedToMatch": false
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "agreement-register-reply",
+      "name": "Acknowledge Agreement Sync",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1080,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ status: 'recorded', testOnly: true, agreementNumber: $('Validate Agreement Sync').first().json.agreementNumber, revision: $('Validate Agreement Sync').first().json.revision }) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Node Agreement": {
+      "main": [
+        [
+          {
+            "node": "Validate Agreement Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Agreement Sync": {
+      "main": [
+        [
+          {
+            "node": "Upsert Agreement in Data Table",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Agreement in Data Table": {
+      "main": [
+        [
+          {
+            "node": "Acknowledge Agreement Sync",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}
