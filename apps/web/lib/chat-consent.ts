@@ -47,10 +47,13 @@ export function pendingChatConsent(
     if(message.role==="customer"){
       if(!pending)continue;
       if(approvedCustomerReply(message.text))pending=null;
-      else pending={...pending,mode:"review",
-        text:pending.kind==="quotation"
+      else {
+        const proposal=pending as PendingChatConsent;
+        pending={...proposal,mode:"review",
+        text:proposal.kind==="quotation"
           ?"Please show the current ANCFZ enquiry and quotation proposal again for review."
           :"Please show the current sandbox purchase and test payment proposal again for review."};
+      }
       continue;
     }
     const action=proposalText(message);
