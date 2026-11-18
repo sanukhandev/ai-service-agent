@@ -273,6 +273,76 @@ export class ServiceContractWorker{
       " and your uploaded identity document copies. "+
       "[Download your private TEST contract]("+link+").",[]);
   }
+  /** Mirror only verified agreement references to the local n8n Data Table.
+   * PostgreSQL remains authoritative for renewal and identity/document access.
+   * Retrying is safe because n8n upserts by the stable agreement number. */
+  private async syncAgreement(agentId:string):Promise<void>{
+    const row=await this.db.withAgent(agentId,async client=>{
+      const r=await client.query<{
+        agreement_number:string;revision:number;ticket_id:string;
+        quotation_number:string;invoice_number:string;
+      }>(
+        `SELECT a.agreement_number,c.revision,c.ticket_id,
+           q.document_number AS quotation_number,i.document_number AS invoice_number
+         FROM service_agreements a
+         JOIN ticket_service_contracts c ON c.agent_id=a.agent_id
+           AND c.agreement_id=a.id AND c.revision=a.current_revision
+           AND c.state='verified_completed' AND c.bytes IS NOT NULL
+         JOIN ticket_payment_invoices i ON i.agent_id=c.agent_id
+           AND i.ticket_id=c.ticket_id AND i.id=c.invoice_id
+           AND i.state='verified_completed' AND i.bytes IS NOT NULL
+         JOIN ticket_quotations q ON q.agent_id=c.agent_id
+           AND q.ticket_id=c.ticket_id AND q.id=c.quotation_id
+         JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id
+           AND p.ticket_id=c.ticket_id AND p.id=c.payment_id
+           AND p.state='verified_test_payment'
+         WHERE a.agent_id=$1 AND a.sync_state IN ('pending','retry')
+           AND a.sync_attempts<12 AND a.next_sync_at<=now()
+         ORDER BY a.next_sync_at,a.created_at LIMIT 1`,
+        [agentId]);
+      return r.rows[0]??null;
+    });
+    if(!row)return;
+    let acknowledged=false;
+    const secret=process.env.ANCFZ_N8N_WEBHOOK_SECRET;
+    if(secret&&secret.length>=32){
+      const ctrl=new AbortController();const timer=setTimeout(()=>ctrl.abort(),15000);
+      try{
+        const response=await fetch("http://n8n:5678/webhook/ancfz/agreement-register",{
+          method:"POST",redirect:"error",signal:ctrl.signal,
+          headers:{"Content-Type":"application/json","X-ANCFZ-Workflow-Key":secret},
+          body:JSON.stringify({agentKey:"ancfz",testOnly:true,
+            agreementNumber:row.agreement_number,revision:row.revision,
+            ticketId:row.ticket_id,quotationNumber:row.quotation_number,
+            invoiceNumber:row.invoice_number,status:"verified_completed"}),
+        });
+        if(response.ok&&Number(response.headers.get("content-length")??0)<=4096){
+          const body=await response.text();
+          if(body.length<=4096){
+            const ack=JSON.parse(body) as Record<string,unknown>;
+            acknowledged=ack.status==="recorded"&&ack.testOnly===true&&
+              ack.agreementNumber===row.agreement_number&&ack.revision===row.revision;
+          }
+        }
+      }catch{/* No private data or secrets are logged. */}finally{clearTimeout(timer);}
+    }
+    await this.db.withAgent(agentId,async client=>{
+      await client.query(
+        `UPDATE service_agreements SET
+           sync_attempts=LEAST(sync_attempts+1,12),
+           sync_state=CASE WHEN $4 THEN 'synced'
+             WHEN sync_attempts>=11 THEN 'needs_review' ELSE 'retry' END,
+           next_sync_at=CASE WHEN $4 THEN now()
+             ELSE now()+interval '1 minute' * LEAST(60,POWER(2,LEAST(sync_attempts,6))::int) END,
+           updated_at=now()
+         WHERE agent_id=$1 AND agreement_number=$2
+           AND current_revision=$3 AND sync_state IN ('pending','retry')`,
+        [agentId,row.agreement_number,row.revision,acknowledged]);
+    });
+    this.log({agreementNumber:row.agreement_number,revision:row.revision,acknowledged},
+      "ANCFZ agreement Data Table synchronization");
+  }
+
   private async recoverNotice(agentId:string):Promise<void>{
     const r=await this.db.withAgent(agentId,async client=>{
       const x=await client.query<{id:string;ticket_id:string}>(
@@ -294,7 +364,7 @@ export class ServiceContractWorker{
     try{
       const agentId=await this.agentId();if(!agentId)return;
       const claim=await this.claim(agentId);
-      if(!claim){await this.recoverNotice(agentId);return;}
+      if(!claim){await this.recoverNotice(agentId);await this.syncAgreement(agentId);return;}
       let bytes:Buffer|null=null;
       try{bytes=await this.render(claim);}catch{
         // Never log names, identity numbers, document bytes or OCR output.
