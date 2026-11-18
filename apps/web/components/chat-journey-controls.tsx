@@ -15,6 +15,7 @@ interface Purchase {
   supported:boolean;quotationId:string|null;amount:string|null;
   currency:string|null;documents:Document[];missing:string[];
   confirmed:boolean;readyForOtp:boolean;reviewIssued?:boolean;
+  renewalAgreementNumber?:string|null;
 }
 interface Challenge {
   challengeId:string;quotationId:string;state:string;expiresAt:string;
@@ -25,6 +26,7 @@ interface Payment {
 }
 interface Invoice {
   id:string;state:string;documentNumber:string;pdfAvailable:boolean;
+  agreementNumber?:string;revision?:number;syncState?:string;
 }
 interface Summary {
   enabled:boolean;payments:Payment[];invoice:Invoice|null;
@@ -41,6 +43,9 @@ interface Journey {
   otp:Challenge|null;
   payment:Summary|null;
 }
+
+const RENEWAL_START_CONSENT =
+  "I request a fresh ANCFZ sandbox renewal quotation and authorize reusing my previously recorded company details, verified Salesforce enquiry reference and privately stored synthetic identity documents for this agreement renewal. I understand a new payment and invoice are required.";
 
 function safeCheckoutUrl(value:string|null):value is string{
   if(!value)return false;
@@ -84,11 +89,12 @@ async function base64File(file:File):Promise<string>{
 }
 
 export function ChatJourneyControls({
-  ticketId,revision,onContinuePurchase,onDocumentsUpdated,onTransactionStateChange,conversationBusy,
+  ticketId,revision,onContinuePurchase,onDocumentsUpdated,onTransactionStateChange,onRenewalCreated,conversationBusy,
 }:{
   ticketId:string;revision:number;
   onContinuePurchase:()=>Promise<void>;onDocumentsUpdated:()=>void;
   onTransactionStateChange:(status:string|null)=>void;
+  onRenewalCreated:(newTicketId:string)=>void;
   conversationBusy:boolean;
 }){
   const [data,setData]=useState<Journey|null>(null);
@@ -101,6 +107,8 @@ export function ChatJourneyControls({
   const [editingDocuments,setEditingDocuments]=useState(false);
   const [modalOpen,setModalOpen]=useState(false);
   const [quoteCode,setQuoteCode]=useState("");
+  const [renewalConsent,setRenewalConsent]=useState(false);
+  const renewalRequest=useRef<string|null>(null);
   const [uploadStage,setUploadStage]=useState<string|null>(null);
   const quoteRequest=useRef<string|null>(null);
   const autoOpenedQuote=useRef<string|null>(null);
@@ -160,6 +168,28 @@ export function ChatJourneyControls({
     document.addEventListener("keydown",handleEscape);
     return ()=>document.removeEventListener("keydown",handleEscape);
   },[modalOpen]);
+
+  async function startAgreementRenewal(){
+    const agreementNumber=data?.payment?.contract?.agreementNumber;
+    if(!agreementNumber||!data?.payment?.contract?.pdfAvailable||
+       !renewalConsent||busy!==null)return;
+    setBusy("renewal");setError(null);setNotice(null);
+    const requestId=renewalRequest.current??crypto.randomUUID();
+    renewalRequest.current=requestId;
+    try{
+      const result=await requestJson<{ticketId:string;agreementNumber:string}>(
+        root+"/agreements/renew",{
+          requestId,agreementNumber,consent:true,
+          consentText:RENEWAL_START_CONSENT,
+        });
+      if(result.agreementNumber!==agreementNumber||!result.ticketId)
+        throw Error("Unexpected renewal response");
+      renewalRequest.current=null;
+      onRenewalCreated(result.ticketId);
+    }catch(e){
+      setError(e instanceof Error?e.message:"Could not start the agreement renewal");
+    }finally{setBusy(null);}
+  }
 
   async function requestQuoteOtp(){
     const quote=data?.quotation;
@@ -699,10 +729,31 @@ export function ChatJourneyControls({
           </div>
         )}
         {contract?.pdfAvailable===true && (
-          <a href={root+"/contracts/"+encodeURIComponent(contract.id)+"/pdf"}
-            className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">
-            Download private TEST service contract {contract.documentNumber}
-          </a>
+          <div className="mt-4 space-y-3 rounded-xl border border-zinc-200 p-3">
+            <p className="text-xs font-semibold text-zinc-900">
+              Agreement {contract.agreementNumber??contract.documentNumber}
+              {contract.revision?(" · Revision "+contract.revision):""}
+            </p>
+            <a href={root+"/contracts/"+encodeURIComponent(contract.id)+"/pdf"}
+              className="inline-block text-sm font-semibold text-indigo-700 underline">
+              Download your private TEST service agreement
+            </a>
+            {!purchase?.renewalAgreementNumber && (
+              <>
+                <label className="flex items-start gap-2 text-xs text-zinc-700">
+                  <input type="checkbox" checked={renewalConsent}
+                    onChange={e=>setRenewalConsent(e.target.checked)}
+                    disabled={busy!==null} className="mt-0.5"/>
+                  <span>{RENEWAL_START_CONSENT}</span>
+                </label>
+                <button type="button" disabled={busy!==null||!renewalConsent}
+                  onClick={()=>{void startAgreementRenewal();}}
+                  className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                  {busy==="renewal"?"Creating renewal…":"Renew this agreement"}
+                </button>
+              </>
+            )}
+          </div>
         )}
         {contract?.state==="needs_review" && (
           <p className="mt-3 text-xs text-amber-800">
