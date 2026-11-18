@@ -176,7 +176,13 @@ export function ChatJourneyControls({
       await load();
     }catch(e){
       setError(e instanceof Error?e.message:"Could not record quote OTP");
-      await load().catch(()=>{});
+      const latest=await load().catch(()=>null);
+      // A definitively failed/expired challenge may be re-requested after
+      // the server cooldown. An uncertain POST outcome retains its request ID
+      // and is NEVER blindly replayed as a new OTP.
+      if(latest?.quoteConfirmation?.challenge &&
+         ["failed","expired"].includes(latest.quoteConfirmation.challenge.state))
+        quoteRequest.current=null;
     }finally{setBusy(null);}
   }
 
