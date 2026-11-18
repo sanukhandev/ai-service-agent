@@ -12,6 +12,7 @@ import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ChatJourney } from "./chat-journey.js";
 import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
+import { RenewalOperations } from "./renewal-operations.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -140,6 +141,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const intentActions=new IntentActionOperations(db);
   const chatJourney=new ChatJourney(db);
   const quoteConfirmation=new QuotationConfirmationOperations(db);
+  const renewals=new RenewalOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -535,6 +537,15 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       const scope=await scopeFromCookie(db,request);
       return payments.reconcile(scope,idParam(request),request.params.paymentId,request.body);
     });
+
+  // Explicit owner-only renewal. A fresh ticket, quotation and payment are
+  // required; no prior invoice is changed and no provider POST happens here.
+  app.post("/api/v1/tickets/:ticketId/agreements/renew",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const response=await renewals.start(scope,idParam(request),request.body);
+    return reply.code(201).header("Cache-Control","private, no-store").send(response);
+  });
 
   // Contract includes complete private identity copies and the OCR-derived
   // Emirates ID number. Never cache or serve it without ticket ownership.
