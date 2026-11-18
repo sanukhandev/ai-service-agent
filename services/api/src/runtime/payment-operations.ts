@@ -137,6 +137,14 @@ export function reconcileGatewayCheck(
   return checked ? {state:checked.state,providerStatus:checked.providerStatus}
     : {state:"unknown_outcome",providerStatus:"verification_failed"};
 }
+/** A payment retry must be a specific customer request, not an inferred
+ * response to generic yes/continue language or a model function call. */
+export function isExplicitPaymentRetryRequest(text:string):boolean{
+  const normalized=text.trim().toLowerCase().replace(/[.!?]+$/,"").replace(/\\s+/g," ");
+  if(normalized.length>150)return false;
+  return /^(?:(?:please|can you|could you|i want to|i'd like to|i would like to) )?(?:retry (?:my |the |this |declined |failed )?(?:test |sandbox )?payment|try (?:my |the |this )?(?:test |sandbox )?payment again|resend (?:my |the )?(?:payment )?(?:otp|one.time code)|send (?:me )?(?:a )?(?:new|fresh) (?:payment )?(?:otp|one.time code)|generate (?:a )?(?:new|fresh) payment link|create (?:a )?(?:new|fresh) payment link|retry (?:my |the )?payment otp)$/.test(normalized);
+}
+
 export class PaymentOperations {
   constructor(private readonly db:PersistenceDatabase){}
   private requireEnabled():void {
