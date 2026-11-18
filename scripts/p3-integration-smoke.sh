@@ -45,7 +45,11 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
-test "$migrations" = 13
+test "$migrations" = 14
+# Quote OTP confirmation has separate RLS, distinct from purchase-payment OTP.
+quote_confirmation_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
+  -c "SELECT count(*) FROM pg_class WHERE relname='ticket_quote_confirmation_otps' AND relrowsecurity AND relforcerowsecurity")
+test "$quote_confirmation_rls" = 1
 # New OTP/payment/invoice tables must enforce agent-scoped row-level security.
 payment_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname IN ('ticket_payment_otps','ticket_payment_attempts','ticket_payment_invoices') AND relrowsecurity AND relforcerowsecurity")
