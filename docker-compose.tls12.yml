@@ -1,0 +1,4 @@
+﻿services:
+  api:
+    environment:
+      NODE_OPTIONS: "--tls-max-v1.2"
