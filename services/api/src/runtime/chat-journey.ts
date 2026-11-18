@@ -24,7 +24,7 @@ import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
 export const LEAD_QUOTE_APPROVAL =
   "I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.";
 export const PURCHASE_PAYMENT_APPROVAL =
-  "I authorize the ANCFZ sandbox purchase and test payment for the exact quotation amount shown.";
+  "I authorize this ANCFZ sandbox purchase and test payment, and inclusion of my uploaded passport and Emirates ID in the private nonbinding TEST service contract.";
 
 type ProposalKind="lead_quote"|"purchase_payment";
 type LeadQuoteData={
@@ -102,7 +102,7 @@ function proposalCopy(p:Base):string {
     "Proposal reference: "+p.id,
     "Quotation: "+x.quotationId+" | Amount: "+x.currency+" "+x.amount,
     "Billing name: "+x.billingName+" | Synthetic billing email: "+x.testEmail,
-    "Your required test identity documents must already be validated. Authorizing will confirm this exact purchase and request a synthetic OTP; it will not pay automatically.",
+    "Your required test identity documents must already be validated. Authorizing will confirm this exact purchase and request a synthetic OTP; it will not pay automatically. After independently verified test payment, a private, nonbinding service contract will include the purchased package scope, your Emirates ID name and number, and copies of your passport and Emirates ID. ANCFZ's displayed first-party signature is a clearly labelled DEMO only.",
     'To approve, reply: "'+PURCHASE_PAYMENT_APPROVAL+'"',
     "Enter the OTP through the secure chat input, never in a normal message. Card details belong only on the hosted sandbox checkout.",
   ].join("\n\n");
