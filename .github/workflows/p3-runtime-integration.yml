@@ -52,6 +52,8 @@ jobs:
         run: node scripts/check-chat-journey-state.mjs
       - name: Validate direct activity replies avoid the repeated-question loop
         run: node scripts/check-chat-activity-recovery.mjs
+      - name: Validate natural conversation and structured fact recovery
+        run: node scripts/check-natural-conversation-facts.mjs
       - name: Validate safe reconciliation of existing gateway orders
         run: node scripts/check-payment-reconciliation.mjs
       - name: Validate existing checkout URL recovery without new gateway orders
