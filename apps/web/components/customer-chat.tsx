@@ -145,6 +145,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [sendError, setSendError] = useState<string | null>(null);
   const [operationNotice, setOperationNotice] = useState<string | null>(null);
+  const [transactionState,setTransactionState]=useState<string|null>(null);
   const [journeyRevision, setJourneyRevision] = useState(0);
   const [turnState, setTurnState] = useState<TurnState>("idle");
   const [retryNonce, setRetryNonce] = useState(0);
@@ -440,9 +441,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
     (ticket?.status === "processing" && turnState !== "sending");
   // Preserve existing Foundry-turn serialization and input locking.
   // Background n8n/Salesforce/payment/invoice work does NOT set isProcessing.
-  const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isProcessing;
+  const locked = loadState !== "ready" || !ticket || ticket.status === "closed" || isProcessing || transactionState!==null;
 
   const currentStatus = ticket ? statusConfig[ticket.status] : null;
+  const updateTransactionState=useCallback((state:string|null)=>setTransactionState(state),[]);
   const pendingConsent = pendingChatConsent(messages);
 
   return (
@@ -680,10 +682,32 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {ticket && loadState==="ready" && (
             <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
               revision={journeyRevision} conversationBusy={locked||isSending}
+              onTransactionStateChange={updateTransactionState}
               onDocumentsUpdated={()=>{setOperationNotice(null);void refresh();}}
               onContinuePurchase={()=>send(
                 "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
               )} />
+          )}
+
+          {/* SSE and backend workflow progress belongs in the actual
+              conversation timeline, not only in a faint composer-area badge. */}
+          {loadState==="ready" && (transactionState||operationNotice) && (
+            <div role="status" aria-live="polite"
+              className="mt-5 flex items-start gap-3 pl-1 sm:pl-2">
+              <div className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white">
+                <SparklesIcon className="size-4 animate-pulse"/>
+              </div>
+              <div className="max-w-[min(88%,42rem)] rounded-2xl rounded-tl-xs border border-zinc-200 bg-white p-4 shadow-sm">
+                <p className="flex items-center gap-2 text-sm font-medium text-zinc-900">
+                  {transactionState && <RefreshCwIcon className="size-4 animate-spin" />}
+                  {transactionState??operationNotice}
+                </p>
+                {transactionState && <p className="mt-1 text-xs text-zinc-600">
+                  Message input is paused until this operation finishes.
+                  Secure OTP and document controls remain available in the transaction window.
+                </p>}
+              </div>
+            </div>
           )}
 
           {/* Natural Frosted Glass Thinking Indicator */}
@@ -756,16 +780,6 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             </div>
           )}
 
-          {operationNotice && (
-            <div
-              role="status"
-              className="mb-2 flex items-center gap-2 rounded-xl border border-white/80 bg-white/70 backdrop-blur-md px-3 py-2 text-xs font-medium text-zinc-800 shadow-2xs"
-            >
-              <SparklesIcon className="size-3.5 text-zinc-700 shrink-0" />
-              <span>{operationNotice}</span>
-            </div>
-          )}
-
           {sendError && (
             <div
               role="alert"
@@ -776,6 +790,13 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             </div>
           )}
 
+          {transactionState && (
+            <p className="mb-2 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-100 p-2.5 text-xs font-medium text-zinc-800"
+              role="status">
+              <RefreshCwIcon className="size-4 animate-spin" />
+              Sara is completing the current step. Chat will reopen automatically.
+            </p>
+          )}
           <ChatComposer
             onSend={send}
             disabled={locked}
