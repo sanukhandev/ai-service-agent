@@ -4,12 +4,13 @@
  * passport and Emirates ID annexures. Never produces a legal e-signature.
  * No AI, browser, public URL or n8n receives identity document bytes.
  */
-import {createHash} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {PersistenceDatabase} from "../database/pool.js";
 import {appendEventTx} from "../repositories/events.js";
 import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
 import {paymentEnabled} from "./payment-evidence.js";
+import {PURCHASE_CONSENT} from "./purchase-operations.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
 import {invoiceQuoteDetails} from "./invoice-details.js";
 import type {QuoteProposalDetails} from "./quote-proposal.js";
@@ -164,6 +165,46 @@ export class ServiceContractWorker{
     const r=await this.db.pool.query<{id:string}>(
       "SELECT id FROM agents WHERE agent_key='ancfz' AND status='active'");
     return r.rows[0]?.id??null;
+  }
+  /**
+   * Crash-safe backfill for an invoice that finished after payment verification
+   * but has no contract row. Only exact customer approval for the protected
+   * private agreement can create the row. Never creates an order or invoice.
+   */
+  private async recoverMissingContract(agentId:string):Promise<void>{
+    await this.db.withAgent(agentId,async client=>{
+      const r=await client.query<{
+        ticket_id:string;quotation_id:string;payment_id:string;
+      }>(
+        `SELECT p.ticket_id,p.quotation_id,p.id AS payment_id
+         FROM ticket_payment_attempts p
+         JOIN ticket_payment_invoices i ON i.agent_id=p.agent_id
+           AND i.ticket_id=p.ticket_id AND i.payment_id=p.id
+           AND i.state='verified_completed' AND i.bytes IS NOT NULL
+         JOIN ticket_purchase_confirmations pc ON pc.agent_id=p.agent_id
+           AND pc.ticket_id=p.ticket_id AND pc.quotation_id=p.quotation_id
+           AND pc.consent_text=$2
+         WHERE p.agent_id=$1 AND p.state='verified_test_payment'
+           AND NOT EXISTS (
+             SELECT 1 FROM ticket_service_contracts c WHERE c.agent_id=p.agent_id
+               AND c.ticket_id=p.ticket_id AND c.payment_id=p.id
+           )
+         ORDER BY p.created_at LIMIT 1`,[agentId,PURCHASE_CONSENT]);
+      const x=r.rows[0];if(!x)return;
+      const id=randomUUID();
+      const inserted=await client.query(
+        `INSERT INTO ticket_service_contracts
+           (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
+         VALUES($1,$2,$3,$4,$5,$6)
+         ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING
+         RETURNING id`,
+        [id,agentId,x.ticket_id,x.quotation_id,x.payment_id,
+          "ANCFZ-TEST-SC-"+id]);
+      if(inserted.rows.length){
+        await appendEventTx(client,agentId,x.ticket_id,
+          "contract.queued_recovered",{contractId:id,paymentId:x.payment_id,testOnly:true});
+      }
+    });
   }
   private async claim(agentId:string):Promise<Claim|null>{
     return this.db.withAgent(agentId,async client=>{
@@ -366,6 +407,7 @@ export class ServiceContractWorker{
     this.busy=true;
     try{
       const agentId=await this.agentId();if(!agentId)return;
+      await this.recoverMissingContract(agentId);
       const claim=await this.claim(agentId);
       if(!claim){await this.recoverNotice(agentId);await this.syncRegistry(agentId);return;}
       let bytes:Buffer|null=null;
