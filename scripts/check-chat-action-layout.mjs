@@ -235,7 +235,7 @@ assert.doesNotMatch(inline,/Verify status with gateway/);
 assert.doesNotMatch(inline,/verifyExistingPayment\(/);
 assert.match(inline,/Sara will keep checking the gateway automatically/);
 assert.match(inline,/checkout-closed/);
-assert.match(paymentUI,/>Click to pay/);
+assert.match(paymentUI,/>\s*Click to pay/);
 assert.doesNotMatch(paymentUI,/Verify status with gateway/);
 const paymentVerifier=readFileSync("services/api/src/runtime/n8n-payment-verification-worker.ts","utf8");
 assert.match(paymentVerifier,/this\.timer=setInterval\(\(\)=>\{void this\.tick\(\);\},15000\)/);
