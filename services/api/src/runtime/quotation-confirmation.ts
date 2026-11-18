@@ -99,7 +99,7 @@ export class QuotationConfirmationOperations{
       if(fact?.verification_status==="disputed"||decision.status!=="accepted")
         throw new PersistenceError("CONFLICT","Confirm your existing contact email with Sara before requesting quote OTP");
       const email=String(decision.value);
-      if(email!==request.confirmedEmail.trim().toLowerCase())
+      if(email!==(request.confirmedEmail as string).trim().toLowerCase())
         throw new PersistenceError("CONFLICT","Contact email changed; confirm the displayed address again");
       await client.query(
         "UPDATE ticket_quote_confirmation_otps SET state='expired' WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND state IN ('pending','mock_recorded')",
