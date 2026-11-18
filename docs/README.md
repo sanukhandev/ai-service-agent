@@ -10,6 +10,7 @@
 | [Architecture](02-architecture.md) | Node ownership and request flow |
 | [Foundry and conversation](03-foundry-and-conversation.md) | Direct JavaScript SDK, function loops and RAG |
 | [Data model](04-data-model.md) | PostgreSQL and agent-scoped isolation |
+| [Declined payment retry and private TEST service contract](payment-retry-and-service-contract.md) | Fresh OTP/payment attempts after verified decline; paid-only contract and private passport/Emirates ID annexures |
 | [ANCFZ POC purchase journey](ancfz-purchase-journey.md) | Universal passport/Emirates ID intake, OCR-derived invoice name, purchase authorization and sandbox payment |
 | [Tools and workflows](05-tools-actions-workflows.md) | Read functions, proposals and n8n |
 | [Security and privacy](06-security-and-privacy.md) | Identity, PII, consent and credentials |

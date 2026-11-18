@@ -472,6 +472,15 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     return reply.code(202).send(response);
   });
 
+  // Explicit retry of a private synthetic OTP after expiry, delivery failure,
+  // or confirmed provider decline. No new order exists until OTP authorization.
+  app.post("/api/v1/tickets/:ticketId/payments/otp/renew",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await payments.renewOtp(scope,idParam(request),request.body);
+    return reply.code(202).header("Cache-Control","private, no-store").send(result);
+  });
+
   app.post("/api/v1/tickets/:ticketId/payments/authorize",async(request,reply)=>{
     rejectCrossSite(request);
     const scope=await scopeFromCookie(db,request);
@@ -525,6 +534,22 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       rejectCrossSite(request);
       const scope=await scopeFromCookie(db,request);
       return payments.reconcile(scope,idParam(request),request.params.paymentId,request.body);
+    });
+
+  // Contract includes complete private identity copies and the OCR-derived
+  // Emirates ID number. Never cache or serve it without ticket ownership.
+  app.get<{Params:{ticketId:string;contractId:string}}>(
+    "/api/v1/tickets/:ticketId/contracts/:contractId/pdf",async(request,reply)=>{
+      const scope=await scopeFromCookie(db,request);
+      const doc=await payments.contractPdf(scope,idParam(request),request.params.contractId);
+      return reply.code(200)
+        .header("Content-Type","application/pdf")
+        .header("Content-Disposition",'attachment; filename="'+doc.documentNumber+'.pdf"')
+        .header("Cache-Control","private, no-store")
+        .header("X-Content-Type-Options","nosniff")
+        .header("Content-Security-Policy","sandbox")
+        .header("Content-Length",String(doc.bytes.length))
+        .send(doc.bytes);
     });
 
   app.get<{Params:{ticketId:string;invoiceId:string}}>(

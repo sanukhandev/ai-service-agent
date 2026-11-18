@@ -6,6 +6,7 @@ import { N8nLeadWorker } from "./runtime/n8n-lead-worker.js";
 import { N8nQuoteWorker } from "./runtime/n8n-quote-worker.js";
 import { N8nPaymentWorker } from "./runtime/n8n-payment-worker.js";
 import { N8nInvoiceWorker } from "./runtime/n8n-invoice-worker.js";
+import { ServiceContractWorker } from "./runtime/service-contract-worker.js";
 import { N8nPaymentVerificationWorker } from "./runtime/n8n-payment-verification-worker.js";
 import { LifecycleNoticeRecovery } from "./runtime/lifecycle-notice-recovery.js";
 import { ChatJourney, ChatJourneyDispatcher } from "./runtime/chat-journey.js";
@@ -22,6 +23,7 @@ const leadWorker=new N8nLeadWorker(db,(data,message)=>app.log.info(data,message)
 const quoteWorker=new N8nQuoteWorker(db,(data,message)=>app.log.info(data,message));
 const paymentWorker=new N8nPaymentWorker(db,(data,message)=>app.log.info(data,message));
 const invoiceWorker=new N8nInvoiceWorker(db,(data,message)=>app.log.info(data,message));
+const contractWorker=new ServiceContractWorker(db,(data,message)=>app.log.info(data,message));
 const verificationWorker=new N8nPaymentVerificationWorker(db,(data,message)=>app.log.info(data,message));
 const noticeRecovery=new LifecycleNoticeRecovery(db,(data,message)=>app.log.info(data,message));
 const chatJourneyWorker=new ChatJourneyDispatcher(new ChatJourney(db),
@@ -32,6 +34,7 @@ app.addHook("onClose",async()=>{
   quoteWorker.stop();
   paymentWorker.stop();
   invoiceWorker.stop();
+  contractWorker.stop();
   verificationWorker.stop();
   noticeRecovery.stop();
   chatJourneyWorker.stop();
@@ -50,6 +53,7 @@ try {
   quoteWorker.start();
   paymentWorker.start();
   invoiceWorker.start();
+  contractWorker.start();
   verificationWorker.start();
   noticeRecovery.start();
   chatJourneyWorker.start();

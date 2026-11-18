@@ -11,6 +11,7 @@ import { scopedIntentToolRepositories } from "../repositories/intent-adapter.js"
 import { workerTicketScope, type SourceReference } from "../repositories/types.js";
 import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
+import { PaymentOperations, isExplicitPaymentRetryRequest } from "./payment-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ConversationActionHandoff, shouldShowAuthoritativeStatus, isConversationContinuation } from "./conversation-action-handoff.js";
 import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
@@ -161,6 +162,33 @@ export class TurnWorker {
       if(isLeadQuoteApproval(text)||isPurchasePaymentApproval(text)){
         await this.queue.completeLocal(turn,
           "I could not match that authorization to the latest reviewed proposal. No action was authorized. Please ask me to show the current proposal again.");
+        return;
+      }
+      // A precise customer message may request a fresh private payment OTP.
+      // Never start a gateway order from natural language: the new order still
+      // requires the new OTP in the secure in-chat control.
+      if(isExplicitPaymentRetryRequest(text)){
+        try{
+          await new PaymentOperations(this.db).renewOtp(scope,turn.ticketId,{
+            requestId:turn.messageId,
+          });
+          await this.queue.completeLocal(turn,
+            "I recorded a fresh synthetic payment OTP for this ticket. Enter the new "+
+            "code in the secure chat control, not in a message. After verification "+
+            "I can generate a NEW sandbox checkout link for the same quotation. "+
+            "Your quotation, documents and previous payment history are unchanged.");
+        }catch(error){
+          const reason=error instanceof PersistenceError &&
+            error.message==="OTP request rate limit; retry after cooldown"
+              ?"Please wait for the OTP cooldown before requesting a new code."
+              :error instanceof PersistenceError && error.code==="NOT_CONFIGURED"
+                ?"Sandbox payment retry is currently disabled. No new order was created."
+                :"I could not safely start another payment OTP. An existing payment "+
+                 "may still be pending or unresolved, or the required purchase "+
+                 "authorization may be missing. Check the payment status in this chat "+
+                 "before trying again; no new order was created.";
+          await this.queue.completeLocal(turn,reason);
+        }
         return;
       }
       const handoff=new ConversationActionHandoff(this.db);

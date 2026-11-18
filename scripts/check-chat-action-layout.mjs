@@ -200,7 +200,12 @@ assert.match(inline,/aria-modal="true"/);
 assert.match(inline,/uploadStage/);
 assert.match(inline,/autoComplete="one-time-code"/);
 assert.match(inline,/\.size>1048576/);
-assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP after chat consent");
+assert.doesNotMatch(inline,/payments\/otp(?!\/renew)/,
+  "Only Node automatically starts the first OTP after chat consent");
+assert.match(inline,/payments\/otp\/renew/,
+  "Explicit customer retry may request only a fresh OTP, never a payment order");
+assert.match(inline,/onClick=\{\(\)=>\{void renewPaymentOtp\(\);\}\}/,
+  "OTP renewal must require direct customer interaction");
 assert.match(inline,/payments\/"\+encodeURIComponent\(payment.id\)\+"\/checkout-link"/,
   "Existing orders must reopen through a ticket-scoped backend check");
 assert.match(inline,/payments\/"\+encodeURIComponent\(paymentId\)\+"\/checkout-closed"/,

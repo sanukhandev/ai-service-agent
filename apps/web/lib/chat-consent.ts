@@ -6,7 +6,7 @@ import type { ChatMessage } from "./chat-api";
 export const QUOTATION_CONSENT_TEXT =
   "I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.";
 export const PURCHASE_CONSENT_TEXT =
-  "I authorize the ANCFZ sandbox purchase and test payment for the exact quotation amount shown.";
+  "I authorize this ANCFZ sandbox purchase and test payment, and inclusion of my uploaded passport and Emirates ID in the private nonbinding TEST service contract.";
 
 export type PendingChatConsent = {
   messageId:string;
