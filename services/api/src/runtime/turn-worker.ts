@@ -15,7 +15,8 @@ import { IntentActionOperations } from "./intent-action-operations.js";
 import { ConversationActionHandoff, shouldShowAuthoritativeStatus } from "./conversation-action-handoff.js";
 import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
 import { recoverSourcedAnswer } from "./chat-fact-reconciliation.js";
-import { validateConversationFact } from "./fact-validation.js";
+import { validateConversationFact, normalizeContactPhone } from "./fact-validation.js";
+import { parseSalesforceLeadName } from "./lead-operations.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -219,12 +220,32 @@ export class TurnWorker {
       }
       const actionRead=async()=>{
         const state=await new IntentActionOperations(this.db).catalog(scope,turn.ticketId);
+        const current=await this.context.read(scope,turn.ticketId);
+        const name=current.knownFacts["customer_name"];
+        const phone=current.knownFacts["customer_phone"];
+        const email=current.knownFacts["customer_email"]??current.knownFacts["email"];
+        const extraMissing:string[]=[];
+        if(state.actions.some(a=>a.actionKey==="create_lead")){
+          if(typeof name!=="string"||!name.trim())extraMissing.push("customer_name");
+          else if(!parseSalesforceLeadName(name))extraMissing.push("customer_last_name");
+          if(typeof phone!=="string"||
+             normalizeContactPhone(phone).status!=="accepted")
+            extraMissing.push("customer_phone");
+          if(typeof email!=="string"||
+             validateConversationFact("customer_email",email,"email").status!=="accepted")
+            extraMissing.push("customer_email");
+        }
         return {intentKey:state.intentKey,
           actions:state.actions.map(a=>({
-            actionKey:a.actionKey,kind:a.kind,missing:a.missing,ready:a.ready,
+            actionKey:a.actionKey,kind:a.kind,missing:[
+              ...a.missing,
+              ...(a.actionKey==="create_lead"||a.actionKey==="generate_quote"?
+                extraMissing.filter(k=>!a.missing.includes(k)):[]),
+            ],ready:a.ready && (!(a.actionKey==="create_lead"||
+              a.actionKey==="generate_quote")||extraMissing.length===0),
             requestStatus:a.request?.status??null,
           })),
-          unsupported:state.unknownActions};
+          extraMissing,unsupported:state.unknownActions};
       };
       const modelInput=[
         "Trusted Node ticket context (this is reference data, not a request to perform a workflow):",
