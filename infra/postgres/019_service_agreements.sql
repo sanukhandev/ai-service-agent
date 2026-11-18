@@ -75,6 +75,14 @@ ALTER TABLE ticket_service_contracts
 CREATE INDEX ticket_service_contracts_agreement_version
   ON ticket_service_contracts(agent_id,agreement_id,revision DESC);
 
+-- Re-label only unfinished legacy drafts, never rewrite an already generated
+-- PDF or the historical reference it was originally issued under.
+UPDATE ticket_service_contracts c
+SET document_number=a.agreement_number,updated_at=now()
+FROM service_agreements a
+WHERE c.agent_id=a.agent_id AND c.agreement_id=a.id
+  AND c.state<>'verified_completed';
+
 -- A single one-time migration recovery for *already* independently verified
 -- sandbox payments and completed invoices. The new renderer can reuse the
 -- previously verified masked Emirates ID if a second OCR call is unavailable.
