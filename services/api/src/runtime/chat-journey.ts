@@ -15,6 +15,7 @@ import { LeadOperations, LEAD_CONSENT_TEXT, leadDispatchEnabled, parseSalesforce
 import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
+import { normalizeContactPhone, validateConversationFact } from "./fact-validation.js";
 import { PAYMENT_CONSENT, paymentEnabled, paymentReadEnabled } from "./payment-evidence.js";
 import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
@@ -259,8 +260,13 @@ export class ChatJourney {
     // Do not issue a consent proposal that the n8n workflow would reject.
     if(!parseSalesforceLeadName(name)||!company||!phone||!email||!activity||!officePreference||
       visaCount===null||termYears===null)return null;
-    if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)||
-      !/^\+?[0-9 ()-]{7,40}$/.test(phone))return null;
+    // The conversational tool and transactional proposal MUST agree about
+    // valid contact metadata. Do not issue a proposal for a phone missing a
+    // country code merely because the old Salesforce regex would accept it.
+    const validatedPhone=normalizeContactPhone(phone);
+    const validatedEmail=validateConversationFact("customer_email",email,"email");
+    if(validatedPhone.status!=="accepted"||validatedEmail.status!=="accepted")
+      return null;
     const key="visa_"+visaCount+"_y"+termYears;
     const option=await client.query<OfferingRow>(
       "SELECT o.offering_key,o.label,o.description,p.amount::text,p.currency,p.revision,p.conditions FROM tickets t JOIN offering_catalog_versions cv ON cv.agent_id=t.agent_id AND cv.id=t.offering_catalog_version_id AND cv.status IN ('published','retired') JOIN offerings o ON o.agent_id=t.agent_id AND o.catalog_version_id=cv.id JOIN LATERAL (SELECT pr.currency,pr.amount,pr.revision,pr.conditions FROM offering_price_revisions pr WHERE pr.agent_id=o.agent_id AND pr.offering_id=o.id AND pr.effective_from<=now() AND (pr.effective_to IS NULL OR pr.effective_to>now()) ORDER BY pr.revision DESC LIMIT 1) p ON true WHERE t.agent_id=$1 AND t.id=$2 AND o.offering_key=$3 AND (o.intent_key=$4 OR ($4 IN ('quotation_request','package_comparison') AND o.intent_key IN ('company_formation','package_comparison'))) LIMIT 1",
@@ -271,7 +277,8 @@ export class ChatJourney {
     const description=[activity,"Visa count: "+visaCount,"Term years: "+termYears,
       "Office requested: "+officePreference].join("; ").slice(0,4000);
     const requirementsSnapshot=await quoteRequirementsTx(client,agentId,ticketId);
-    return {lead:{name,company,phone,email:email.toLowerCase(),description},
+    return {lead:{name,company,phone:String(validatedPhone.value),
+      email:String(validatedEmail.value),description},
       offeringKey:key,offeringLabel:price.label,priceRevision:price.revision,
       amount:price.amount,currency:price.currency.trim(),
       visaCount,termYears,officePreference,conditions:price.conditions,
