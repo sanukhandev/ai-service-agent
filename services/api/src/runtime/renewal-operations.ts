@@ -84,7 +84,7 @@ export class RenewalOperations{
            AND req.requirement_key IN ('passport','emirates_id')
            AND d.extracted_full_name IS NOT NULL
            AND (req.requirement_key='passport' OR
-                d.document_number_last4 ~ '^[0-9]{4}`,
+                d.document_number_last4 ~ '^[0-9]{4}
         [scope.agentId,master.initial_ticket_id]);
       if(!["passport","emirates_id"].every(k=>originalDocs.rows.some(d=>d.requirement_key===k)))
         throw new PersistenceError("CONFLICT","Renewal identity evidence is unavailable; review with Sara");
