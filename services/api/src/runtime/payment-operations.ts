@@ -601,6 +601,17 @@ export class PaymentOperations {
       );
       const p=selected.rows[0];
       if(!p)throw new PersistenceError("NOT_FOUND","Payment not found");
+      // Superseded declined attempts are immutable. Otherwise an old GET
+      // could reactivate a payment while its replacement is in progress.
+      if(p.state==="payment_declined"){
+        const replacement=await client.query(
+          `SELECT 1 FROM ticket_payment_attempts
+           WHERE agent_id=$1 AND ticket_id=$2 AND retry_of_payment_id=$3 LIMIT 1`,
+          [scope.agentId,ticketId,paymentId]);
+        if(replacement.rows.length)
+          throw new PersistenceError("CONFLICT",
+            "This declined order was replaced; verify the new payment instead");
+      }
       // A fresh GET can detect a later refund even after a prior COMPLETE.
       if(!p.order_reference||!p.provider_payment_id||
          !["checkout_available","order_created_checkout_unavailable",
