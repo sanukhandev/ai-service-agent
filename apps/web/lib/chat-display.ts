@@ -7,7 +7,7 @@ export function safeChatTransactionUrl(url:string,ticketId?:string):boolean{
   const prefix="/api/v1/tickets/"+encodeURIComponent(ticketId)+"/";
   if(url.startsWith(prefix)){
     const suffix=url.slice(prefix.length);
-    return /^(?:quotations|invoices)\/[0-9a-f-]{36}\/pdf$/i.test(suffix);
+    return /^(?:quotations|invoices|contracts)\/[0-9a-f-]{36}\/pdf$/i.test(suffix);
   }
   try{
     const u=new URL(url);
