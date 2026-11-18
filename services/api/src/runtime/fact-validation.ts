@@ -30,6 +30,9 @@ export function normalizeContactPhone(value:CustomerFactValue):FactDecision {
       "That does not look like a phone number. Include the country code, for example +971.");
   let compact=raw.replace(/[\s().-]/g,"");
   if(compact.startsWith("00"))compact="+"+compact.slice(2);
+  if(!compact.startsWith("+")&&compact.length<7)
+    return result(key,"rejected","PHONE_LENGTH_OR_PREFIX",
+      "That number looks too short. Please check the digits and include the international country code.");
   if(!compact.startsWith("+"))
     return result(key,"needs_clarification","PHONE_COUNTRY_REQUIRED",
       "Please confirm the country or send the full number with country code, such as +971 for UAE. Do not infer the country from nationality.");
