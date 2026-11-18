@@ -42,7 +42,22 @@ export async function quoteConfirmedTx(
   const result=await client.query(
     "SELECT 1 FROM ticket_quote_confirmation_otps WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND state='verified' LIMIT 1",
     [agentId,ticketId,quotationId]);
-  return (result.rowCount??result.rows.length)>0;
+  if((result.rowCount??result.rows.length)>0)return true;
+  // Owner-approved renewal links reuse the earlier completed agreement's
+  // verified identity, so no second quote OTP or document collection occurs.
+  // The new quotation and separately consented payment are still required.
+  const renewal=await client.query(
+    `SELECT 1 FROM ticket_renewals r
+     JOIN service_agreements a ON a.agent_id=r.agent_id AND a.id=r.agreement_id
+       AND a.current_revision=r.source_revision
+     JOIN ticket_service_contracts c ON c.agent_id=r.agent_id
+       AND c.agreement_id=r.agreement_id AND c.revision=r.source_revision
+       AND c.ticket_id=r.source_ticket_id AND c.state='verified_completed'
+     WHERE r.agent_id=$1 AND r.renewal_ticket_id=$2 AND r.status='requested'
+       AND EXISTS(SELECT 1 FROM ticket_quotations q
+         WHERE q.agent_id=$1 AND q.ticket_id=$2 AND q.id=$3)
+     LIMIT 1`,[agentId,ticketId,quotationId]);
+  return (renewal.rowCount??renewal.rows.length)>0;
 }
 export class QuotationConfirmationOperations{
   constructor(private readonly db:PersistenceDatabase){}
