@@ -30,7 +30,12 @@ interface Summary {
   enabled:boolean;payments:Payment[];invoice:Invoice|null;
 }
 interface Journey {
+  lead:{state:string}|null;
   quotation:Quote|null;
+  quoteConfirmation:{
+    verified:boolean;contactEmail:string|null;
+    challenge:{challengeId:string;state:string;expiresAt:string}|null;
+  }|null;
   purchase:Purchase;
   otp:Challenge|null;
   payment:Summary|null;
@@ -78,10 +83,11 @@ async function base64File(file:File):Promise<string>{
 }
 
 export function ChatJourneyControls({
-  ticketId,revision,onContinuePurchase,onDocumentsUpdated,conversationBusy,
+  ticketId,revision,onContinuePurchase,onDocumentsUpdated,onTransactionStateChange,conversationBusy,
 }:{
   ticketId:string;revision:number;
   onContinuePurchase:()=>Promise<void>;onDocumentsUpdated:()=>void;
+  onTransactionStateChange:(status:string|null)=>void;
   conversationBusy:boolean;
 }){
   const [data,setData]=useState<Journey|null>(null);
@@ -92,6 +98,11 @@ export function ChatJourneyControls({
   const [orderReference,setOrderReference]=useState("");
   const [providerPaymentId,setProviderPaymentId]=useState("");
   const [editingDocuments,setEditingDocuments]=useState(false);
+  const [modalOpen,setModalOpen]=useState(false);
+  const [quoteCode,setQuoteCode]=useState("");
+  const [uploadStage,setUploadStage]=useState<string|null>(null);
+  const quoteRequest=useRef<string|null>(null);
+  const autoOpenedQuote=useRef<string|null>(null);
   const otpRequest=useRef<string|null>(null);
   const reviewRequestedForQuote=useRef<string|null>(null);
   const checkoutPopup=useRef<Window|null>(null);
@@ -112,6 +123,84 @@ export function ChatJourneyControls({
       .catch(()=>{if(live)setData(null);});
     return ()=>{live=false;};
   },[root,revision]);
+  // Treat the quote confirmation as a separate step from the later payment OTP.
+  useEffect(()=>{
+    const quote=data?.quotation;
+    if(quote?.state==="verified_completed"&&quote.pdfAvailable &&
+       data?.quoteConfirmation&&!data.quoteConfirmation.verified &&
+       autoOpenedQuote.current!==quote.id){
+      autoOpenedQuote.current=quote.id;
+      setModalOpen(true);
+    }
+  },[data?.quotation,data?.quoteConfirmation]);
+
+  const activeStage=(()=>{
+    const leadState=data?.lead?.state;
+    if(leadState && ["queued","running","creating"].includes(leadState))
+      return "Sara is submitting and verifying your Salesforce enquiry…";
+    const quoteState=data?.quotation?.state;
+    if(quoteState && ["queued","running","creating"].includes(quoteState))
+      return "Sara is preparing and verifying the formal quotation…";
+    const payment=data?.payment?.payments?.[0];
+    if(payment && ["queued","creating","verifying"].includes(payment.state))
+      return "Sara is checking the sandbox order with the gateway…";
+    return null;
+  })();
+  useEffect(()=>{
+    onTransactionStateChange(uploadStage??
+      (busy?busy.startsWith("upload:")?"Reading and validating your synthetic document…":
+        "Completing the secure transaction step…":activeStage));
+  },[onTransactionStateChange,uploadStage,busy,activeStage]);
+  useEffect(()=>{
+    if(!modalOpen)return;
+    function handleEscape(event:KeyboardEvent){
+      if(event.key==="Escape")setModalOpen(false);
+    }
+    document.addEventListener("keydown",handleEscape);
+    return ()=>document.removeEventListener("keydown",handleEscape);
+  },[modalOpen]);
+
+  async function requestQuoteOtp(){
+    const quote=data?.quotation;
+    const email=data?.quoteConfirmation?.contactEmail;
+    if(!quote||!email||busy)return;
+    setBusy("quote-otp-request");setError(null);setNotice(null);
+    const requestId=quoteRequest.current??crypto.randomUUID();
+    quoteRequest.current=requestId;
+    try{
+      await requestJson(root+"/quotations/confirmation/otp",{
+        requestId,quotationId:quote.id,confirmedEmail:email,
+      });
+      quoteRequest.current=null;
+      setNotice("A synthetic quote-confirmation code was recorded in the sandbox test table. Enter it securely here; do not send it to Sara.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Could not record quote OTP");
+      await load().catch(()=>{});
+    }finally{setBusy(null);}
+  }
+
+  async function verifyQuoteOtp(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    const quote=data?.quotation;
+    const challenge=data?.quoteConfirmation?.challenge;
+    if(!quote||!challenge||busy||!/^[0-9]{6}$/.test(quoteCode))return;
+    setBusy("quote-otp-verify");setError(null);setNotice(null);
+    try{
+      await requestJson(root+"/quotations/confirmation/verify",{
+        quotationId:quote.id,challengeId:challenge.challengeId,code:quoteCode,
+      });
+      setQuoteCode("");
+      setNotice("Quote confirmation verified. The synthetic identity document step is now available.");
+      await load();
+      onDocumentsUpdated();
+    }catch(e){
+      setQuoteCode("");
+      setError(e instanceof Error?e.message:"Quote OTP could not be verified");
+      await load().catch(()=>{});
+    }finally{setBusy(null);}
+  }
+
 
   // Reconcile old tickets whose documents were already complete before the
   // upload-triggered Node review existed. A POST creates a review message only;
@@ -138,12 +227,19 @@ export function ChatJourneyControls({
 
   async function upload(key:string,file:File|undefined){
     if(!file||busy)return;
-    setBusy("upload:"+key);setError(null);setNotice(null);
+    if(!data?.quoteConfirmation?.verified){
+      setError("Confirm the quotation using the secure OTP before uploading documents.");
+      return;
+    }
+    setBusy("upload:"+key);setUploadStage("Reading and checking the selected file…");
+    setError(null);setNotice(null);setModalOpen(true);
     try{
       const dataBase64=await base64File(file);
+      setUploadStage("Uploading securely and extracting document details with OCR…");
       await requestJson(root+"/purchase/documents",{
         requirementKey:key,fileName:file.name,contentType:file.type,dataBase64,
       });
+      setUploadStage("Document received. Checking remaining requirements…");
       const updated=await load();
       onDocumentsUpdated();
       if(updated.purchase.missing.length===0){
@@ -153,7 +249,7 @@ export function ChatJourneyControls({
         setNotice("Synthetic document received securely. Its contents are not part of the chat transcript.");
       }
     }catch(e){setError(e instanceof Error?e.message:"Unable to upload document");}
-    finally{setBusy(null);}
+    finally{setBusy(null);setUploadStage(null);}
   }
 
   async function continuePurchase(){
