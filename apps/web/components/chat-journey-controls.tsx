@@ -30,7 +30,12 @@ interface Summary {
   enabled:boolean;payments:Payment[];invoice:Invoice|null;
 }
 interface Journey {
+  lead:{state:string}|null;
   quotation:Quote|null;
+  quoteConfirmation:{
+    verified:boolean;contactEmail:string|null;
+    challenge:{challengeId:string;state:string;expiresAt:string}|null;
+  }|null;
   purchase:Purchase;
   otp:Challenge|null;
   payment:Summary|null;
@@ -78,10 +83,11 @@ async function base64File(file:File):Promise<string>{
 }
 
 export function ChatJourneyControls({
-  ticketId,revision,onContinuePurchase,onDocumentsUpdated,conversationBusy,
+  ticketId,revision,onContinuePurchase,onDocumentsUpdated,onTransactionStateChange,conversationBusy,
 }:{
   ticketId:string;revision:number;
   onContinuePurchase:()=>Promise<void>;onDocumentsUpdated:()=>void;
+  onTransactionStateChange:(status:string|null)=>void;
   conversationBusy:boolean;
 }){
   const [data,setData]=useState<Journey|null>(null);
@@ -92,6 +98,11 @@ export function ChatJourneyControls({
   const [orderReference,setOrderReference]=useState("");
   const [providerPaymentId,setProviderPaymentId]=useState("");
   const [editingDocuments,setEditingDocuments]=useState(false);
+  const [modalOpen,setModalOpen]=useState(false);
+  const [quoteCode,setQuoteCode]=useState("");
+  const [uploadStage,setUploadStage]=useState<string|null>(null);
+  const quoteRequest=useRef<string|null>(null);
+  const autoOpenedQuote=useRef<string|null>(null);
   const otpRequest=useRef<string|null>(null);
   const reviewRequestedForQuote=useRef<string|null>(null);
   const checkoutPopup=useRef<Window|null>(null);
@@ -112,6 +123,90 @@ export function ChatJourneyControls({
       .catch(()=>{if(live)setData(null);});
     return ()=>{live=false;};
   },[root,revision]);
+  // Treat the quote confirmation as a separate step from the later payment OTP.
+  useEffect(()=>{
+    const quote=data?.quotation;
+    if(quote?.state==="verified_completed"&&quote.pdfAvailable &&
+       data?.quoteConfirmation&&!data.quoteConfirmation.verified &&
+       autoOpenedQuote.current!==quote.id){
+      autoOpenedQuote.current=quote.id;
+      setModalOpen(true);
+    }
+  },[data?.quotation,data?.quoteConfirmation]);
+
+  const activeStage=(()=>{
+    const leadState=data?.lead?.state;
+    if(leadState && ["queued","running","creating"].includes(leadState))
+      return "Sara is submitting and verifying your Salesforce enquiry…";
+    const quoteState=data?.quotation?.state;
+    if(quoteState && ["queued","running","creating"].includes(quoteState))
+      return "Sara is preparing and verifying the formal quotation…";
+    const payment=data?.payment?.payments?.[0];
+    if(payment && ["queued","creating","verifying"].includes(payment.state))
+      return "Sara is checking the sandbox order with the gateway…";
+    return null;
+  })();
+  useEffect(()=>{
+    onTransactionStateChange(uploadStage??
+      (busy?busy.startsWith("upload:")?"Reading and validating your synthetic document…":
+        "Completing the secure transaction step…":activeStage));
+  },[onTransactionStateChange,uploadStage,busy,activeStage]);
+  useEffect(()=>{
+    if(!modalOpen)return;
+    function handleEscape(event:KeyboardEvent){
+      if(event.key==="Escape")setModalOpen(false);
+    }
+    document.addEventListener("keydown",handleEscape);
+    return ()=>document.removeEventListener("keydown",handleEscape);
+  },[modalOpen]);
+
+  async function requestQuoteOtp(){
+    const quote=data?.quotation;
+    const email=data?.quoteConfirmation?.contactEmail;
+    if(!quote||!email||busy)return;
+    setBusy("quote-otp-request");setError(null);setNotice(null);
+    const requestId=quoteRequest.current??crypto.randomUUID();
+    quoteRequest.current=requestId;
+    try{
+      await requestJson(root+"/quotations/confirmation/otp",{
+        requestId,quotationId:quote.id,confirmedEmail:email,
+      });
+      quoteRequest.current=null;
+      setNotice("A synthetic quote-confirmation code was recorded in the sandbox test table. Enter it securely here; do not send it to Sara.");
+      await load();
+    }catch(e){
+      setError(e instanceof Error?e.message:"Could not record quote OTP");
+      const latest=await load().catch(()=>null);
+      // A definitively failed/expired challenge may be re-requested after
+      // the server cooldown. An uncertain POST outcome retains its request ID
+      // and is NEVER blindly replayed as a new OTP.
+      if(latest?.quoteConfirmation?.challenge &&
+         ["failed","expired"].includes(latest.quoteConfirmation.challenge.state))
+        quoteRequest.current=null;
+    }finally{setBusy(null);}
+  }
+
+  async function verifyQuoteOtp(event:FormEvent<HTMLFormElement>){
+    event.preventDefault();
+    const quote=data?.quotation;
+    const challenge=data?.quoteConfirmation?.challenge;
+    if(!quote||!challenge||busy||!/^[0-9]{6}$/.test(quoteCode))return;
+    setBusy("quote-otp-verify");setError(null);setNotice(null);
+    try{
+      await requestJson(root+"/quotations/confirmation/verify",{
+        quotationId:quote.id,challengeId:challenge.challengeId,code:quoteCode,
+      });
+      setQuoteCode("");
+      setNotice("Quote confirmation verified. The synthetic identity document step is now available.");
+      await load();
+      onDocumentsUpdated();
+    }catch(e){
+      setQuoteCode("");
+      setError(e instanceof Error?e.message:"Quote OTP could not be verified");
+      await load().catch(()=>{});
+    }finally{setBusy(null);}
+  }
+
 
   // Reconcile old tickets whose documents were already complete before the
   // upload-triggered Node review existed. A POST creates a review message only;
@@ -138,12 +233,19 @@ export function ChatJourneyControls({
 
   async function upload(key:string,file:File|undefined){
     if(!file||busy)return;
-    setBusy("upload:"+key);setError(null);setNotice(null);
+    if(!data?.quoteConfirmation?.verified){
+      setError("Confirm the quotation using the secure OTP before uploading documents.");
+      return;
+    }
+    setBusy("upload:"+key);setUploadStage("Reading and checking the selected file…");
+    setError(null);setNotice(null);setModalOpen(true);
     try{
       const dataBase64=await base64File(file);
+      setUploadStage("Uploading securely and extracting document details with OCR…");
       await requestJson(root+"/purchase/documents",{
         requirementKey:key,fileName:file.name,contentType:file.type,dataBase64,
       });
+      setUploadStage("Document received. Checking remaining requirements…");
       const updated=await load();
       onDocumentsUpdated();
       if(updated.purchase.missing.length===0){
@@ -153,7 +255,7 @@ export function ChatJourneyControls({
         setNotice("Synthetic document received securely. Its contents are not part of the chat transcript.");
       }
     }catch(e){setError(e instanceof Error?e.message:"Unable to upload document");}
-    finally{setBusy(null);}
+    finally{setBusy(null);setUploadStage(null);}
   }
 
   async function continuePurchase(){
@@ -302,6 +404,8 @@ export function ChatJourneyControls({
   const challenge=data?.otp;
   const currentPayment=data?.payment?.payments?.[0]??null;
   const invoice=data?.payment?.invoice??null;
+  const quoteOtpConfirmed=data?.quoteConfirmation?.verified===true;
+  const quoteOtpChallenge=data?.quoteConfirmation?.challenge??null;
   // A quote is the only entry to the secure purchase controls; no document
   // intake is offered before independently validated PDF evidence.
   if(!quoteVerified || !quote)return null;
@@ -318,15 +422,96 @@ export function ChatJourneyControls({
   );
 
   return (
-    <div className="mt-5 flex items-start gap-3" aria-label="Secure in-chat journey">
-      <div className="min-w-0 flex-1 rounded-2xl border border-zinc-200 bg-white p-4 text-sm shadow-sm">
-        <div className="mb-2 text-xs font-semibold text-zinc-600">Sara · Secure transaction</div>
+    <div className="mt-5" aria-label="Secure in-chat journey">
+      <button type="button" onClick={()=>setModalOpen(true)}
+        className="flex w-full max-w-xl items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-left text-sm shadow-sm hover:border-zinc-400 focus-visible:outline-2 focus-visible:outline-indigo-600">
+        <span>
+          <strong className="block text-zinc-900">Secure transaction</strong>
+          <span className="mt-1 block text-xs text-zinc-600">
+            {quoteOtpConfirmed?"Quotation confirmed — manage synthetic documents and checkout":
+              "Review your verified quotation and confirm with a private OTP"}
+          </span>
+        </span>
+        <span className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">
+          {modalOpen?"Viewing":"Open"}
+        </span>
+      </button>
+      {modalOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5"
+          role="dialog" aria-modal="true" aria-labelledby="secure-transaction-title">
+          <button type="button" aria-label="Close secure transaction overlay"
+            onClick={()=>setModalOpen(false)}
+            className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm"/>
+          <div className="relative z-10 max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 text-sm shadow-2xl sm:p-7">
+            <div className="mb-4 flex items-center justify-between gap-4">
+              <h2 id="secure-transaction-title" className="text-base font-semibold text-zinc-900">
+                Sara · Secure transaction
+              </h2>
+              <button type="button" onClick={()=>setModalOpen(false)}
+                autoFocus aria-label="Close secure transaction"
+                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100">
+                Close
+              </button>
+            </div>
         <p className="font-medium">Verified quotation — {quote.currency} {quote.amount}</p>
         <a className="mt-1 inline-block text-sm font-medium text-indigo-700 underline"
           href={root+"/quotations/"+encodeURIComponent(quote.id)+"/pdf"}>
           Download {quote.documentNumber} PDF
         </a>
-        {purchase?.supported && documents.length>0 && (
+        {!quoteOtpConfirmed && (
+          <div className="mt-5 space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
+            <h3 className="text-sm font-semibold text-zinc-900">Confirm this quotation</h3>
+            <p className="text-xs leading-5 text-zinc-700">
+              Confirm the contact email already provided in our conversation.
+              This sandbox OTP is stored in the private test table; no real email is sent.
+              Identity documents stay locked until the code is verified.
+            </p>
+            {data?.quoteConfirmation?.contactEmail ? (
+              <p className="break-all text-sm font-medium text-zinc-900">
+                {data.quoteConfirmation.contactEmail}
+              </p>
+            ) : (
+              <p role="alert" className="text-xs text-amber-800">
+                Sara needs to confirm the contact email from your conversation before requesting a code.
+              </p>
+            )}
+            {quoteOtpChallenge?.state==="mock_recorded" &&
+             new Date(quoteOtpChallenge.expiresAt).getTime()>Date.now() ? (
+              <form onSubmit={verifyQuoteOtp} className="space-y-2">
+                <label htmlFor="quote-confirmation-code" className="block text-xs font-medium">
+                  Synthetic quotation confirmation OTP
+                </label>
+                <input id="quote-confirmation-code" type="password" inputMode="numeric"
+                  autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}"
+                  value={quoteCode} onChange={event=>setQuoteCode(event.currentTarget.value)}
+                  disabled={busy!==null}
+                  className="w-40 rounded-lg border border-zinc-300 px-3 py-2"/>
+                <button type="submit" disabled={busy!==null||!/^[0-9]{6}$/.test(quoteCode)}
+                  className="block rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                  {busy==="quote-otp-verify"?"Verifying quotation…":"Verify quotation OTP"}
+                </button>
+              </form>
+            ) : (
+              <button type="button" onClick={()=>{void requestQuoteOtp();}}
+                disabled={busy!==null||!data?.quoteConfirmation?.contactEmail}
+                className="rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">
+                {busy==="quote-otp-request"?"Recording test code…":
+                  "Confirm this email and request quote OTP"}
+              </button>
+            )}
+            {quoteOtpChallenge && quoteOtpChallenge.state!=="mock_recorded" && (
+              <p className="text-xs text-zinc-600">
+                The previous code is no longer active. Request another after the cooldown.
+              </p>
+            )}
+          </div>
+        )}
+        {quoteOtpConfirmed && (
+          <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-900">
+            Quotation OTP verified. Secure document collection is now unlocked.
+          </p>
+        )}
+        {purchase?.supported && quoteOtpConfirmed && documents.length>0 && (
           <div className="mt-4 space-y-3">
             {documentsComplete && (
               <div className="space-y-2">
@@ -362,6 +547,13 @@ export function ChatJourneyControls({
             {(!documentsComplete||editingDocuments) && (
               <div className="space-y-3">
                 <p className="font-medium">Upload your synthetic identity documents here</p>
+                {uploadStage && (
+                  <p role="status" aria-live="polite"
+                    className="flex items-center gap-2 rounded-lg bg-indigo-50 p-3 text-xs font-medium text-indigo-900">
+                    <span className="size-4 animate-spin rounded-full border-2 border-indigo-700 border-r-transparent"/>
+                    {uploadStage}
+                  </p>
+                )}
                 <p className="text-xs text-amber-800">
                   Development sandbox only. Never upload real identity documents on local HTTP.
                   Files go directly to a private Node endpoint, not to Sara's AI transcript.
@@ -500,7 +692,9 @@ export function ChatJourneyControls({
         )}
         {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
         {notice && <p role="status" className="mt-3 text-xs text-zinc-700">{notice}</p>}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

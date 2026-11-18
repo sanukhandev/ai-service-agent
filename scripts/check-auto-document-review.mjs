@@ -9,6 +9,7 @@ import {ChatJourney} from "../services/api/dist/runtime/chat-journey.js";
 import {ConversationActionHandoff} from "../services/api/dist/runtime/conversation-action-handoff.js";
 import {PurchaseOperations} from "../services/api/dist/runtime/purchase-operations.js";
 import {QuotationOperations} from "../services/api/dist/runtime/quotation-operations.js";
+import {QuotationConfirmationOperations} from "../services/api/dist/runtime/quotation-confirmation.js";
 import {TicketMessageRepository} from "../services/api/dist/repositories/messages.js";
 import {workerTicketScope} from "../services/api/dist/repositories/types.js";
 
@@ -22,6 +23,7 @@ let purchase={
   missing:["passport"],billingName:null,quotationId,
 };
 let quote={id:quotationId,state:"verified_completed",pdfAvailable:true};
+let quoteOtpVerified=false;
 let sequence=10;
 const events=[],assistantNotices=[];
 const db={
@@ -57,12 +59,14 @@ const db={
 };
 const methods=[
   [PurchaseOperations,"read"],[QuotationOperations,"get"],
+  [QuotationConfirmationOperations,"read"],
   [ChatJourney,"prepare"],[TicketMessageRepository,"createAssistantMessage"],
 ];
 const originals=methods.map(([type,method])=>type.prototype[method]);
 try{
   PurchaseOperations.prototype.read=async()=>purchase;
   QuotationOperations.prototype.get=async()=>quote;
+  QuotationConfirmationOperations.prototype.read=async()=>({verified:quoteOtpVerified,challenge:null});
   ChatJourney.prototype.prepare=async(_scope,_ticket,requested)=>{
     assert.equal(requested,"purchase_quotation");
     return "For sandbox checkout, which synthetic billing email ending in @example.invalid should I use?";
@@ -83,6 +87,9 @@ try{
   assert.equal(await journey.afterDocumentsReceived(scope,ticketId,uploadId),false);
   assert.equal(events.length,0);
   quote={...quote,state:"verified_completed"};
+  assert.equal(await journey.afterDocumentsReceived(scope,ticketId,uploadId),false,
+    "Even already-uploaded documents must not trigger purchase review before quote OTP");
+  quoteOtpVerified=true;
   assert.equal(await journey.afterDocumentsReceived(scope,ticketId,uploadId),true);
   assert.equal(events.length,1);
   assert.equal(events[0].event_type,"purchase.review.started");

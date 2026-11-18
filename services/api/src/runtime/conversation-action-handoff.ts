@@ -12,6 +12,7 @@ import { IntentActionOperations } from "./intent-action-operations.js";
 import { LeadOperations, leadDispatchEnabled } from "./lead-operations.js";
 import { QuotationOperations, quoteDispatchEnabled } from "./quotation-operations.js";
 import { PurchaseOperations } from "./purchase-operations.js";
+import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
 import { PaymentOperations } from "./payment-operations.js";
 import { paymentEnabled } from "./payment-evidence.js";
 
@@ -202,6 +203,11 @@ export class ConversationActionHandoff {
       "Your verified quotation PDF is available here in the conversation. "+CHECKOUT_CONTINUATION_PROMPT);
     if(!purchase)return step("purchase_unsupported",
       "The quotation is ready, but checkout isn't configured for this service.");
+    const confirmation=await new QuotationConfirmationOperations(this.db)
+      .read(scope,ticketId,quote.id);
+    if(!confirmation.verified)
+      return step("quote_confirmation",
+        "The quotation PDF is ready. Before we collect any identity documents, confirm the saved contact email and verify the quotation OTP in the private Secure transaction window.");
 
     const documents=await new PurchaseOperations(this.db).read(scope,ticketId);
     if(!documents.supported)

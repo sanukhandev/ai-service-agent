@@ -10,6 +10,7 @@ import { IntentActionOperations } from "../services/api/dist/runtime/intent-acti
 import { LeadOperations } from "../services/api/dist/runtime/lead-operations.js";
 import { QuotationOperations } from "../services/api/dist/runtime/quotation-operations.js";
 import { PurchaseOperations } from "../services/api/dist/runtime/purchase-operations.js";
+import { QuotationConfirmationOperations } from "../services/api/dist/runtime/quotation-confirmation.js";
 import { PaymentOperations } from "../services/api/dist/runtime/payment-operations.js";
 
 assert.equal(requestedBusinessAction("I want to start a company"),"generate_quote");
@@ -45,8 +46,8 @@ assert.equal(shouldShowAuthoritativeStatus("What documents are needed?",false,
 assert.equal(shouldShowAuthoritativeStatus("Please check status",true,
   {stage:"lead_processing",response:"Processing",missingCount:0,missingKeys:[]}),true);
 
-const modules=[IntentActionOperations,LeadOperations,QuotationOperations,PurchaseOperations,PaymentOperations];
-const methods=["catalog","list","get","read","get"];
+const modules=[IntentActionOperations,LeadOperations,QuotationOperations,PurchaseOperations,PaymentOperations,QuotationConfirmationOperations];
+const methods=["catalog","list","get","read","get","read"];
 const originals=modules.map((c,i)=>c.prototype[methods[i]]);
 const envNames=["ANCFZ_LEAD_DISPATCH_ENABLED","ANCFZ_QUOTE_DISPATCH_ENABLED","ANCFZ_N8N_WEBHOOK_SECRET",
   "APP_ENV","ANCFZ_PAYMENT_DISPATCH_ENABLED","ANCFZ_TEST_OTP_ENABLED","ANCFZ_OTP_MOCK_ENABLED","ANCFZ_OTP_PEPPER"];
@@ -56,6 +57,7 @@ const ticketId="bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 let actionList=[];
 let leadState=null;
 let quote=null;
+let quoteConfirmed=false;
 let docs={supported:true,missing:["passport","emirates_id"],confirmed:false,readyForOtp:false};
 let payments={payments:[],invoice:null};
 try {
@@ -71,6 +73,7 @@ try {
   LeadOperations.prototype.list=async()=>leadState?[{operation:"ancfz_salesforce_lead",state:leadState}]:[];
   QuotationOperations.prototype.get=async()=>quote;
   PurchaseOperations.prototype.read=async()=>docs;
+  QuotationConfirmationOperations.prototype.read=async()=>({verified:quoteConfirmed,challenge:null});
   PaymentOperations.prototype.get=async()=>payments;
 
   const lead={actionKey:"create_lead",kind:"salesforce_lead",ready:false,
@@ -113,6 +116,10 @@ try {
   quote={state:"verified_completed",pdfAvailable:true};
   stage=await handoff.status(scope,ticketId,"generate_quote");
   assert.equal(stage.stage,"quote_ready");
+  stage=await handoff.status(scope,ticketId,"purchase_quotation");
+  assert.equal(stage.stage,"quote_confirmation",
+    "Private documents are blocked until verified quotation OTP");
+  quoteConfirmed=true;
   stage=await handoff.status(scope,ticketId,"purchase_quotation");
   assert.equal(stage.stage,"documents_pending");
   docs={supported:true,missing:[],confirmed:false,readyForOtp:false};

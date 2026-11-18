@@ -203,3 +203,37 @@ same order's hosted URL**, not generating a new order or rerunning an OTP.
 
 Test with a synthetic matched order before enabling the UI. No production
 card data, original OTP values or merchant secrets should be entered in chat.
+
+## Verified quotation → quote OTP → private documents (2026-11-18)
+
+A verified quotation PDF is **not** permission to upload identity files. Sara's
+Secure transaction modal now presents the contact email already captured in
+the conversation and requests an explicit confirmation of that address before
+creating a **separate quotation confirmation OTP**. The sandbox code is
+recorded privately in the existing n8n mock OTP test table, never delivered
+to an actual recipient, placed in the normal message queue, or submitted to
+Foundry. The quote OTP has a five-minute lifetime, bounded retries and
+ticket/agent-scoped PostgreSQL row-level security.
+
+Only a confirmed quotation OTP unlocks document/OCR intake, including
+backend POST routes. The quote OTP does not approve a purchase or charge a
+card. After both synthetic documents have been accepted, the existing exact
+purchase proposal and **distinct payment OTP** remain mandatory.
+
+Billing email is not collected a second time: the original contact's
+local part becomes a disposable `@example.invalid` alias when an explicitly
+supplied `customer_test_email` is absent. The derived alias is shown in the
+exact-amount purchase proposal and the customer authorizes that specific
+snapshot. This is only a **synthetic test identity**; no real email delivery
+occurs.
+
+The transaction UI is a modal with a clear OCR upload-progress indicator.
+SSE transaction state appears in the conversation timeline; the ordinary
+composer pauses while a known provider operation is actively running, but
+private modal inputs remain available. In-progress or unknown external
+provider outcomes are never treated as completed payments.
+
+**Migration:** `016_quotation_confirmation_otp.sql` creates the isolated
+quotation challenge state. Apply migrations through the existing `migrate`
+service before deploying the updated API. Preserve PostgreSQL volumes and
+the previously captured `prime` rollback images.

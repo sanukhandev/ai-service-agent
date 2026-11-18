@@ -7,6 +7,7 @@ import type { PoolClient } from "pg";
 import { PersistenceDatabase, PersistenceError, requireUuid } from "../database/pool.js";
 import { authorizedTicket, type TicketScope } from "../repositories/types.js";
 import { appendEventTx } from "../repositories/events.js";
+import { quoteConfirmedTx } from "./quotation-confirmation.js";
 import { extractIdentityDocument, nameKey, allowUnnamedSyntheticPassport, type ExtractedIdentity, type IdentityKind } from "./identity-extractor.js";
 
 export const PURCHASE_CONSENT =
@@ -189,6 +190,8 @@ export async function assertPurchaseReady(
   const q=await findQuote(client,agentId,ticketId);
   if(!q||!q.purchase_enabled||q.id!==quotationId||q.state!=="verified_completed")
     throw new PersistenceError("CONFLICT","Select a purchase-enabled intent and obtain a verified quotation");
+  if(!await quoteConfirmedTx(client,agentId,ticketId,quotationId))
+    throw new PersistenceError("CONFLICT","Verify the quotation OTP before purchase");
   const docs=await getRequirements(client,agentId,ticketId,q.intent_id);
   // A catalog with no configured requirements is not authorization to skip intake.
   extractedBillingName(docs);
@@ -236,7 +239,12 @@ export class PurchaseOperations {
       await authorizedTicket(client,scope,ticketId);
       const q=await findQuote(client,scope.agentId,ticketId);
       if(!q)
-        throw new PersistenceError("CONFLICT","Select a purchase-enabled intent before uploading documents");
+        throw new PersistenceError("CONFLICT","Select a document-enabled service before uploading documents");
+      // Non-quotation service requests use this intake too. Quote OTP is
+      // required only where a formal quotation actually exists.
+      if(q.id && (q.state!=="verified_completed"||
+         !await quoteConfirmedTx(client,scope.agentId,ticketId,q.id)))
+        throw new PersistenceError("CONFLICT","Verify the quotation OTP before uploading identity documents");
       if(await confirmation(client,scope.agentId,ticketId,q))
         throw new PersistenceError("CONFLICT","Purchase documents are locked");
       const req=await client.query(
@@ -250,7 +258,12 @@ export class PurchaseOperations {
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
       if(!q)
-        throw new PersistenceError("CONFLICT","Select a purchase-enabled intent before uploading documents");
+        throw new PersistenceError("CONFLICT","Select a document-enabled service before uploading documents");
+      // Non-quotation service requests use this intake too. Quote OTP is
+      // required only where a formal quotation actually exists.
+      if(q.id && (q.state!=="verified_completed"||
+         !await quoteConfirmedTx(client,scope.agentId,ticketId,q.id)))
+        throw new PersistenceError("CONFLICT","Verify the quotation OTP before uploading identity documents");
       if(await confirmation(client,scope.agentId,ticketId,q))
         throw new PersistenceError("CONFLICT","Documents are locked after purchase confirmation");
       const req=await client.query<{id:string}>(
@@ -316,9 +329,11 @@ export class PurchaseOperations {
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||!q.purchase_enabled||!q.currency||q.id!==v.quotationId||q.state!=="verified_completed"||
+      if(!q||!q.id||!q.purchase_enabled||!q.currency||q.id!==v.quotationId||q.state!=="verified_completed"||
          q.amount!==v.amount||q.currency?.trim()!==v.currency)
         throw new PersistenceError("CONFLICT","Verified quoted amount and intent do not match");
+      if(!await quoteConfirmedTx(client,scope.agentId,ticketId,q.id))
+        throw new PersistenceError("CONFLICT","Verify the quotation OTP before purchase consent");
       const docs=await getRequirements(client,scope.agentId,ticketId,q.intent_id);
       // Validation uses OCR-derived names, not untrusted chat or uploaded filenames.
       extractedBillingName(docs);

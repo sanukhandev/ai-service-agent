@@ -439,12 +439,14 @@ export function MessageBubble({
   message,
   ticketId,
   consentText,
+  consentMode="consent",
   consentDisabled = false,
   onConsent,
 }: {
   message: ChatMessage;
   ticketId?: string;
   consentText?: string;
+  consentMode?:"consent"|"review";
   consentDisabled?: boolean;
   onConsent?: (text: string) => Promise<void>;
 }) {
@@ -541,11 +543,16 @@ export function MessageBubble({
                 <button type="button"
                   onClick={()=>{void sendConsent();}}
                   disabled={consentDisabled||submittingConsent}
-                  aria-label="I Consent — send the exact confirmation to Sara"
-                  title="Sends the confirmation text to Sara in this conversation"
+                  aria-label={consentMode==="consent"
+                     ?"I Consent — send the exact confirmation to Sara"
+                     :"Request a freshly reviewed proposal from Sara"}
+                  title={consentMode==="consent"
+                     ?"Sends the exact confirmation text to Sara"
+                     :"An intervening question requires a fresh server-side proposal"}
                   className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-800 disabled:cursor-not-allowed disabled:opacity-50">
                   <CheckIcon className="size-3.5" />
-                  <span>{submittingConsent?"Sending…":"I Consent"}</span>
+                  <span>{submittingConsent?"Sending…":
+                     consentMode==="consent"?"I Consent":"Review proposal again"}</span>
                 </button>
               )}
               <button
