@@ -290,6 +290,18 @@ export function ChatJourneyControls({
     }finally{setBusy(null);}
   }
 
+  async function renewPaymentOtp(){
+    if(busy!==null)return;
+    setBusy("renew-otp");setError(null);setNotice(null);setOtp("");
+    try{
+      await requestJson(root+"/payments/otp/renew",{requestId:crypto.randomUUID()});
+      await load();
+      setNotice("A fresh synthetic OTP has been recorded privately. Enter the new code securely in this chat. Your quotation and documents were not reset.");
+    }catch(e){
+      setError(e instanceof Error?e.message:"A fresh OTP could not be requested");
+    }finally{setBusy(null);}
+  }
+
   async function reconcileOrder(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
     const payment=data?.payment?.payments?.[0];
@@ -333,11 +345,11 @@ export function ChatJourneyControls({
       onDocumentsUpdated(); // Refresh durable assistant messages and SSE snapshot.
       const state=result.payments.find(p=>p.id===paymentId)?.state??"unknown_outcome";
       setNotice(state==="verified_test_payment"
-        ?"The gateway independently confirmed COMPLETE. Sara is preparing your TEST invoice."
+        ?"The gateway independently confirmed COMPLETE. Sara is preparing your TEST invoice and service contract."
         :state==="payment_pending"
           ?"The gateway still reports PENDING. You can reopen the existing checkout; no invoice has been issued."
           :state==="payment_declined"||state==="payment_refunded"
-            ?"Gateway status: "+state.replaceAll("_"," ")+". No new order was created."
+            ?"Gateway status: "+state.replaceAll("_"," ")+". You can request a new OTP after a confirmed decline; no new order was created."
             :"Payment could not be independently confirmed. Use Verify status with gateway; no invoice has been issued.");
     }catch(e){
       setError(e instanceof Error?e.message:"Unable to verify the existing checkout");
@@ -417,7 +429,8 @@ export function ChatJourneyControls({
     purchase.missing.length===0 && documents.every(doc=>doc.uploaded),
   );
   const showOtp=Boolean(
-    !currentPayment && challenge?.state==="mock_recorded" &&
+    (!currentPayment || currentPayment.state==="payment_declined") &&
+    challenge?.state==="mock_recorded" &&
     challenge.quotationId===quote.id && new Date(challenge.expiresAt).getTime()>Date.now(),
   );
 
@@ -606,15 +619,34 @@ export function ChatJourneyControls({
             </button>
           </form>
         )}
-        {challenge?.state==="mock_recorded" && !showOtp && !currentPayment && (
-          <p className="mt-3 text-xs text-amber-800">
-            The test OTP is no longer valid or has expired. Do not resend the
-            original authorization; contact the service team for reconciliation.
-          </p>
+        {challenge && !showOtp && !currentPayment && purchase?.confirmed && (
+          <div className="mt-3 space-y-2">
+            <p className="text-xs text-amber-800">
+              This test OTP is no longer usable. Request a fresh code; the original cannot be reused.
+            </p>
+            <button type="button" disabled={busy!==null}
+              onClick={()=>{void renewPaymentOtp();}}
+              className="rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium disabled:opacity-40">
+              {busy==="renew-otp"?"Requesting…":"Request new OTP"}
+            </button>
+          </div>
         )}
         {currentPayment && (
           <div className="mt-3 space-y-2">
             <p className="text-xs">Sandbox order: <strong>{currentPayment.state.replaceAll("_"," ")}</strong></p>
+            {currentPayment.state==="payment_declined" && !showOtp && (
+              <div className="space-y-2">
+                <p className="text-xs text-amber-800">
+                  The provider confirmed DECLINED. Your quotation and identity documents are retained.
+                  A new sandbox link requires a fresh OTP; your old order will not be retried.
+                </p>
+                <button type="button" disabled={busy!==null}
+                  onClick={()=>{void renewPaymentOtp();}}
+                  className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">
+                  {busy==="renew-otp"?"Requesting…":"Retry declined payment — request new OTP"}
+                </button>
+              </div>
+            )}
             {currentPayment.orderReference && currentPayment.providerPaymentId &&
               ["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(currentPayment.state) && (
               <div className="space-y-2">
