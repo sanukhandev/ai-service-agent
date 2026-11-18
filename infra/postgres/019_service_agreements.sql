@@ -39,6 +39,9 @@ GRANT SELECT,INSERT ON service_agreements TO agent_runtime;
 GRANT UPDATE(current_revision,sync_state,sync_attempts,next_sync_at,updated_at)
   ON service_agreements TO agent_runtime;
 
+ALTER TABLE ticket_payment_invoices
+  ADD CONSTRAINT ticket_payment_invoices_scoped_id_unique UNIQUE(agent_id,ticket_id,id);
+
 ALTER TABLE ticket_service_contracts
   ADD COLUMN agreement_id uuid,
   ADD COLUMN revision integer NOT NULL DEFAULT 1 CHECK(revision>=1),
