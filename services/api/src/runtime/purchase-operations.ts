@@ -238,8 +238,12 @@ export class PurchaseOperations {
     await this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||!q.id||q.state!=="verified_completed"||
-         !await quoteConfirmedTx(client,scope.agentId,ticketId,q.id))
+      if(!q)
+        throw new PersistenceError("CONFLICT","Select a document-enabled service before uploading documents");
+      // Non-quotation service requests use this intake too. Quote OTP is
+      // required only where a formal quotation actually exists.
+      if(q.id && (q.state!=="verified_completed"||
+         !await quoteConfirmedTx(client,scope.agentId,ticketId,q.id)))
         throw new PersistenceError("CONFLICT","Verify the quotation OTP before uploading identity documents");
       if(await confirmation(client,scope.agentId,ticketId,q))
         throw new PersistenceError("CONFLICT","Purchase documents are locked");
@@ -253,8 +257,12 @@ export class PurchaseOperations {
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId,true);
       const q=await findQuote(client,scope.agentId,ticketId);
-      if(!q||!q.id||q.state!=="verified_completed"||
-         !await quoteConfirmedTx(client,scope.agentId,ticketId,q.id))
+      if(!q)
+        throw new PersistenceError("CONFLICT","Select a document-enabled service before uploading documents");
+      // Non-quotation service requests use this intake too. Quote OTP is
+      // required only where a formal quotation actually exists.
+      if(q.id && (q.state!=="verified_completed"||
+         !await quoteConfirmedTx(client,scope.agentId,ticketId,q.id)))
         throw new PersistenceError("CONFLICT","Verify the quotation OTP before uploading identity documents");
       if(await confirmation(client,scope.agentId,ticketId,q))
         throw new PersistenceError("CONFLICT","Documents are locked after purchase confirmation");
