@@ -11,6 +11,7 @@ import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { createHash } from "node:crypto";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
+import {RENEWAL_PURCHASE_CONSENT} from "./renewal-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled, paymentReadEnabled,
   verifyPaymentStatus, existingCheckoutUrl, type PaymentIdentity } from "./payment-evidence.js";
@@ -727,47 +728,69 @@ export class PaymentOperations {
             queued.rows[0]?.id,docNumber],
         );
         }
-        // Only the explicitly consented purchase can include private ID
-        // copies inside a contract; legacy consent does not silently opt in.
-        const contractConsent=await client.query(
-          `SELECT 1 FROM ticket_purchase_confirmations
-           WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND consent_text=$4`,
-          [scope.agentId,ticketId,expected.quotationId,PURCHASE_CONSENT]);
-        if(contractConsent.rows.length){
-          // Agreement number belongs to the immutable paid purchase, not to
-          // n8n or a PDF renderer. Every verified repeat is idempotent.
+        // Standard purchases create the agreement master once. A renewal
+        // uses the SAME master and a new immutable revision. Only explicit
+        // matching purchase consent permits private identity annexures.
+        const recordedConsent=await client.query<{consent_text:string}>(
+          `SELECT consent_text FROM ticket_purchase_confirmations
+           WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3`,
+          [scope.agentId,ticketId,expected.quotationId]);
+        const renewal=await client.query<{
+          agreement_id:string;source_revision:number;agreement_number:string;current_revision:number;
+        }>(
+          `SELECT r.agreement_id,r.source_revision,
+             a.agreement_number,a.current_revision
+           FROM ticket_renewals r JOIN service_agreements a
+             ON a.agent_id=r.agent_id AND a.id=r.agreement_id
+           WHERE r.agent_id=$1 AND r.renewal_ticket_id=$2
+             AND r.status='requested' FOR UPDATE OF a`,
+          [scope.agentId,ticketId]);
+        const currentRenewal=renewal.rows[0]??null;
+        const consent=recordedConsent.rows[0]?.consent_text;
+        const consentValid=consent===(currentRenewal?RENEWAL_PURCHASE_CONSENT:PURCHASE_CONSENT);
+        if(consentValid){
           const existingContract=await client.query<{id:string}>(
             "SELECT id FROM ticket_service_contracts WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
-            [scope.agentId,ticketId,paymentId],
-          );
+            [scope.agentId,ticketId,paymentId]);
           if(!existingContract.rows.length){
-            const agreementId=randomUUID();
-            const number=await client.query<{agreement_number:string}>(
-              "SELECT 'ANCFZ-AGR-' || to_char(now() AT TIME ZONE 'UTC','YYYY') || '-' || " +
-              "lpad(nextval('ancfz_agreement_number_seq')::text,6,'0') AS agreement_number");
-            const agreementNumber=number.rows[0]?.agreement_number;
-            if(!agreementNumber)throw new PersistenceError("DATABASE_ERROR","Agreement number unavailable");
-            await client.query(
-              `INSERT INTO service_agreements
-                (id,agent_id,initial_ticket_id,initial_payment_id,agreement_number)
-               VALUES($1,$2,$3,$4,$5)`,
-              [agreementId,scope.agentId,ticketId,paymentId,agreementNumber],
-            );
             const associatedInvoice=await client.query<{id:string}>(
               "SELECT id FROM ticket_payment_invoices WHERE agent_id=$1 AND ticket_id=$2 AND payment_id=$3",
               [scope.agentId,ticketId,paymentId]);
             if(!associatedInvoice.rows[0])
               throw new PersistenceError("DATABASE_ERROR","Agreement requires queued invoice");
+            let agreementId:string;
+            let agreementNumber:string;
+            let revision=1;
+            if(currentRenewal){
+              if(currentRenewal.source_revision!==currentRenewal.current_revision)
+                throw new PersistenceError("CONFLICT","Agreement changed during renewal");
+              agreementId=currentRenewal.agreement_id;
+              agreementNumber=currentRenewal.agreement_number;
+              revision=currentRenewal.current_revision+1;
+            }else{
+              agreementId=randomUUID();
+              const number=await client.query<{agreement_number:string}>(
+                "SELECT 'ANCFZ-AGR-' || to_char(now() AT TIME ZONE 'UTC','YYYY') || '-' || " +
+                "lpad(nextval('ancfz_agreement_number_seq')::text,6,'0') AS agreement_number");
+              agreementNumber=number.rows[0]?.agreement_number??"";
+              if(!agreementNumber)throw new PersistenceError("DATABASE_ERROR","Agreement number unavailable");
+              await client.query(
+                `INSERT INTO service_agreements
+                  (id,agent_id,initial_ticket_id,initial_payment_id,agreement_number)
+                 VALUES($1,$2,$3,$4,$5)`,
+                [agreementId,scope.agentId,ticketId,paymentId,agreementNumber]);
+            }
             const contractId=randomUUID();
+            const documentNumber=revision===1?agreementNumber:
+              agreementNumber+"-R"+String(revision).padStart(2,"0");
             await client.query(
               `INSERT INTO ticket_service_contracts
                 (id,agent_id,ticket_id,quotation_id,payment_id,document_number,
                  agreement_id,revision,invoice_id)
-               VALUES($1,$2,$3,$4,$5,$6,$7,1,$8)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
                ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
               [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
-                agreementNumber,agreementId,associatedInvoice.rows[0].id],
-            );
+                documentNumber,agreementId,revision,associatedInvoice.rows[0].id]);
           }
         }
         if(claim.previousState!=="verified_test_payment") {
