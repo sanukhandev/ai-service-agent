@@ -215,6 +215,19 @@ to an actual recipient, placed in the normal message queue, or submitted to
 Foundry. The quote OTP has a five-minute lifetime, bounded retries and
 ticket/agent-scoped PostgreSQL row-level security.
 
+**Mock Data Table recipient:** The user's confirmed real contact email stays
+in the agent/ticket-scoped quotation OTP row for contact verification; it is
+**not forwarded to n8n**. For the test-only `ancfz/otp-email` webhook, Node
+creates a unique `quote-<challenge-uuid>@example.invalid` address, just as
+the separate sandbox payment OTP uses an `@example.invalid` alias. The
+`ANCFZ_POC_OTPS` table receives the synthetic address, ticket ID and test
+code only. The customer retrieves the latest code from the private n8n Data
+Table. The existing local-only mock workflow must be active (and the original
+SMTP workflow inactive) or Node fails the challenge without unlocking any
+document intake. Quote issuance limits remain five per rolling hour and 60
+seconds between requests, even when a dispatch fails. No migration or
+recreation of the existing quote is required for this correction.
+
 Only a confirmed quotation OTP unlocks document/OCR intake, including
 backend POST routes. The quote OTP does not approve a purchase or charge a
 card. After both synthetic documents have been accepted, the existing exact
