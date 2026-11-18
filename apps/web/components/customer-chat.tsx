@@ -671,6 +671,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               {messages.map((message) => (
                 <MessageBubble message={message} ticketId={ticket?.id} key={message.id}
                   consentText={pendingConsent?.messageId===message.id ? pendingConsent.text : undefined}
+                  consentMode={pendingConsent?.messageId===message.id ? pendingConsent.mode : undefined}
                   consentDisabled={locked||isSending}
                   onConsent={send} />
               ))}
