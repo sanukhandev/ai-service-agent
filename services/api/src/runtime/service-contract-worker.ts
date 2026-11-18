@@ -4,12 +4,13 @@
  * passport and Emirates ID annexures. Never produces a legal e-signature.
  * No AI, browser, public URL or n8n receives identity document bytes.
  */
-import {createHash} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {PersistenceDatabase} from "../database/pool.js";
 import {appendEventTx} from "../repositories/events.js";
 import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
 import {paymentEnabled} from "./payment-evidence.js";
+import {PURCHASE_CONSENT} from "./purchase-operations.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
 import {invoiceQuoteDetails} from "./invoice-details.js";
 import type {QuoteProposalDetails} from "./quote-proposal.js";
@@ -20,7 +21,8 @@ type IdentityFile={
 };
 type Claim={
   id:string;agentId:string;ticketId:string;quotationId:string;
-  paymentId:string;documentNumber:string;offering:string;
+  paymentId:string;documentNumber:string;contractNumber:string;
+  agreementRevision:number;invoiceNumber:string;offering:string;
   amount:string;currency:string;quoteNumber:string;quotePayload:unknown;
   documents:IdentityFile[];
 };
@@ -96,7 +98,10 @@ function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;numb
   return page(
     '<p class="warning">DEMONSTRATION ONLY — NOT A LEGALLY EXECUTED AGREEMENT</p>'+
     "<h1>ANCFZ — Service Contract (TEST)</h1>"+
-    "<p>Contract reference: "+short(c.documentNumber,100)+" | Prepared: "+now+"</p>"+
+    "<p>Contract number: <strong>"+short(c.contractNumber,40)+"</strong> | Revision: "+
+    String(c.agreementRevision)+" | Prepared: "+now+"</p>"+
+    "<p>Quotation number: "+short(c.quoteNumber,100)+" | Invoice number: "+
+    short(c.invoiceNumber,100)+"</p>"+
     "<h2>1. Parties and identification</h2>"+
     "<p>Provider: ANCFZ (sandbox demonstration). Customer: "+short(id.name,150)+
     ". Emirates ID: "+short(id.number,20)+".</p>"+
@@ -105,6 +110,7 @@ function contractHtml(c:Claim,proposal:QuoteProposalDetails,id:{name:string;numb
     "<table><tr><th>Package</th><th>Amount</th></tr><tr><td>"+
     short(c.offering,200)+"</td><td>"+short(c.currency,3)+" "+short(c.amount,20)+"</td></tr></table>"+
     "<p>Approved quotation: "+short(c.quoteNumber,100)+
+    ". Matching paid invoice: "+short(c.invoiceNumber,100)+
     ". The quotation's published scope and pricing revision govern this draft.</p>"+
     "<h2>3. Services included in the purchased package</h2>"+
     "<ol>"+items.map(v=>"<li>"+short(v)+"</li>").join("")+"</ol>"+
@@ -160,6 +166,46 @@ export class ServiceContractWorker{
       "SELECT id FROM agents WHERE agent_key='ancfz' AND status='active'");
     return r.rows[0]?.id??null;
   }
+  /**
+   * Crash-safe backfill for an invoice that finished after payment verification
+   * but has no contract row. Only exact customer approval for the protected
+   * private agreement can create the row. Never creates an order or invoice.
+   */
+  private async recoverMissingContract(agentId:string):Promise<void>{
+    await this.db.withAgent(agentId,async client=>{
+      const r=await client.query<{
+        ticket_id:string;quotation_id:string;payment_id:string;
+      }>(
+        `SELECT p.ticket_id,p.quotation_id,p.id AS payment_id
+         FROM ticket_payment_attempts p
+         JOIN ticket_payment_invoices i ON i.agent_id=p.agent_id
+           AND i.ticket_id=p.ticket_id AND i.payment_id=p.id
+           AND i.state='verified_completed' AND i.bytes IS NOT NULL
+         JOIN ticket_purchase_confirmations pc ON pc.agent_id=p.agent_id
+           AND pc.ticket_id=p.ticket_id AND pc.quotation_id=p.quotation_id
+           AND pc.consent_text=$2
+         WHERE p.agent_id=$1 AND p.state='verified_test_payment'
+           AND NOT EXISTS (
+             SELECT 1 FROM ticket_service_contracts c WHERE c.agent_id=p.agent_id
+               AND c.ticket_id=p.ticket_id AND c.payment_id=p.id
+           )
+         ORDER BY p.created_at LIMIT 1`,[agentId,PURCHASE_CONSENT]);
+      const x=r.rows[0];if(!x)return;
+      const id=randomUUID();
+      const inserted=await client.query(
+        `INSERT INTO ticket_service_contracts
+           (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
+         VALUES($1,$2,$3,$4,$5,$6)
+         ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING
+         RETURNING id`,
+        [id,agentId,x.ticket_id,x.quotation_id,x.payment_id,
+          "ANCFZ-TEST-SC-"+id]);
+      if(inserted.rows.length){
+        await appendEventTx(client,agentId,x.ticket_id,
+          "contract.queued_recovered",{contractId:id,paymentId:x.payment_id,testOnly:true});
+      }
+    });
+  }
   private async claim(agentId:string):Promise<Claim|null>{
     return this.db.withAgent(agentId,async client=>{
       await client.query(
@@ -169,16 +215,23 @@ export class ServiceContractWorker{
         [agentId]);
       const r=await client.query<{
         id:string;ticket_id:string;quotation_id:string;payment_id:string;
-        document_number:string;offering_label:string;amount:string;
+        document_number:string;contract_number:string;agreement_revision:number;
+        invoice_document_number:string;offering_label:string;amount:string;
         currency:string;quote_document_number:string;quote_payload:unknown;
       }>(
         "SELECT c.id,c.ticket_id,c.quotation_id,c.payment_id,c.document_number,"+
+        "c.contract_number,c.agreement_revision,"+
+        "i.document_number AS invoice_document_number,"+
         "q.offering_label,q.amount::text AS amount,q.currency,"+
         "q.document_number AS quote_document_number,qe.payload AS quote_payload "+
         "FROM ticket_service_contracts c "+
         "JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id "+
         "AND p.id=c.payment_id AND p.quotation_id=c.quotation_id "+
         "AND p.state='verified_test_payment' "+
+        "JOIN ticket_payment_invoices i ON i.agent_id=c.agent_id "+
+        "AND i.ticket_id=c.ticket_id AND i.payment_id=c.payment_id "+
+        "AND i.quotation_id=c.quotation_id AND i.state='verified_completed' "+
+        "AND i.bytes IS NOT NULL "+
         "JOIN ticket_quotations q ON q.agent_id=c.agent_id AND q.ticket_id=c.ticket_id "+
         "AND q.id=c.quotation_id AND q.amount=p.amount AND q.currency=p.currency "+
         "LEFT JOIN ticket_operations qo ON qo.agent_id=q.agent_id AND qo.ticket_id=q.ticket_id "+
@@ -214,6 +267,8 @@ export class ServiceContractWorker{
       return {
         id:x.id,agentId,ticketId:x.ticket_id,quotationId:x.quotation_id,
         paymentId:x.payment_id,documentNumber:x.document_number,
+        contractNumber:x.contract_number,agreementRevision:x.agreement_revision,
+        invoiceNumber:x.invoice_document_number,
         offering:x.offering_label,amount:x.amount,currency:x.currency.trim(),
         quoteNumber:x.quote_document_number,quotePayload:x.quote_payload,
         documents:docs.rows.map(d=>({
@@ -227,17 +282,30 @@ export class ServiceContractWorker{
   private async render(c:Claim):Promise<Buffer>{
     assertFiles(c.documents);
     const emirates=c.documents.find(f=>f.kind==="emirates_id")!;
-    const extracted=await extractInvoiceEmiratesId(emirates.bytes);
-    if(extracted.last4!==emirates.last4||
-       nameKey(extracted.fullName)!==nameKey(emirates.extractedName))
-      throw new Error("emirates_id_ocr_mismatch");
+    // Do not fail an independently verified invoice for transient repeat OCR.
+    // The previously verified last four is displayed masked on a retry.
+    if(!emirates.last4||!/^\d{4}$/.test(emirates.last4))
+      throw new Error("verified_emirates_last4_missing");
+    let displayId="XXXX-XXXX-XXXX-"+emirates.last4;
+    let displayName=emirates.extractedName;
+    try{
+      const extracted=await extractInvoiceEmiratesId(emirates.bytes);
+      if(extracted.last4!==emirates.last4||
+         nameKey(extracted.fullName)!==nameKey(emirates.extractedName))
+        throw new Error("emirates_id_ocr_mismatch");
+      displayId=extracted.number;
+      displayName=extracted.fullName;
+    }catch(e){
+      if((e as Error).message==="emirates_id_ocr_mismatch")throw e;
+      // Neither the full number nor a fabricated substitute is stored.
+    }
     const proposal=invoiceQuoteDetails(c.quotePayload,{
       quotationDocumentNumber:c.quoteNumber,amount:c.amount,currency:c.currency,
     });
     if(!proposal||!proposal.packageDescription.trim())
       throw new Error("approved_package_scope_missing");
     const contract=await htmlPdf(contractHtml(c,proposal,{
-      name:extracted.fullName,number:extracted.number,
+      name:displayName,number:displayId,
     }));
     const passport=c.documents.find(f=>f.kind==="passport")!;
     const parts=[contract,await annexPdf(passport),await annexPdf(emirates)];
@@ -245,19 +313,19 @@ export class ServiceContractWorker{
       name:String(i+1).padStart(2,"0")+".pdf",type:"application/pdf",bytes,
     })));
   }
-  private async notify(c:Pick<Claim,"id"|"agentId"|"ticketId">):Promise<void>{
+  private async notify(c:Pick<Claim,"id"|"agentId"|"ticketId"|"contractNumber">):Promise<void>{
     const link="/api/v1/tickets/"+c.ticketId+"/contracts/"+c.id+"/pdf";
     await new TicketMessageRepository(this.db).createAssistantMessage(
       workerTicketScope(c.agentId,c.ticketId),c.ticketId,c.id,
-      "Your private nonbinding TEST service contract is ready with the"+
+      "Your private nonbinding TEST service contract "+c.contractNumber+" is ready with the"+
       " purchased service scope, a clearly marked ANCFZ demo signature,"+
       " and your uploaded identity document copies. "+
       "[Download your private TEST contract]("+link+").",[]);
   }
   private async recoverNotice(agentId:string):Promise<void>{
     const r=await this.db.withAgent(agentId,async client=>{
-      const x=await client.query<{id:string;ticket_id:string}>(
-        "SELECT c.id,c.ticket_id FROM ticket_service_contracts c "+
+      const x=await client.query<{id:string;ticket_id:string;contract_number:string}>(
+        "SELECT c.id,c.ticket_id,c.contract_number FROM ticket_service_contracts c "+
         "JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND "+
         "p.ticket_id=c.ticket_id AND p.id=c.payment_id AND p.state='verified_test_payment' "+
         "JOIN tickets t ON t.agent_id=c.agent_id AND t.id=c.ticket_id AND t.status<>'closed' "+
@@ -267,18 +335,92 @@ export class ServiceContractWorker{
         "ORDER BY c.created_at LIMIT 1",[agentId]);
       return x.rows[0]??null;
     });
-    if(r)await this.notify({id:r.id,agentId,ticketId:r.ticket_id});
+    if(r)await this.notify({id:r.id,agentId,ticketId:r.ticket_id,contractNumber:r.contract_number});
+  }
+  /**
+   * n8n Data Table is a disposable, idempotent projection. PostgreSQL is
+   * authoritative for contract numbers, ownership, renewal links and PDFs.
+   * Only non-PII document references are dispatched. Missing n8n is nonfatal.
+   */
+  private async syncRegistry(agentId:string):Promise<void>{
+    const next=await this.db.withAgent(agentId,async client=>{
+      const result=await client.query<{
+        id:string;ticket_id:string;contract_number:string;agreement_revision:number;
+        quote_number:string;invoice_number:string;
+      }>(
+        `SELECT c.id,c.ticket_id,c.contract_number,c.agreement_revision,
+           q.document_number AS quote_number,i.document_number AS invoice_number
+         FROM ticket_service_contracts c
+         JOIN ticket_quotations q ON q.agent_id=c.agent_id AND q.ticket_id=c.ticket_id
+           AND q.id=c.quotation_id
+         JOIN ticket_payment_invoices i ON i.agent_id=c.agent_id AND i.ticket_id=c.ticket_id
+           AND i.payment_id=c.payment_id AND i.state='verified_completed'
+         WHERE c.agent_id=$1 AND c.state='verified_completed'
+           AND c.registry_sync_state='pending'
+         ORDER BY c.created_at,c.id LIMIT 1`,[agentId]);
+      return result.rows[0]??null;
+    });
+    if(!next)return;
+    const secret=process.env.ANCFZ_N8N_WEBHOOK_SECRET;
+    if(!secret||secret.length<32)return;
+    const ctrl=new AbortController();
+    const timeout=setTimeout(()=>ctrl.abort(),12000);
+    let saved=false;
+    try{
+      const response=await fetch("http://n8n:5678/webhook/ancfz/contract-registry",{
+        method:"POST",redirect:"error",signal:ctrl.signal,
+        headers:{"Content-Type":"application/json","X-ANCFZ-Workflow-Key":secret},
+        body:JSON.stringify({
+          agentKey:"ancfz",testOnly:true,contractId:next.id,
+          contractNumber:next.contract_number,revision:next.agreement_revision,
+          ticketId:next.ticket_id,quoteNumber:next.quote_number,
+          invoiceNumber:next.invoice_number,status:"verified_completed",
+        }),
+      });
+      if(response.ok){
+        const raw=await response.text();
+        if(raw.length<=2048){
+          const answer=JSON.parse(raw) as Record<string,unknown>;
+          saved=answer.status==="upserted"&&answer.testOnly===true&&
+            answer.contractId===next.id;
+        }
+      }
+    }catch{/* Uncertain webhook outcome: upsert replays by contractId only. */}
+    finally{clearTimeout(timeout);}
+    if(!saved){
+      this.log({contractId:next.id},"Contract registry n8n sync pending");
+      return;
+    }
+    await this.db.withAgent(agentId,async client=>{
+      await client.query(
+        "UPDATE ticket_service_contracts SET registry_sync_state='synced',updated_at=now() "+
+        "WHERE agent_id=$1 AND id=$2 AND state='verified_completed' "+
+        "AND registry_sync_state='pending'",[agentId,next.id]);
+      await appendEventTx(client,agentId,next.ticket_id,"contract.registry_synced",{
+        contractId:next.id,contractNumber:next.contract_number,
+        revision:next.agreement_revision,testOnly:true,
+      });
+    });
   }
   private async tick():Promise<void>{
     if(this.stopped||this.busy||!paymentEnabled())return;
     this.busy=true;
     try{
       const agentId=await this.agentId();if(!agentId)return;
+      await this.recoverMissingContract(agentId);
       const claim=await this.claim(agentId);
-      if(!claim){await this.recoverNotice(agentId);return;}
+      if(!claim){await this.recoverNotice(agentId);await this.syncRegistry(agentId);return;}
       let bytes:Buffer|null=null;
-      try{bytes=await this.render(claim);}catch{
+      let failureCode:string|null=null;
+      try{bytes=await this.render(claim);}catch(e){
         // Never log names, identity numbers, document bytes or OCR output.
+        const code=(e as Error).message;
+        failureCode=[
+          "required_private_documents_missing","private_document_evidence_mismatch",
+          "identity_names_do_not_match","verified_emirates_last4_missing",
+          "emirates_id_ocr_mismatch","approved_package_scope_missing",
+          "internal_pdf_renderer_unavailable","invalid_generated_pdf",
+        ].includes(code)?code:"contract_render_failed";
       }
       const published=await this.db.withAgent(agentId,async client=>{
         const paid=await client.query<{state:string}>(
@@ -292,20 +434,27 @@ export class ServiceContractWorker{
         const good=bytes!==null&&paid.rows[0]?.state==="verified_test_payment";
         const next=good?"verified_completed":row.rows[0].render_attempts<3?"queued":"needs_review";
         await client.query(
-          "UPDATE ticket_service_contracts SET state=$3,bytes=$4,sha256=$5,updated_at=now() "+
-          "WHERE agent_id=$1 AND id=$2",
-          [agentId,claim.id,next,good?bytes:null,good?sha(bytes!):null]);
+          "UPDATE ticket_service_contracts SET state=$3,bytes=$4,sha256=$5,"+
+          "failure_code=$6,updated_at=now() WHERE agent_id=$1 AND id=$2",
+          [agentId,claim.id,next,good?bytes:null,good?sha(bytes!):null,
+            good?null:failureCode??"payment_not_verified"]);
         await appendEventTx(client,agentId,claim.ticketId,
           good?"contract.generated":next==="queued"?"contract.retry_scheduled":"contract.needs_review",
-          {contractId:claim.id,paymentId:claim.paymentId,testOnly:true});
+          {contractId:claim.id,contractNumber:claim.contractNumber,
+            paymentId:claim.paymentId,testOnly:true,
+            ...(!good?{failureCode:failureCode??"payment_not_verified"}:{})});
         return good;
       });
       if(published){
         try{await this.notify(claim);}catch{
           this.log({contractId:claim.id},"Private contract chat notice pending recovery");
         }
+        try{await this.syncRegistry(agentId);}catch{
+          this.log({contractId:claim.id},"Contract registry sync pending recovery");
+        }
       }
-      this.log({contractId:claim.id,generated:published},
+      this.log({contractId:claim.id,contractNumber:claim.contractNumber,
+        generated:published,...(!published?{failureCode}: {})},
         "ANCFZ sandbox contract rendered");
     }catch(e){
       this.log({errorCode:(e as Error).name},"ANCFZ contract worker failure");

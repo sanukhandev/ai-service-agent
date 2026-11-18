@@ -1,0 +1,211 @@
+{
+  "name": "ANCFZ | MOCK Contract Registry (LOCAL ONLY)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "contract-registry-wh",
+      "webhookId": "1b366330-77e4-4b8b-aecf-26ccbd72feda",
+      "name": "Receive Contract Registry",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        200,
+        300
+      ],
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/contract-registry",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "id": "contract-registry-valid",
+      "name": "Validate Contract Registry",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        450,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const b=$input.first().json.body??{};\nconst uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;\nif(b.testOnly!==true||b.agentKey!=='ancfz'||b.status!=='verified_completed')throw Error('Invalid registry scope');\nif(!uuid.test(b.ticketId)||!uuid.test(b.contractId))throw Error('Invalid registry IDs');\nif(typeof b.contractNumber!=='string'||!/^ANCFZ-SC-\\d{4}-\\d{6}$/.test(b.contractNumber))throw Error('Invalid contract number');\nif(!Number.isInteger(b.revision)||b.revision<1||b.revision>1000)throw Error('Invalid revision');\nif(typeof b.quoteNumber!=='string'||!/^ANCFZ-TEST-Q-[a-f0-9-]{36}$/i.test(b.quoteNumber))throw Error('Invalid quote number');\nif(typeof b.invoiceNumber!=='string'||!/^ANCFZ-TEST-INV-[a-f0-9-]{36}$/i.test(b.invoiceNumber))throw Error('Invalid invoice number');\nreturn [{json:{contractId:b.contractId,contractNumber:b.contractNumber,revision:b.revision,ticketId:b.ticketId,quoteNumber:b.quoteNumber,invoiceNumber:b.invoiceNumber,status:b.status}}];"
+      }
+    },
+    {
+      "id": "contract-registry-upsert",
+      "name": "Upsert Contract Registry",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        720,
+        300
+      ],
+      "parameters": {
+        "resource": "row",
+        "operation": "upsert",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ANCFZ_POC_CONTRACTS"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "contractId",
+              "condition": "eq",
+              "keyValue": "={{ $('Validate Contract Registry').first().json.contractId }}"
+            }
+          ]
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "contractId": "={{ $('Validate Contract Registry').first().json.contractId }}",
+            "contractNumber": "={{ $('Validate Contract Registry').first().json.contractNumber }}",
+            "revision": "={{ $('Validate Contract Registry').first().json.revision }}",
+            "ticketId": "={{ $('Validate Contract Registry').first().json.ticketId }}",
+            "quoteNumber": "={{ $('Validate Contract Registry').first().json.quoteNumber }}",
+            "invoiceNumber": "={{ $('Validate Contract Registry').first().json.invoiceNumber }}",
+            "status": "={{ $('Validate Contract Registry').first().json.status }}"
+          },
+          "schema": [
+            {
+              "id": "contractId",
+              "displayName": "contractId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "contractNumber",
+              "displayName": "contractNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "revision",
+              "displayName": "revision",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "number",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "ticketId",
+              "displayName": "ticketId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "quoteNumber",
+              "displayName": "quoteNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "invoiceNumber",
+              "displayName": "invoiceNumber",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "status",
+              "displayName": "status",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "contract-registry-response",
+      "name": "Respond to Node",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        980,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({status: 'upserted', testOnly: true, contractId: $('Validate Contract Registry').first().json.contractId}) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive Contract Registry": {
+      "main": [
+        [
+          {
+            "node": "Validate Contract Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Contract Registry": {
+      "main": [
+        [
+          {
+            "node": "Upsert Contract Registry",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Contract Registry": {
+      "main": [
+        [
+          {
+            "node": "Respond to Node",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}

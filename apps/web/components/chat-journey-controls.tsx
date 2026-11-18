@@ -701,13 +701,19 @@ export function ChatJourneyControls({
         {contract?.pdfAvailable===true && (
           <a href={root+"/contracts/"+encodeURIComponent(contract.id)+"/pdf"}
             className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">
-            Download private TEST service contract {contract.documentNumber}
+            Download private TEST service agreement {contract.documentNumber}
           </a>
         )}
+        {contract && ["queued","running"].includes(contract.state) && (
+          <p role="status" className="mt-3 text-xs text-zinc-600">
+            Your TEST invoice is available. Service agreement {contract.documentNumber}
+            {" "}is being prepared and will appear here after independent checks.
+          </p>
+        )}
         {contract?.state==="needs_review" && (
-          <p className="mt-3 text-xs text-amber-800">
-            Payment verified. Private contract preparation needs identity-document review;
-            no identity number has been fabricated.
+          <p role="alert" className="mt-3 text-xs text-amber-800">
+            Your TEST invoice remains available. Service agreement {contract.documentNumber}
+            {" "}needs document review before it can be issued; no identity number has been fabricated.
           </p>
         )}
         {invoice?.pdfAvailable===true && (

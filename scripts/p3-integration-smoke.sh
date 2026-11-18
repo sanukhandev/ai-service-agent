@@ -46,7 +46,7 @@ printf '%s' "$stream" | grep -q 'event: message.accepted'
 migrations=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c 'SELECT count(*) FROM public.schema_migrations')
 # The additive declined-payment and service-contract migrations follow 016 OTP.
-test "$migrations" = 16
+test "$migrations" = 17
 contract_rls=$(docker compose exec -T postgres psql -At -U postgres -d "$POSTGRES_DB" \
   -c "SELECT count(*) FROM pg_class WHERE relname='ticket_service_contracts' AND relrowsecurity AND relforcerowsecurity")
 test "$contract_rls" = 1
