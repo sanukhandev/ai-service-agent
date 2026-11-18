@@ -536,6 +536,22 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
       return payments.reconcile(scope,idParam(request),request.params.paymentId,request.body);
     });
 
+  // Contract includes complete private identity copies and the OCR-derived
+  // Emirates ID number. Never cache or serve it without ticket ownership.
+  app.get<{Params:{ticketId:string;contractId:string}}>(
+    "/api/v1/tickets/:ticketId/contracts/:contractId/pdf",async(request,reply)=>{
+      const scope=await scopeFromCookie(db,request);
+      const doc=await payments.contractPdf(scope,idParam(request),request.params.contractId);
+      return reply.code(200)
+        .header("Content-Type","application/pdf")
+        .header("Content-Disposition",'attachment; filename="'+doc.documentNumber+'.pdf"')
+        .header("Cache-Control","private, no-store")
+        .header("X-Content-Type-Options","nosniff")
+        .header("Content-Security-Policy","sandbox")
+        .header("Content-Length",String(doc.bytes.length))
+        .send(doc.bytes);
+    });
+
   app.get<{Params:{ticketId:string;invoiceId:string}}>(
     "/api/v1/tickets/:ticketId/invoices/:invoiceId/pdf",async(request,reply)=>{
       const scope=await scopeFromCookie(db,request);
