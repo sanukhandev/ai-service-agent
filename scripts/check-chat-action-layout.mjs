@@ -112,18 +112,21 @@ const customer={id:"customer-reply",role:"customer",text:"No, I need changes"};
 const notice={id:"notice",role:"assistant",text:"Your existing ticket is saved."};
 const pending=consentExports.pendingChatConsent;
 assert.deepEqual(pending([quoteProposal]),{
-  messageId:quoteProposal.id,kind:"quotation",text:quoteConsent,
+  messageId:quoteProposal.id,kind:"quotation",text:quoteConsent,mode:"consent",
 });
 assert.deepEqual(pending([purchaseProposal]),{
-  messageId:purchaseProposal.id,kind:"purchase",text:purchaseConsent,
+  messageId:purchaseProposal.id,kind:"purchase",text:purchaseConsent,mode:"consent",
 });
 assert.deepEqual(pending([quoteProposal,notice]),{
-  messageId:quoteProposal.id,kind:"quotation",text:quoteConsent,
+  messageId:quoteProposal.id,kind:"quotation",text:quoteConsent,mode:"consent",
 },"A lifecycle notice must not cancel exact scoped approval");
 assert.deepEqual(pending([quoteProposal,purchaseProposal]),{
-  messageId:purchaseProposal.id,kind:"purchase",text:purchaseConsent,
+  messageId:purchaseProposal.id,kind:"purchase",text:purchaseConsent,mode:"consent",
 },"Only the newest proposal can have an active button");
-assert.equal(pending([quoteProposal,customer]),null);
+assert.deepEqual(pending([quoteProposal,customer]),{
+  messageId:quoteProposal.id,kind:"quotation",mode:"review",
+  text:"Please show the current ANCFZ enquiry and quotation proposal again for review.",
+},"An intervening customer message requires a fresh proposal, not a stale consent button");
 assert.equal(pending([purchaseProposal,{...customer,text:purchaseConsent}]),null);
 assert.equal(pending([{...quoteProposal,text:quoteProposal.text.replace(quoteConsent,"yes")}]),null);
 assert.equal(pending([{...purchaseProposal,text:"Your invoice is ready"}]),null);
@@ -132,6 +135,7 @@ assert.equal(pending([{...quoteProposal,role:"customer"}]),null);
 assert.match(chat,/pendingChatConsent\(messages\)/);
 assert.match(chat,/consentText=\{pendingConsent\?\.messageId===message\.id/);
 assert.match(chat,/consentDisabled=\{locked\|\|isSending\}/);
+assert.match(chat,/consentMode=\{pendingConsent\?\.messageId===message\.id/);
 assert.match(chat,/onConsent=\{send\}/);
 const bubble=readFileSync("apps/web/components/chat-message.tsx","utf8");
 assert.match(bubble,/I Consent/);
@@ -190,6 +194,10 @@ const inline=readFileSync("apps/web/components/chat-journey-controls.tsx","utf8"
 assert.ok(chat.includes("<ChatJourneyControls"),"Secure chat controls must mount in transcript");
 assert.match(inline,/chat-journey\/otp\/verify/);
 assert.match(inline,/purchase\/documents/);
+assert.match(inline,/quotations\/confirmation\/otp/);
+assert.match(inline,/quotations\/confirmation\/verify/);
+assert.match(inline,/aria-modal="true"/);
+assert.match(inline,/uploadStage/);
 assert.match(inline,/autoComplete="one-time-code"/);
 assert.match(inline,/\.size>1048576/);
 assert.doesNotMatch(inline,/payments\/otp/,"Only Node automatically starts OTP after chat consent");
