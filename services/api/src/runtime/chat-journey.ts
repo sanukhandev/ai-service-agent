@@ -16,7 +16,7 @@ import { QuotationOperations, QUOTATION_ACKNOWLEDGMENT, quoteDispatchEnabled } f
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
 import { PaymentOperations, parseStartOtp } from "./payment-operations.js";
 import { PAYMENT_CONSENT, paymentEnabled, paymentReadEnabled } from "./payment-evidence.js";
-import {quoteDetails,quoteRequirementsTx,
+import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
 
 export const LEAD_QUOTE_APPROVAL =
@@ -85,7 +85,7 @@ function proposalCopy(p:Base):string {
         " for "+x.visaCount+" visa(s) and "+x.termYears+" year(s).",
       "Workspace requested: "+x.officePreference+
         ". This preference is not a priced inclusion unless the published package explicitly says so.",
-      ...(x.proposal.priceConditions?["Published price conditions: "+x.proposal.priceConditions]:[]),
+      quoteDetailsMarkdown(x.proposal),
       "This is a non-binding test quotation. Licensing, visa issuance and activities"+
         " remain subject to authority approval. Full published scope and conditions"+
         " will be included in the independently generated quotation PDF.",
