@@ -375,8 +375,10 @@ export class PaymentOperations {
              WHERE i.agent_id=$1 AND i.ticket_id=$2 LIMIT 1`,[scope.agentId,ticketId]);
       const contract=await client.query<{
         id:string;payment_id:string;state:string;document_number:string;payment_state:string;
+        contract_number:string;agreement_revision:number;failure_code:string|null;
       }>(
-        `SELECT c.id,c.payment_id,c.state,c.document_number,p.state AS payment_state
+        `SELECT c.id,c.payment_id,c.state,c.document_number,c.contract_number,
+          c.agreement_revision,c.failure_code,p.state AS payment_state
          FROM ticket_service_contracts c
          JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id
            AND p.id=c.payment_id
@@ -385,7 +387,10 @@ export class PaymentOperations {
       return {enabled:paymentEnabled(),payments:rows.rows.map(paymentView),
         contract:contract.rows[0]?{
           id:contract.rows[0].id,paymentId:contract.rows[0].payment_id,
-          state:contract.rows[0].state,documentNumber:contract.rows[0].document_number,
+          state:contract.rows[0].state,
+          documentNumber:contract.rows[0].contract_number,
+          revision:contract.rows[0].agreement_revision,
+          failureCode:contract.rows[0].failure_code,
           pdfAvailable:contract.rows[0].state==="verified_completed" &&
             contract.rows[0].payment_state==="verified_test_payment",
         }:null,
@@ -793,8 +798,8 @@ export class PaymentOperations {
     return this.db.withAgent(scope.agentId,async client=>{
       await authorizedTicket(client,scope,ticketId);
       await requireAncfz(client,scope.agentId);
-      const r=await client.query<{bytes:Buffer;sha256:string;document_number:string}>(
-        `SELECT c.bytes,c.sha256,c.document_number FROM ticket_service_contracts c
+      const r=await client.query<{bytes:Buffer;sha256:string;contract_number:string;agreement_revision:number}>(
+        `SELECT c.bytes,c.sha256,c.contract_number,c.agreement_revision FROM ticket_service_contracts c
          JOIN ticket_payment_attempts p ON p.agent_id=c.agent_id AND p.ticket_id=c.ticket_id
            AND p.id=c.payment_id AND p.state='verified_test_payment'
          WHERE c.agent_id=$1 AND c.ticket_id=$2 AND c.id=$3
@@ -803,7 +808,7 @@ export class PaymentOperations {
       const x=r.rows[0];
       if(!x||createHash("sha256").update(x.bytes).digest("hex")!==x.sha256)
         throw new PersistenceError("NOT_FOUND","Private TEST service contract unavailable");
-      return {bytes:x.bytes,documentNumber:x.document_number};
+      return {bytes:x.bytes,documentNumber:x.contract_number+"-R"+String(x.agreement_revision).padStart(2,"0")};
     });
   }
 
