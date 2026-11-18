@@ -249,7 +249,8 @@ export function shouldShowAuthoritativeStatus(
   if(!next)return false;
   // "What is an invoice?" is an informational request even if an older
   // payment/quotation action remains active on the same ticket.
-  if(/^\s*(?:what|why|how|when|where|which)\b/i.test(message) &&
+  if((/^\s*(?:what|why|how|when|where|which)\b/i.test(message) ||
+      /\b(?:explain|tell me about|information|requirements|process|procedure|steps)\b/i.test(message)) &&
      !/\b(?:status|next step|what next|what's next)\b/i.test(message))return false;
   if(!(explicit||/\b(?:what next|what's next|status|continue|proceed|go ahead|confirm|invoice|checkout)\b/i.test(message)))
     return false;
