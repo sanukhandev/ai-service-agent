@@ -48,7 +48,14 @@ export class QuotationConfirmationOperations{
         "SELECT id,quotation_id,state,expires_at FROM ticket_quote_confirmation_otps WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 ORDER BY created_at DESC LIMIT 1",
         [scope.agentId,ticketId,quotationId]);
       const challenge=latest.rows[0];
-      return {verified:confirmed,
+      const contact=await client.query<{value:unknown;verification_status:string}>(
+        "SELECT value,verification_status FROM ticket_facts WHERE agent_id=$1 AND ticket_id=$2 AND fact_key='customer_email'",
+        [scope.agentId,ticketId]);
+      const candidate=contact.rows[0];
+      const decision=validateConversationFact("customer_email",candidate?.value as string,"email");
+      const contactEmail=candidate?.verification_status!=="disputed"&&decision.status==="accepted"
+        ?String(decision.value):null;
+      return {verified:confirmed,contactEmail,
         challenge:challenge?{challengeId:challenge.id,state:challenge.state,
           expiresAt:challenge.expires_at.toISOString()}:null};
     });
@@ -58,9 +65,10 @@ export class QuotationConfirmationOperations{
     if(!raw||typeof raw!=="object"||Array.isArray(raw))
       throw new PersistenceError("INVALID_INPUT","Quote confirmation requires a quotation");
     const request=raw as Record<string,unknown>;
-    if(Object.keys(request).some(k=>!["quotationId","requestId"].includes(k))||
+    if(Object.keys(request).some(k=>!["quotationId","requestId","confirmedEmail"].includes(k))||
        typeof request.quotationId!=="string"||!uuid.test(request.quotationId)||
-       typeof request.requestId!=="string"||!uuid.test(request.requestId))
+       typeof request.requestId!=="string"||!uuid.test(request.requestId)||
+       typeof request.confirmedEmail!=="string")
       throw new PersistenceError("INVALID_INPUT","Invalid quote OTP request");
     const quotationId=request.quotationId;
     const requestId=request.requestId;
@@ -91,6 +99,8 @@ export class QuotationConfirmationOperations{
       if(fact?.verification_status==="disputed"||decision.status!=="accepted")
         throw new PersistenceError("CONFLICT","Confirm your existing contact email with Sara before requesting quote OTP");
       const email=String(decision.value);
+      if(email!==request.confirmedEmail.trim().toLowerCase())
+        throw new PersistenceError("CONFLICT","Contact email changed; confirm the displayed address again");
       await client.query(
         "UPDATE ticket_quote_confirmation_otps SET state='expired' WHERE agent_id=$1 AND ticket_id=$2 AND quotation_id=$3 AND state IN ('pending','mock_recorded')",
         [scope.agentId,ticketId,quotationId]);
