@@ -25,6 +25,16 @@ curl --fail --silent --show-error --retry-all-errors \
   --output /tmp/p0-web-home.html http://localhost/
 grep -q 'Sara' /tmp/p0-web-home.html
 
+# The gateway returns to the site root with query parameters rather than a
+# dedicated callback path. Do not mount the chat or trust COMPLETE as proof.
+printf '%s\n' "Checking untrusted gateway return landing page..."
+curl --fail --silent --show-error --retry-all-errors \
+  --retry 15 --retry-connrefused --retry-delay 2 \
+  --output /tmp/p0-payment-return.html \
+  'http://localhost/?refno=ci-test-reference&order_status=COMPLETE&merchant_order_id=null&total=30150.00&currency=AED'
+grep -q 'Checkout window returned' /tmp/p0-payment-return.html
+grep -q 'verified separately with the gateway' /tmp/p0-payment-return.html
+
 printf '%s\n' "Checking fresh schema and restricted runtime DB role..."
 docker compose exec -T postgres sh -ec '
   PGPASSWORD="$POSTGRES_APP_PASSWORD" psql \

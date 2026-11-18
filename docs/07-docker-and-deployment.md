@@ -56,6 +56,18 @@ bash scripts/p0-smoke.sh
 
 Expected public endpoints *after images start*: `http://localhost/` (customer shell), `http://localhost/api/health` (Fastify health). The actual Foundry chat is not present until P1/P2.
 
+## Sandbox gateway browser return
+
+MockGateway currently redirects the checkout popup to the site root:
+
+```text
+/?refno=...&order_status=COMPLETE&merchant_order_id=null&total=...&currency=AED
+```
+
+Next.js detects the browser-return query and renders the minimal payment-return page in place of Sara's chat. After **2 seconds**, client-side JavaScript calls `window.close()`. The application opens checkout in a script-created popup, where closing is normally permitted. A browser may block closing a manually opened tab, so the page offers a manual-close message and a **Return to Sara** link.
+
+**Do not treat `order_status=COMPLETE`, `refno`, the amount, or a closed popup as proof of payment.** The existing original Sara tab independently checks the previously created order with the authenticated gateway; the return page performs no payment API requests or state mutations. The literal `merchant_order_id=null` does not affect display.
+
 ## Prime recovery point (PowerShell)
 
 The repository includes an **immutable local image checkpoint** named **prime**. Run `./scripts/save-prime.ps1` from PowerShell **before** a risky upgrade while the known-good api, web and nginx containers are running. It tags their actual image IDs. Image tags and Docker volumes are *not* saved into Git.
