@@ -334,6 +334,11 @@ export class ChatJourney {
     }
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
        (requested!=="purchase_quotation"&&requested!=="invoice"))return null;
+    // Quote OTP precedes document collection AND purchase review, including
+    // operator/recovery routes for previously uploaded POC documents.
+    const confirmation=await new QuotationConfirmationOperations(this.db)
+      .read(scope,ticketId,quote.id);
+    if(!confirmation.verified)return null;
     if(!paymentEnabled())
       return "Sandbox payments are disabled. Your verified quotation remains available; no payment order or invoice has been created.";
     const purchase=await new PurchaseOperations(this.db).read(scope,ticketId);
@@ -386,6 +391,9 @@ export class ChatJourney {
     const quote=await new QuotationOperations(this.db).get(scope,ticketId);
     if(!quote||quote.state!=="verified_completed"||!quote.pdfAvailable||
        quote.id!==purchase.quotationId)return false;
+    const confirmation=await new QuotationConfirmationOperations(this.db)
+      .read(scope,ticketId,quote.id);
+    if(!confirmation.verified)return false;
 
     // A stable quote-scoped message key makes this safe to trigger both from
     // the final upload and from a refreshed, already-complete document panel.
