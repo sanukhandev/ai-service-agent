@@ -4,12 +4,13 @@
  * passport and Emirates ID annexures. Never produces a legal e-signature.
  * No AI, browser, public URL or n8n receives identity document bytes.
  */
-import {createHash} from "node:crypto";
+import {createHash,randomUUID} from "node:crypto";
 import {PersistenceDatabase} from "../database/pool.js";
 import {appendEventTx} from "../repositories/events.js";
 import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
 import {paymentEnabled} from "./payment-evidence.js";
+import {PURCHASE_CONSENT} from "./purchase-operations.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
 import {invoiceQuoteDetails} from "./invoice-details.js";
 import type {QuoteProposalDetails} from "./quote-proposal.js";
@@ -273,6 +274,62 @@ export class ServiceContractWorker{
       " and your uploaded identity document copies. "+
       "[Download your private TEST contract]("+link+").",[]);
   }
+  /** Recover paid, invoiced purchases with explicit document-annexure consent
+   * which predate the agreement number migration or missed their initial queue.
+   * This never infers consent and never creates an additional payment. */
+  private async recoverMissingContracts(agentId:string):Promise<void>{
+    await this.db.withAgent(agentId,async client=>{
+      const pending=await client.query<{
+        id:string;ticket_id:string;quotation_id:string;payment_id:string;
+      }>(
+        `SELECT i.id,i.ticket_id,i.quotation_id,i.payment_id
+         FROM ticket_payment_invoices i
+         JOIN ticket_payment_attempts p ON p.agent_id=i.agent_id
+           AND p.ticket_id=i.ticket_id AND p.id=i.payment_id
+           AND p.state='verified_test_payment'
+         JOIN ticket_purchase_confirmations pc ON pc.agent_id=i.agent_id
+           AND pc.ticket_id=i.ticket_id AND pc.quotation_id=i.quotation_id
+           AND pc.consent_text=$2
+         WHERE i.agent_id=$1 AND i.state='verified_completed' AND i.bytes IS NOT NULL
+           AND NOT EXISTS(
+             SELECT 1 FROM ticket_service_contracts c
+             WHERE c.agent_id=i.agent_id AND c.ticket_id=i.ticket_id
+               AND c.payment_id=i.payment_id)
+         ORDER BY i.created_at LIMIT 1 FOR UPDATE OF i SKIP LOCKED`,
+        [agentId,PURCHASE_CONSENT]);
+      const x=pending.rows[0];if(!x)return;
+      let agreement=await client.query<{id:string;agreement_number:string}>(
+        "SELECT id,agreement_number FROM service_agreements WHERE agent_id=$1 AND initial_payment_id=$2",
+        [agentId,x.payment_id]);
+      if(!agreement.rows[0]){
+        const row=await client.query<{agreement_number:string}>(
+          "SELECT 'ANCFZ-AGR-' || to_char(now() AT TIME ZONE 'UTC','YYYY') || '-' || "+
+          "lpad(nextval('ancfz_agreement_number_seq')::text,6,'0') AS agreement_number");
+        await client.query(
+          `INSERT INTO service_agreements
+            (id,agent_id,initial_ticket_id,initial_payment_id,agreement_number)
+           VALUES($1,$2,$3,$4,$5)`,
+          [randomUUID(),agentId,x.ticket_id,x.payment_id,row.rows[0]!.agreement_number]);
+        agreement=await client.query<{id:string;agreement_number:string}>(
+          "SELECT id,agreement_number FROM service_agreements WHERE agent_id=$1 AND initial_payment_id=$2",
+          [agentId,x.payment_id]);
+      }
+      const master=agreement.rows[0];
+      if(!master)throw new Error("agreement_recovery_master_missing");
+      const contractId=randomUUID();
+      await client.query(
+        `INSERT INTO ticket_service_contracts
+         (id,agent_id,ticket_id,quotation_id,payment_id,document_number,
+          agreement_id,revision,invoice_id)
+         VALUES($1,$2,$3,$4,$5,$6,$7,1,$8)
+         ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
+        [contractId,agentId,x.ticket_id,x.quotation_id,x.payment_id,
+          master.agreement_number,master.id,x.id]);
+      await appendEventTx(client,agentId,x.ticket_id,"contract.recovered_for_render",{
+        paymentId:x.payment_id,agreementNumber:master.agreement_number,testOnly:true});
+    });
+  }
+
   /** Mirror only verified agreement references to the local n8n Data Table.
    * PostgreSQL remains authoritative for renewal and identity/document access.
    * Retrying is safe because n8n upserts by the stable agreement number. */
@@ -364,7 +421,7 @@ export class ServiceContractWorker{
     try{
       const agentId=await this.agentId();if(!agentId)return;
       const claim=await this.claim(agentId);
-      if(!claim){await this.recoverNotice(agentId);await this.syncAgreement(agentId);return;}
+      if(!claim){await this.recoverMissingContracts(agentId);await this.recoverNotice(agentId);await this.syncAgreement(agentId);return;}
       let bytes:Buffer|null=null;
       try{bytes=await this.render(claim);}catch{
         // Never log names, identity numbers, document bytes or OCR output.
