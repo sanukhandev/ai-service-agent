@@ -472,6 +472,15 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
     return reply.code(202).send(response);
   });
 
+  // Explicit retry of a private synthetic OTP after expiry, delivery failure,
+  // or confirmed provider decline. No new order exists until OTP authorization.
+  app.post("/api/v1/tickets/:ticketId/payments/otp/renew",async(request,reply)=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    const result=await payments.renewOtp(scope,idParam(request),request.body);
+    return reply.code(202).header("Cache-Control","private, no-store").send(result);
+  });
+
   app.post("/api/v1/tickets/:ticketId/payments/authorize",async(request,reply)=>{
     rejectCrossSite(request);
     const scope=await scopeFromCookie(db,request);
