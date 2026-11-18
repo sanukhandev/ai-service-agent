@@ -7,6 +7,7 @@ import { workerTicketScope } from "../repositories/types.js";
 import { PurchaseOperations, PURCHASE_CONSENT, assertPurchaseReady, invoiceBillingName } from "./purchase-operations.js";
 import { parseIdentityResult, nameKey } from "./identity-extractor.js";
 import { QuotationOperations } from "./quotation-operations.js";
+import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
 
 async function run(){
   if(process.env.P5_PURCHASE_OFFLINE_SMOKE!=="1")throw Error("CI only");
@@ -77,12 +78,61 @@ async function run(){
       contentType:"application/pdf",
       dataBase64:Buffer.from("%PDF-1.4\\n"+("A".repeat(260))+"\\n%%EOF\\n").toString("base64"),
     }),conflict);
-    await db.withAgent(agent.id,async client=>{
-      await client.query(
-        "INSERT INTO ticket_quote_confirmation_otps(agent_id,ticket_id,quotation_id,request_id,email,otp_hmac,state,expires_at,verified_at) VALUES($1,$2,$3,$4,$5,$6,'verified',now()+interval '5 minutes',now())",
-        [agent.id,ticketId,quoted.id,randomUUID(),"ci@example.invalid","a".repeat(64)],
-      );
-    });
+    // Exercise the REAL DB/HMAC challenge lifecycle. The only n8n call
+    // is intercepted within this CI process; no OTP is sent externally.
+    const flagNames=["APP_ENV","ANCFZ_PAYMENT_DISPATCH_ENABLED",
+      "ANCFZ_TEST_OTP_ENABLED","ANCFZ_OTP_MOCK_ENABLED",
+      "ANCFZ_N8N_WEBHOOK_SECRET","ANCFZ_OTP_PEPPER"] as const;
+    const oldEnv=Object.fromEntries(flagNames.map(k=>[k,process.env[k]]));
+    const oldFetch=globalThis.fetch;
+    let capturedOtp:string|null=null;
+    try{
+      Object.assign(process.env,{
+        APP_ENV:"development",ANCFZ_PAYMENT_DISPATCH_ENABLED:"true",
+        ANCFZ_TEST_OTP_ENABLED:"true",ANCFZ_OTP_MOCK_ENABLED:"true",
+        ANCFZ_N8N_WEBHOOK_SECRET:"s".repeat(32),
+        ANCFZ_OTP_PEPPER:"p".repeat(32),
+      });
+      globalThis.fetch=async(url,init)=>{
+        assert.equal(String(url),"http://n8n:5678/webhook/ancfz/otp-email");
+        const body=JSON.parse(String(init?.body)) as Record<string,unknown>;
+        assert.equal(body.email,"demo@example.invalid");
+        assert.equal(body.testOnly,true);
+        capturedOtp=String(body.otp);
+        return new Response(JSON.stringify({
+          status:"mock_recorded",testOnly:true,delivered:false,
+        }),{status:200,headers:{"Content-Type":"application/json"}});
+      };
+      const quoteOtp=new QuotationConfirmationOperations(db);
+      await assert.rejects(()=>quoteOtp.issue(scope,ticketId,{
+        quotationId:quoted.id,requestId:randomUUID(),
+        confirmedEmail:"different@example.invalid",
+      }),conflict);
+      assert.equal((await quoteOtp.read(scope,ticketId,quoted.id)).verified,false);
+      const issued=await quoteOtp.issue(scope,ticketId,{
+        quotationId:quoted.id,requestId:randomUUID(),
+        confirmedEmail:"demo@example.invalid",
+      });
+      assert.equal(issued.state,"mock_recorded");
+      assert.ok(capturedOtp&&/^\\d{6}$/.test(capturedOtp));
+      assert.equal(JSON.stringify(issued).includes(capturedOtp),false,
+        "OTP must never be exposed by the public challenge response");
+      const wrong=capturedOtp==="000000"?"111111":"000000";
+      await assert.rejects(()=>quoteOtp.verify(scope,ticketId,{
+        quotationId:quoted.id,challengeId:issued.challengeId,code:wrong,
+      }),conflict);
+      assert.equal((await quoteOtp.read(scope,ticketId,quoted.id)).verified,false);
+      assert.equal((await quoteOtp.verify(scope,ticketId,{
+        quotationId:quoted.id,challengeId:issued.challengeId,code:capturedOtp,
+      })).verified,true);
+      assert.equal((await quoteOtp.read(scope,ticketId,quoted.id)).verified,true);
+    }finally{
+      globalThis.fetch=oldFetch;
+      for(const key of flagNames){
+        if(oldEnv[key]===undefined)delete process.env[key];
+        else process.env[key]=oldEnv[key];
+      }
+    }
     const doc1=Buffer.from("%PDF-1.4\n"+("A".repeat(260))+"\n%%EOF\n");
     const doc2=Buffer.from("%PDF-1.4\n"+("B".repeat(260))+"\n%%EOF\n");
     const correctedPassport=Buffer.from("%PDF-1.4\n"+("C".repeat(260))+"\n%%EOF\n");
