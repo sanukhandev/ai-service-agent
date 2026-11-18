@@ -73,6 +73,29 @@ export const isContextualApproval=(s:string):boolean=>
   /^(?:yes|yes please|yes, please|go ahead|i approve|i consent|approved|please proceed|proceed)$/i
     .test(canonical(s));
 
+/**
+ * Ignore only an already-stored *identical, exact, action-scoped* approval.
+ * An unrelated customer utterance or a change of package must still make
+ * the proposal stale. Short contextual assent cannot use this exception.
+ * This prevents duplicate browser sends / pending turns from falsely
+ * invalidating the same explicit authorization.
+ */
+export function approvalInterruption(
+  messages:readonly {role:string;content:string}[],
+  approvedText:string,kind:ProposalKind,
+):"CUSTOMER_INTERVENED"|"AMBIGUOUS_ASSISTANT"|null{
+  const exact=kind==="lead_quote"?isLeadQuoteApproval:isPurchasePaymentApproval;
+  for(const message of messages){
+    if(message.role==="customer"&&
+       !(exact(approvedText)&&exact(message.content)))
+      return "CUSTOMER_INTERVENED";
+  }
+  if(messages.some(m=>m.role==="assistant"&&
+       (isContextualApproval(approvedText)||m.content.includes("Proposal reference: "))))
+    return "AMBIGUOUS_ASSISTANT";
+  return null;
+}
+
 function proposalCopy(p:Base):string {
   if(p.kind==="lead_quote"){
     const x=p.payload.data as LeadQuoteData;
@@ -181,18 +204,18 @@ export class ChatJourney {
       );
       const displayed=visible.rows[0];
       if(!displayed)return denied("NOT_DISPLAYED");
+      // Once this exact event was authorized, a repeated identical approval
+      // is an idempotent acknowledgement, not a fresh business instruction.
+      // The displayed proposal and source customer message remain mandatory.
+
       const intervening=await client.query<{role:string;content:string}>(
         "SELECT role,content FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND message_sequence>$3::bigint AND message_sequence<$4::bigint ORDER BY message_sequence",
         [scope.agentId,ticketId,displayed.message_sequence,customer.message_sequence],
       );
-      // No customer can amend the proposal or ask an unrelated question
-      // between proposal display and approval. For contextual short assent,
-      // even an intervening assistant notice makes "yes" ambiguous.
-      if(intervening.rows.some(m=>m.role==="customer"))
-        return denied("CUSTOMER_INTERVENED");
-      if(intervening.rows.some(m=>m.role==="assistant"&&
-        (isContextualApproval(text)||m.content.includes("Proposal reference: "))))
-        return denied("AMBIGUOUS_ASSISTANT");
+      // Unchanged exact approval duplicates do not modify the transaction.
+      // Genuine customer changes and ambiguous short assent remain blocking.
+      const interruption=approvalInterruption(intervening.rows,text,kind);
+      if(interruption)return denied(interruption);
       const previous=await latestEvent(client,scope.agentId,ticketId,"chat."+kind+".consented");
       if(previous && previous.payload.proposalId===p.id)return kind;
       // Prevent acceptance of an expired proposal after facts, price, or
