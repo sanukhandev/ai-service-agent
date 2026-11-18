@@ -170,8 +170,8 @@ try{
   // Salesforce lead or a combined enquiry/quotation consent proposal.
   const scope=workerTicketScope(agentId,ticketId);
   facts.customer_name="Test";
-  const lastNameQuestion=await journey.prepare(scope,ticketId,"generate_quote");
-  assert.match(lastNameQuestion,/What is your last name\?/);
+  const notReady=await journey.prepare(scope,ticketId,"generate_quote");
+  assert.equal(notReady,null,"Missing surname must not cause Node to emit a form question or proposal");
   assert.equal(leadSubmits,0,"No Salesforce submission when surname is missing");
   facts.customer_name="Test Customer";
   const prepared=await journey.prepare(scope,ticketId,"generate_quote");
