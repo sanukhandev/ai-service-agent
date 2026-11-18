@@ -1,4 +1,8 @@
-﻿services:
+# Immutable local recovery overlay. The corresponding :prime images must be
+# tagged from the ACTUAL running containers before rolling forward.
+# Docker images are not stored in Git. See docs/prime-recovery-point.md.
+# Use with docker-compose.prime.base.yml and --no-build --no-deps.
+services:
   api:
     image: ai-service-agent-api:prime
   web:
