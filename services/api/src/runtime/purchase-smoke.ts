@@ -114,16 +114,17 @@ async function run(){
         confirmedEmail:"demo@example.invalid",
       });
       assert.equal(issued.state,"mock_recorded");
-      assert.ok(capturedOtp&&/^\\d{6}$/.test(capturedOtp));
-      assert.equal(JSON.stringify(issued).includes(capturedOtp),false,
+      const code=String(capturedOtp??"");
+      assert.match(code,/^\d{6}$/);
+      assert.equal(JSON.stringify(issued).includes(code),false,
         "OTP must never be exposed by the public challenge response");
-      const wrong=capturedOtp==="000000"?"111111":"000000";
+      const wrong=code==="000000"?"111111":"000000";
       await assert.rejects(()=>quoteOtp.verify(scope,ticketId,{
         quotationId:quoted.id,challengeId:issued.challengeId,code:wrong,
       }),conflict);
       assert.equal((await quoteOtp.read(scope,ticketId,quoted.id)).verified,false);
       assert.equal((await quoteOtp.verify(scope,ticketId,{
-        quotationId:quoted.id,challengeId:issued.challengeId,code:capturedOtp,
+        quotationId:quoted.id,challengeId:issued.challengeId,code,
       })).verified,true);
       assert.equal((await quoteOtp.read(scope,ticketId,quoted.id)).verified,true);
     }finally{
