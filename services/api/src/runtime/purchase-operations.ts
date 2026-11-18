@@ -11,7 +11,7 @@ import { quoteConfirmedTx } from "./quotation-confirmation.js";
 import { extractIdentityDocument, nameKey, allowUnnamedSyntheticPassport, type ExtractedIdentity, type IdentityKind } from "./identity-extractor.js";
 
 export const PURCHASE_CONSENT =
-  "I confirm that I want to proceed with this ANCFZ sandbox purchase for the exact approved quotation amount and that the required test documents have been submitted.";
+  "I confirm this ANCFZ sandbox purchase for the exact approved quotation amount and consent to my uploaded passport and Emirates ID copies being included as private annexures in a nonbinding TEST service contract after independently verified sandbox payment.";
 const uuid=/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i;
 const MAX_FILE=1048576;
 type PurchaseQuote={id:string|null;intent_id:string;intent_key:string;amount:string|null;currency:string|null;state:string|null;purchase_enabled:boolean};
