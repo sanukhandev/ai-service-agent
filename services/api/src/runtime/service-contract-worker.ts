@@ -201,7 +201,7 @@ export class ServiceContractWorker{
         "WHERE d.agent_id=$1 AND d.ticket_id=$2 AND d.state='received' "+
         "AND d.extraction_status='extracted' "+
         "AND req.requirement_key IN ('passport','emirates_id') "+
-        "AND pc.consent_text LIKE '%private TEST service contract%'",
+        "AND pc.consent_text LIKE '%nonbinding TEST service contract%'",
         [agentId,x.ticket_id,x.quotation_id]);
       await client.query(
         "UPDATE ticket_service_contracts SET state='running',render_attempts=render_attempts+1,"+
