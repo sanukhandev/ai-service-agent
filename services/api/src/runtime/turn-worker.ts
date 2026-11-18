@@ -12,9 +12,10 @@ import { workerTicketScope, type SourceReference } from "../repositories/types.j
 import { TurnQueue, type PendingTurn } from "./turn-queue.js";
 import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
-import { ConversationActionHandoff, shouldUseHandoff } from "./conversation-action-handoff.js";
+import { ConversationActionHandoff, shouldShowAuthoritativeStatus } from "./conversation-action-handoff.js";
 import { ChatJourney, isLeadQuoteApproval, isPurchasePaymentApproval } from "./chat-journey.js";
-import { sourcedBusinessActivityReply } from "./chat-fact-reconciliation.js";
+import { recoverSourcedAnswer } from "./chat-fact-reconciliation.js";
+import { validateConversationFact } from "./fact-validation.js";
 
 const ENABLED_TOOLS:ReadonlySet<RegisteredToolName>=new Set([
   "find_intents","select_ticket_intent","get_intent_requirements","record_ticket_facts","get_offerings",
@@ -180,34 +181,40 @@ export class TurnWorker {
       const displayHistory=requestedAction.action
         ?(recent.length?recent:await this.messages.recentMessages(scope,turn.ticketId,4)):[];
       const displayedAssistant=[...displayHistory].reverse().find(m=>m.role==="assistant")?.text??null;
-      // Ticket #58: Foundry can respond without persisting the customer's
-      // answer, then ChatJourney.prepare() overrides the reply with the same
-      // missing-fact question indefinitely. Reconcile ONLY an immediate,
-      // unambiguous answer to Node's exact prior activity question.
+      // Direct-answer recovery is a narrow safety net when GPT omits a write:
+      // it uses the customer's ACTUAL latest message plus the immediately
+      // preceding visible question, never an ordered list of form questions.
       const preceding=displayHistory.at(-1)?.role==="customer" &&
         displayHistory.at(-1)?.id===turn.messageId &&
         displayHistory.at(-2)?.role==="assistant"
           ? displayHistory.at(-2)!.text : null;
-      const activity=sourcedBusinessActivityReply({
+      const validationIssues:Array<{key:string;reasonCode:string;clarificationHint:string}>=[];
+      const candidates=recoverSourcedAnswer({
         previousAssistant:preceding,customerText:text,
-        requestedAction:requestedAction.action,
-        missingBusinessActivity:Boolean(stored.activeIntent) &&
-          stored.missingRequirements.includes("business_activity"),
+        requestedAction:requestedAction.action,activeIntent:stored.activeIntent,
+        knownFacts:stored.knownFacts,missingRequirements:stored.missingRequirements,
       });
-      if(activity){
+      for(const candidate of candidates){
+        const type=["visa_count","term_years","shareholder_count"].includes(candidate.key)
+          ?"number":candidate.key==="customer_email"?"email":"text";
+        const decision=validateConversationFact(candidate.key,candidate.value,type);
+        if(decision.status!=="accepted"){
+          validationIssues.push({key:decision.key,reasonCode:decision.reasonCode,
+            clarificationHint:decision.clarificationHint});
+          continue;
+        }
         try{
-          // The existing repository enforces active intent, catalog keys,
-          // current-ticket ownership and customer-message provenance.
           await this.context.recordCustomerFacts(scope,turn.ticketId,turn.messageId,
-            [{key:"business_activity",value:activity}]);
+            [{key:decision.key,value:decision.value}]);
           stored=await this.context.read(scope,turn.ticketId);
           handoffBefore=await handoff.status(scope,turn.ticketId,requestedAction.action);
-          this.log({turnId:turn.id,ticketId:turn.ticketId,factKey:"business_activity"},
-            "Answered required activity question recorded with customer provenance");
+          this.log({turnId:turn.id,factKey:decision.key},
+            "Source-linked direct answer persisted");
         }catch(error){
-          // Never fabricate a fact or bypass the existing persistence guards.
+          validationIssues.push({key:decision.key,reasonCode:"FACT_WRITE_FAILED",
+            clarificationHint:"I couldn't save that detail yet. Please retry or request staff review."});
           this.log({turnId:turn.id,errorCode:(error as Error).name},
-            "Source-linked activity reconciliation rejected");
+            "Source-linked fact recovery was rejected");
         }
       }
       const actionRead=async()=>{
@@ -228,13 +235,15 @@ export class TurnWorker {
           selectedIntentActions:await actionRead(),
           requestedBusinessAction:requestedAction.action,
           nextAuthorizedStep:handoffBefore?.stage??null,
-          nextQuestionOrStep:handoffBefore?.response??null,
+          missingActionFacts:handoffBefore?.missingKeys??[],
+          actionReadinessGuidance:handoffBefore?.response??null,
+          validationIssues,
           lastCustomerVisibleAssistantReply:displayedAssistant,
           previousSummary:stored.summary?.text ?? null,
           ...(recent.length ? {earlierMessages:recent.slice(0,-1).map(m=>({role:m.role,text:m.text}))}:{}),
         }),
         "For requested actions, discover/select the intent, check operation requirements, and record only customer-stated facts. ANCFZ company enquiries need customer_name and customer_phone. Save the provided first name as customer_name, then if no surname is present ask for the last name; when the customer provides it, combine it with the previously recorded first name and update customer_name, using only actual customer-stated information (never infer a surname). sandbox payments use a synthetic customer_test_email ending @example.invalid. Never invent any detail. Node issues a transaction-specific, explicit conversational proposal and validates subsequent consent before side effects; you must not approve or execute an operation. A service request is not a government, bank or partner application. Secure synthetic ID uploads and OTP are private UI inputs INSIDE the chat, not message text. Never collect identity files, OTPs or cards in chat messages or claim payment/invoice without independent verification.",
-        "Honor lastCustomerVisibleAssistantReply over older model text. Reply naturally in 1–3 sentences unless detail is requested. For formal quotes/PDFs, record sourced contact and package facts; ask ONE missing fact at a time and never invent facts. Node provides the exact price, proposal and consent text in the conversation. No separate Available Actions panel exists. Guide private document and OTP inputs in the chat UI; payment-card entry is on the hosted test checkout. Do not display IQ citations or invented download URLs.",
+        "Use natural, helpful conversation, not a questionnaire. Answer the latest question FIRST. Reuse all accepted context; never ask for an already stored fact. Save multiple explicit details together and honor corrections. MissingActionFacts is an unordered checklist, not an ordered question script. If validationIssues or record_ticket_facts issues exist, explain the actual reason and ask a targeted clarification; never repeat the previous question verbatim. If a local phone lacks a country code, ask which country rather than assume from nationality; if only a first name is known, ask for the surname before Salesforce approval. Avoid repetitive 'if you want' prompts. Node owns exact pricing, proposal/consent and verified business actions. Do not show raw IDs or tool outputs, IQ citation tokens, or invented downloads. Synthetic ID and OTP inputs are private chat controls, and payment cards stay on hosted checkout.",
         "Latest customer message:",text,
       ].join("\n");
       const toolRegistry=new AgentToolRegistry();
@@ -253,7 +262,7 @@ export class TurnWorker {
               required:d.required,uploaded:d.uploaded,
             })),
           };
-        },actionRead);
+        },actionRead,(issues)=>validationIssues.push(...issues));
       const toolContext:TrustedToolContext={
         agentId:turn.agentId,ticketId:turn.ticketId,
         principalId:"ticket:"+turn.ticketId,
@@ -285,23 +294,46 @@ export class TurnWorker {
       });
       if(!result.responseId) throw new Error("FOUNDRY_RESPONSE_ID_MISSING");
       let responseText=result.text;
+      let savedThisTurn=candidates.length>0 && validationIssues.length===0;
+      try{
+        const after=await this.context.read(scope,turn.ticketId);
+        savedThisTurn=savedThisTurn || after.facts.some(f=>
+          f.sourceMessageId===turn.messageId && f.verification!=="disputed");
+      }catch(error){
+        this.log({turnId:turn.id,errorCode:(error as Error).name},
+          "Could not verify latest fact changes; do not infer persisted facts");
+        savedThisTurn=false;
+      }
       try{
         const next=await handoff.status(scope,turn.ticketId,requestedAction.action);
-        if(shouldUseHandoff(text,requestedAction.explicit,handoffBefore,next)&&next){
-          // This user-visible handoff is grounded in CURRENT persisted facts and
-          // verified provider state, AFTER any model-executed fact writes.
-          responseText=next.response;
+        if(shouldShowAuthoritativeStatus(text,requestedAction.explicit,next)){
+          // Only the protected provider/safety statuses override model prose.
+          // Missing-field prompts always remain model-authored.
+          responseText=next!.response;
         }
       }catch(error){
         this.log({turnId:turn.id,errorCode:(error as Error).name},
-          "Action handoff read failed; retaining the normal Foundry response");
+          "Action handoff read failed; retaining natural Foundry response");
       }
-      try {
-        const proposal=await chatJourney.prepare(scope,turn.ticketId,requestedAction.action);
-        if(proposal)responseText=proposal;
-      }catch(error){
-        this.log({turnId:turn.id,errorCode:(error as Error).name},
-          "Conversational proposal unavailable; keeping normal assistant reply");
+      if(validationIssues.length && displayedAssistant &&
+         responseText.trim()===displayedAssistant.trim()){
+        // Never repeat an identical question when the last input was rejected.
+        // The hint contains no submitted phone/email or other private values.
+        responseText=validationIssues[0]!.clarificationHint;
+      }
+      const continuation=/^(?:(?:yes|yes please|sure|ok|okay)[.! ]*|(?:please\\s+)?(?:go ahead|proceed|continue|confirm)(?:\\s+(?:with|the|my|that|it|please|quotation|quote|request|proposal))*[.! ]*)$/i.test(text.trim());
+      const shouldPrepare=requestedAction.action && (
+        requestedAction.explicit || continuation ||
+        (savedThisTurn && !text.includes("?"))
+      );
+      if(shouldPrepare){
+        try{
+          const proposal=await chatJourney.prepare(scope,turn.ticketId,requestedAction.action);
+          if(proposal)responseText=proposal;
+        }catch(error){
+          this.log({turnId:turn.id,errorCode:(error as Error).name},
+            "Conversational proposal unavailable; keeping natural assistant reply");
+        }
       }
       await this.queue.complete(turn,responseText,
         responseText===result.text?citations(result.sourceReferences):[],
