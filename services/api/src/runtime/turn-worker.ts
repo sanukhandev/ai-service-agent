@@ -321,7 +321,7 @@ export class TurnWorker {
         // The hint contains no submitted phone/email or other private values.
         responseText=validationIssues[0]!.clarificationHint;
       }
-      const continuation=/^(?:(?:yes|yes please|sure|ok|okay)[.! ]*|(?:please\\s+)?(?:go ahead|proceed|continue|confirm)(?:\\s+(?:with|the|my|that|it|please|quotation|quote|request|proposal))*[.! ]*)$/i.test(text.trim());
+      const continuation=/^(?:(?:yes|yes please|sure|ok|okay)[.! ]*|(?:please\s+)?(?:go ahead|proceed|continue|confirm)(?:\s+(?:with|the|my|that|it|please|quotation|quote|request|proposal))*[.! ]*)$/i.test(text.trim());
       const shouldPrepare=requestedAction.action && (
         requestedAction.explicit || continuation ||
         (savedThisTurn && !text.includes("?"))
