@@ -542,6 +542,14 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   // Emirates ID number. Never cache or serve it without ticket ownership.
   // Renewals originate only from a ticket-owner-scoped, already verified TEST contract.
   // No model tool can authorize a new quotation or commercial operation.
+  // n8n only maps a synthetic licence alias to an existing TEST contract.
+  // The Node operation independently verifies current caller ownership.
+  app.post("/api/v1/tickets/:ticketId/renewal/lookup",async request=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return renewals.lookupByLicence(scope,idParam(request),request.body);
+  });
+
   app.get<{Params:{ticketId:string;contractId:string}}>(
     "/api/v1/tickets/:ticketId/contracts/:contractId/renewal/preview",async request=>{
       const scope=await scopeFromCookie(db,request);
