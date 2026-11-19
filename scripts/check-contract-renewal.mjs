@@ -80,11 +80,11 @@ assert.ok(backend.includes('async lookupByLicence('));
 assert.ok(backend.includes('ANCFZ-TEST-SC-'));
 assert.ok(backend.includes('authorizedTicket(client,scope,ticketId,true)'));
 assert.ok(backend.includes('await this.source(client,scope,sourceTicketId,contractId)'));
-assert.ok(backend.includes('renewal.lookup.attempt'))
+assert.ok(backend.includes('renewal.lookup.attempt'));
 assert.match(backend,/to_jsonb\(\$5::integer\)/);
 assert.ok(backend.includes('termYears:renewalTermYears'));
 assert.ok(backend.includes('source.intent_key'));
-assert.ok(backend.includes('quotation_request'));;
+assert.ok(backend.includes('quotation_request'));
 const licenceUi=get("apps/web/components/chat-renewal-lookup.tsx");
 assert.match(get("apps/web/components/customer-chat.tsx"),/ChatRenewalLookup/);
 assert.ok(licenceUi.includes('result.sourceTicketId'));
