@@ -736,8 +736,8 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
                     <span className="size-2 rounded-full bg-zinc-800 animate-wave-2" />
                     <span className="size-2 rounded-full bg-zinc-800 animate-wave-3" />
                   </span>
-                  <span className="text-xs font-medium text-zinc-700">
-                    {isSending ? "Dispatching your message…" : "Sara is consulting ANCFZ regulations and preparing your answer…"}
+                  <span className="text-xs font-medium text-zinc-600">
+                    {isSending ? "Sending…" : "Sara is typing…"}
                   </span>
                 </div>
               </div>
@@ -747,7 +747,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       </section>
 
       {/* Modern Frosted Glass Composer Island Area */}
-      <footer className="relative shrink-0 border-t border-white/80 bg-white/70 backdrop-blur-xl px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5 shadow-[0_-4px_24px_rgba(15,23,42,0.03)] ring-1 ring-slate-900/5">
+      <footer className="relative shrink-0 border-t border-zinc-200/80 bg-white/70 backdrop-blur-xl px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5 shadow-[0_-4px_24px_rgba(0,0,0,0.03)] ring-1 ring-zinc-900/5">
         {/* Floating Jump to Latest Button */}
         {showLatest && (
           <button
@@ -758,10 +758,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               followLatest.current = true;
               setShowLatest(false);
             }}
-            className="absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/90 px-4 py-1.5 text-xs font-semibold text-slate-800 shadow-lg backdrop-blur-md transition-all hover:bg-white hover:shadow-xl active:scale-95 animate-fade-in"
+            className="absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-zinc-200/90 bg-white/90 px-4 py-1.5 text-xs font-semibold text-zinc-800 shadow-lg backdrop-blur-md transition-all hover:bg-white hover:shadow-xl active:scale-95 animate-fade-in"
           >
             <span>Latest messages</span>
-            <ArrowDownIcon className="size-3.5 text-slate-500" />
+            <ArrowDownIcon className="size-3.5 text-zinc-500" />
           </button>
         )}
 
