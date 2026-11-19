@@ -75,6 +75,15 @@ export class TicketMessageRepository {
     return this.write(scope, ticketId, "assistant", requestId, text, [...sourceReferences]);
   }
 
+  /** Trusted operation may record exact customer authorization within its transaction. */
+  async createCustomerMessageTx(
+    client: PoolClient, scope: TicketScope, ticketId: string, requestId: string, text: string,
+  ): Promise<{ message: MessageRecord; duplicated: boolean }> {
+    requireUuid(requestId, "requestId");
+    requireBounded(text, "message", 12_000);
+    return this.writeInTx(client, scope, ticketId, "customer", requestId, text, []);
+  }
+
   /** Write an assistant lifecycle notice in the SAME trusted, agent-scoped transaction
    * as the provider state transition. Both the notice and SSE event are atomic.
    * An existing requestId returns the prior message without emitting a duplicate.

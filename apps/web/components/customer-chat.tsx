@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ChatComposer } from "./chat-composer";
 import { ChatJourneyControls } from "./chat-journey-controls";
+import { ChatRenewalLookup } from "./chat-renewal-lookup";
 import { MessageBubble } from "./chat-message";
 import { pendingChatConsent } from "../lib/chat-consent";
 import {
@@ -687,13 +688,19 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {/* Secure ticket-owned attachments and OTP input live in the thread;
               no legacy Available Actions forms or non-chat dashboard. */}
           {ticket && loadState==="ready" && (
-            <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
-              revision={journeyRevision} conversationBusy={locked||isSending}
-              onTransactionStateChange={updateTransactionState}
-              onDocumentsUpdated={()=>{setOperationNotice(null);void refresh();}}
-              onContinuePurchase={()=>send(
-                "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
-              )} />
+            <>
+              <ChatRenewalLookup key={"renewal-"+ticket.id} ticketId={ticket.id}
+                conversationBusy={locked||isSending}
+                onRenewalCreated={newTicketId=>{rememberTicket(agentKey,newTicketId);restart();}} />
+              <ChatJourneyControls key={ticket.id} ticketId={ticket.id}
+                revision={journeyRevision} conversationBusy={locked||isSending}
+                onTransactionStateChange={updateTransactionState}
+                onRenewalCreated={newTicketId=>{rememberTicket(agentKey,newTicketId);restart();}}
+                onDocumentsUpdated={()=>{setOperationNotice(null);void refresh();}}
+                onContinuePurchase={()=>send(
+                  "I want to proceed with the sandbox purchase and test checkout for my verified quotation.",
+                )} />
+            </>
           )}
 
           {/* SSE and backend workflow progress belongs in the actual

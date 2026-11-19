@@ -147,10 +147,15 @@ export class TurnWorker {
           "Conversational approval rejected; no business action authorized");
       }
       if(approvalFailure){
-        await this.queue.completeLocal(turn,
-          "I couldn't validate that authorization ("+approvalFailure+
-          "). No request or payment was initiated. "+
-          "Please ask me to show the proposal again before approving.");
+        const purchaseApproval=isPurchasePaymentApproval(text);
+        await this.queue.completeLocal(turn,purchaseApproval
+          ? "I couldn't validate this purchase approval ("+approvalFailure+
+            "). Your existing quotation is unchanged. This message did not "+
+            "initiate a new payment. Ask me to show the current purchase "+
+            "proposal again before approving."
+          : "I couldn't validate this authorization ("+approvalFailure+
+            "). This message did not initiate a new Salesforce enquiry or "+
+            "quotation. Please request a freshly reviewed proposal.");
         return;
       }
       if(acceptedChatAction){

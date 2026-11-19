@@ -34,11 +34,16 @@ jobs:
           node --input-type=module -e '
             import fs from "node:fs";
             const p = JSON.parse(fs.readFileSync("infra/catalog/ancfz-test-2026.json", "utf8"));
-            const priced = p.offerings.filter(x => x.price);
-            if (p.intents.length !== 21 || p.offerings.length !== 97 || priced.length !== 55
+            const source = p.offerings.filter(x => !x.key.startsWith("renewal_"));
+            const priced = source.filter(x => x.price);
+            const demo = p.offerings.filter(x => x.key.startsWith("renewal_test_y"));
+            if (p.intents.length !== 21 || source.length !== 97 || priced.length !== 55
+               || p.offerings.length !== 100 || demo.length !== 3
                || priced.find(x => x.key === "visa_1_y1")?.price.amount !== 10800
-               || priced.find(x => x.key === "visa_10_y5")?.price.amount !== 200880) {
-              throw new Error("Catalog seed source data coverage mismatch");
+               || priced.find(x => x.key === "visa_10_y5")?.price.amount !== 200880
+               || demo.some((x,i)=>x.price?.amount!==(i+1)*999 ||
+                    !x.price?.conditions?.includes("SYNTHETIC TEST AMOUNT ONLY"))) {
+              throw new Error("Catalog original source coverage or synthetic renewal fixture mismatch");
             }
             console.log("Catalog JSON validated");
           '
@@ -75,9 +80,9 @@ jobs:
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
             "SELECT count(*) FROM intents i JOIN intent_catalog_versions v ON i.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 21
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
-            "SELECT count(*) FROM offerings o JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 97
+            "SELECT count(*) FROM offerings o JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 100
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
-            "SELECT count(*) FROM offering_price_revisions pr JOIN offerings o ON pr.offering_id=o.id JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 55
+            "SELECT count(*) FROM offering_price_revisions pr JOIN offerings o ON pr.offering_id=o.id JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND v.agent_id=(SELECT id FROM agents WHERE agent_key='ancfz')")" = 58
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
             "SELECT amount::integer FROM offering_price_revisions pr JOIN offerings o ON pr.offering_id=o.id JOIN offering_catalog_versions v ON o.catalog_version_id=v.id WHERE v.status='published' AND o.offering_key='visa_1_y1'")" = 10800
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
@@ -89,7 +94,7 @@ jobs:
           test "$(docker compose exec -T postgres psql -U postgres -d "$POSTGRES_DB" -Atc \
             "SELECT count(*) FROM agents a JOIN agent_versions v ON v.id=a.active_version_id WHERE a.agent_key='ancfz' AND jsonb_typeof(v.persona_config->'toolNames')='array' AND jsonb_array_length(v.persona_config->'toolNames')>=5")" = 1
 
-          echo "Published test seed PASS: 21 intents, 97 offerings, 55 prices, repeated run unchanged"
+          echo "Published test seed PASS: 21 intents, 97 source + 3 synthetic renewal offerings, 58 prices, repeated run unchanged"
       - name: Validate restricted runtime role can read published catalog under RLS
         run: |
           set -euo pipefail

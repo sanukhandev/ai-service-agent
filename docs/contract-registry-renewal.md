@@ -45,7 +45,100 @@ Renewal **must be a new commercial transaction linked to the original contract**
 5. The agreement is issued as revision `N+1` under the **same contract number**, with its own document ID/PDF and links to the new quote and invoice.
 6. n8n upserts the new agreement revision row by immutable contract ID. Renewal must not overwrite or delete the earlier PDF, quote, or invoice.
 
-The schema reserves `renewal_of_contract_id` and `agreement_revision` to link versions securely. **Renewal ticket creation, price re-quotation without another Salesforce lead, and reusing approved private documents across tickets are NOT yet wired.** Existing one-quotation-per-ticket and verified-lead preconditions currently prevent pretending this is a working end-to-end renewal API. Implement that business flow separately and test cross-ticket ownership, re-consent, expiry and version races before exposing it.
+The linked workflow is implemented on feature branch `feat/ancfz-contract-renewal-completion` with migration `020_contract_renewals.sql` and `ticket_contract_renewals`. It uses **existing private verified ANCFZ-SC agreements**, not arbitrary licence numbers. The earlier licence lookup PR #37 was closed unmerged; a source-of-truth mapping from issued licence number to contract is a separate integration and must not be fabricated.
+
+### Renewal operation contract
+
+- Enable `ANCFZ_RENEWAL_ENABLED=true` only in `APP_ENV=development`. Apply migration 020. Keep quotation dispatch, secure OTP, sandbox payment and invoice workers independently configured. There is no real licence issuance.
+- Publish an actual owner-approved, positive AED offering with key beginning `renewal_` **under the same intent as the previously purchased package**, in the current published offerings catalog. Without this configured price, preview returns unavailable and **no quote or payment is created**. New company setup prices are not renewal rates.
+- In Sara's secure chat, view the original verified service contract, select **Renew this agreement**, review the exact renewal-specific amount, and explicitly accept the disclosed scope. The browser calls `GET /api/v1/tickets/:ticketId/contracts/:contractId/renewal/preview` followed by `POST /api/v1/tickets/:ticketId/contracts/:contractId/renewal/start` with an idempotent `requestId`, exact key/price revision/amount/currency, and exact server-issued `consentText`.
+- Node verifies current contract ownership against the guest session, original verified TEST payment and invoice, stored PDF checksum, original verified Salesforce lead, and matched private passport/Emirates ID evidence. A second renewal cannot be pending for the same contract number; stale revisions fail closed.
+- Node creates a **new ticket** in the same owner session, records a new customer authorization, copies sourced business facts and private synthetic evidence into this new ticket, and records a completed *reuse* of the earlier independently verified Salesforce lead. It does **not POST a new lead**. The original bytes and PDF remain unchanged. The source ticket's pinned intent must still be published with quotation and purchase actions.
+- The new quotation uses the published `renewal_` offering and effective price snapshot, with exact amount/revision check. The browser transitions to the linked renewal ticket. From there the existing quotation OTP, purchase consent, synthetic payment OTP, independent payment GET and TEST invoice are reused. Payment-verification code creates an agreement with the **same** `contract_number`, incremented `agreement_revision` and `renewal_of_contract_id`.
+- The service-contract worker remains active for already-paid invoices even if new payment dispatch is disabled. It renders the next-version PDF after invoice verification, updates the renewal state to `completed` in the same transaction, and synchronizes non-PII references through the existing contract registry workflow.
+
+**Validation boundaries:** The offline code safety test is `node scripts/check-contract-renewal.mjs`; the isolated P3 Docker CI covers compilation, migration and RLS. Neither proves real n8n registration, live Foundry behavior, OCR acceptance, MockGateway payment or a complete end-to-end renewal. A live synthetic trial is required before enabling customer use. No renewal price or official renewal fulfilment is seeded automatically.
+
+## Synthetic TEST renewal pricing and n8n licence lookup (branch PR #68)
+
+The POC deliberately publishes three **arbitrary, simulated** renewal offerings
+under `company_formation`, the intent of a previously paid TEST agreement:
+
+| Offering | Period | Amount | Classification |
+|---|---|---|---|
+| `renewal_test_y1` | 1 year | AED 999.00 | **TEST ONLY** |
+| `renewal_test_y2` | 2 years | AED 1,998.00 | **TEST ONLY** |
+| `renewal_test_y3` | 3 years | AED 2,997.00 | **TEST ONLY** |
+
+These are **not approved ANCFZ rates, government fees, or claims about an
+actual licence**. The source catalog remains owner-published and immutable.
+The controlled test catalog's `seedKey`, `intentRevision`, and
+`offeringRevision` were incremented: changes are not applied until the owner
+deliberately runs `bash scripts/publish-ancfz-test-catalog.sh --publish-test`
+with the documented `ANCFZ_CATALOG_ENV=test` and required runtime settings.
+Do **not** seed through ordinary app boot.
+
+### Licence alias model
+
+A TEST agreement whose PostgreSQL contract number is
+`ANCFZ-SC-2026-000001` has the synthetic **lookup alias**
+`ANCFZ-TEST-SC-2026-000001`. This mapping is reversible and test-only.
+It is **not a government licence**. n8n provides a private, read-only lookup
+against its existing `ANCFZ_POC_CONTRACTS` projection (the registry already
+created by the contract worker), not a second source of ownership authority.
+No new licence IDs, records, real expiry statuses, or regulatory outcomes are
+fabricated. A contract must have completed verified payment, a verified PDF,
+matching private identity evidence and a successful registry synchronization
+before its alias can resolve.
+
+- n8n workflow: `infra/n8n/ancfz/08-test-licence-contract-lookup.json`,
+  `POST /webhook/ancfz/contract-licence-lookup`, existing Header Auth credential.
+  Data Table operation is **get**, never insert/update/upsert. The workflow is
+  inactive until explicitly installed and activated by the existing owner.
+- Browser in-chat panel: **Renew an existing ANCFZ TEST licence**.
+  `POST /api/v1/tickets/:ticketId/renewal/lookup` accepts only the synthetic
+  alias and calls n8n internally. Five attempts per owned ticket per hour.
+- The Node backend then verifies the returned contract, current revision,
+  previous payment/invoice/PDF, private evidence and source-ticket **ownership**
+  independently in PostgreSQL. A match in the n8n Data Table grants no
+  authorization by itself.
+- The customer must choose an exact TEST price and explicitly authorize
+  `/contracts/:contractId/renewal/start`. Only that operation may create
+  another quote ticket; no additional Salesforce lead POST or second original
+  invoice. Subsequent OTP, synthetic payment verification, new invoice and
+  revised TEST PDF follow the existing gates.
+
+### Explicit local installation
+
+1. Run migration 019/020, existing contract registry setup, and let its
+   `ANCFZ_POC_CONTRACTS` rows sync. Confirm the source contract's number is
+   present in the n8n Data Table. Preserve all prior PDFs, tickets, n8n volumes
+   and credentials.
+2. Review catalogue fixtures, then publish using the controlled command
+   `bash scripts/publish-ancfz-test-catalog.sh --publish-test`.
+3. Confirm the existing n8n owner token `N8N_API_KEY` is set **privately**;
+   run `node scripts/setup-n8n-test-licence-lookup.mjs --dry-run`,
+   then `--inspect`, then `--setup`. This is an idempotent import of an
+   **inactive** workflow; it does not reset n8n credentials.
+4. In the owner-authenticated n8n editor, verify the imported workflow uses the
+   existing `ANCFZ - Node to n8n Webhook Header` credential and
+   `ANCFZ_POC_CONTRACTS` table. **Activate it manually**.
+5. In local `.env`, set `APP_ENV=development`,
+   `ANCFZ_RENEWAL_ENABLED=true`, and existing private
+   `ANCFZ_N8N_WEBHOOK_SECRET` (at least 32 characters; matches the n8n
+   webhook's Header Auth credential). Recreate the Node API container after
+   changes. Keep `ANCFZ_QUOTE_DISPATCH_ENABLED` and related sandbox flags
+   independently configured. Default-off flags are intentional.
+6. In Sara's chat, input an actual **synced TEST alias** derived from a
+   previously paid contract visible to this same guest/account. Review the
+   explicitly synthetic price and proceed through fresh quote, OTP,
+   independent TEST payment GET, invoice and revision. Check older artefacts
+   remain unchanged.
+
+**What is not demonstrated by CI:** real n8n activation, PostgreSQL-to-n8n
+registry syncing, OCR, Salesforce, simulated payment provider and browser
+E2E. CI checks static workflow safety and compilation only. Releasing this
+without a live synthetic end-to-end trial is not certified.
 
 ## Read-only diagnostics for a missing contract
 

@@ -1,0 +1,161 @@
+{
+  "name": "ANCFZ | TEST Licence to Contract Lookup (LOCAL ONLY)",
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "saveDataSuccessExecution": "none",
+    "saveDataErrorExecution": "none",
+    "saveManualExecutions": false
+  },
+  "nodes": [
+    {
+      "id": "license-lookup-hook",
+      "name": "Receive TEST Licence Lookup",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        220,
+        300
+      ],
+      "webhookId": "d5e68830-a69a-4fab-b88e-0c07c04a8fb9",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ancfz/contract-licence-lookup",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "feb4e5dc-ae64-4ca8-bf87-dd1fae009fa1",
+          "name": "ANCFZ - Node to n8n Webhook Header"
+        }
+      }
+    },
+    {
+      "id": "license-lookup-validate",
+      "name": "Validate Synthetic Licence",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        490,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "// Deliberately synthetic alias: ANCFZ-TEST-SC-2026-000001\n// always maps to database-issued ANCFZ-SC-2026-000001, never a real licence.\nconst b=$input.first().json.body??{};\nif(b.agentKey!=='ancfz'||typeof b.ticketId!=='string'||\n   !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(b.ticketId)||\n   typeof b.licenceNumber!=='string'||\n   !/^ANCFZ-TEST-SC-[0-9]{4}-[0-9]{6}$/.test(b.licenceNumber))\n  throw Error('Invalid synthetic licence alias');\nreturn [{json:{contractNumber:b.licenceNumber.replace('ANCFZ-TEST-SC-','ANCFZ-SC-')}}];"
+      }
+    },
+    {
+      "id": "license-lookup-get",
+      "name": "Read Registered Contract",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        750,
+        300
+      ],
+      "alwaysOutputData": true,
+      "parameters": {
+        "resource": "row",
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "mode": "name",
+          "value": "ANCFZ_POC_CONTRACTS"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "contractNumber",
+              "condition": "eq",
+              "keyValue": "={{ $json.contractNumber }}"
+            }
+          ]
+        },
+        "returnAll": true,
+        "options": {}
+      }
+    },
+    {
+      "id": "license-lookup-sanitize",
+      "name": "Return Contract Mapping",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1010,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "jsCode": "const contractNumber=$('Validate Synthetic Licence').first().json.contractNumber;\nconst rows=$input.all().map(x=>x.json).filter(r=>r&&r.contractNumber===contractNumber);\nconst validId=x=>typeof x==='string'&&/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(x);\nlet result={status:'not_found'};\nif(rows.length>1000)result={status:'review'};\nelse if(rows.length){\n  const verified=rows.filter(r=>r.status==='verified_completed'&&validId(r.contractId)&&validId(r.ticketId)&&Number.isInteger(Number(r.revision))&&Number(r.revision)>=1);\n  if(verified.length!==rows.length)result={status:'review'};\n  else {\n    verified.sort((a,b)=>Number(b.revision)-Number(a.revision));\n    const latest=verified[0];\n    if(verified.length>1&&Number(verified[1].revision)===Number(latest.revision))result={status:'review'};\n    else result={status:'found',contractNumber,contractId:latest.contractId,ticketId:latest.ticketId,revision:Number(latest.revision)};\n  }\n}\nreturn [{json:result}];"
+      }
+    },
+    {
+      "id": "license-lookup-respond",
+      "name": "Respond With Test Reference",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        1280,
+        300
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "responseCode": 200
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Receive TEST Licence Lookup": {
+      "main": [
+        [
+          {
+            "node": "Validate Synthetic Licence",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Validate Synthetic Licence": {
+      "main": [
+        [
+          {
+            "node": "Read Registered Contract",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Read Registered Contract": {
+      "main": [
+        [
+          {
+            "node": "Return Contract Mapping",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Return Contract Mapping": {
+      "main": [
+        [
+          {
+            "node": "Respond With Test Reference",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "tags": []
+}

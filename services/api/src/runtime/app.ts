@@ -12,6 +12,7 @@ import { PurchaseOperations } from "./purchase-operations.js";
 import { IntentActionOperations } from "./intent-action-operations.js";
 import { ChatJourney } from "./chat-journey.js";
 import { QuotationConfirmationOperations } from "./quotation-confirmation.js";
+import {ContractRenewalOperations} from "./contract-renewal-operations.js";
 
 function cleanSourceTitle(rawTitle?: string, sourceId?: string): string {
   const combined = `${rawTitle ?? ""} ${sourceId ?? ""}`.toLowerCase();
@@ -140,6 +141,7 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
   const intentActions=new IntentActionOperations(db);
   const chatJourney=new ChatJourney(db);
   const quoteConfirmation=new QuotationConfirmationOperations(db);
+  const renewals=new ContractRenewalOperations(db);
 
   app.setErrorHandler((error,request,reply)=>{
     if(error instanceof PersistenceError) {
@@ -538,6 +540,29 @@ export function createApi(db:PersistenceDatabase,queue:TurnQueue) {
 
   // Contract includes complete private identity copies and the OCR-derived
   // Emirates ID number. Never cache or serve it without ticket ownership.
+  // Renewals originate only from a ticket-owner-scoped, already verified TEST contract.
+  // No model tool can authorize a new quotation or commercial operation.
+  // n8n only maps a synthetic licence alias to an existing TEST contract.
+  // The Node operation independently verifies current caller ownership.
+  app.post("/api/v1/tickets/:ticketId/renewal/lookup",async request=>{
+    rejectCrossSite(request);
+    const scope=await scopeFromCookie(db,request);
+    return renewals.lookupByLicence(scope,idParam(request),request.body);
+  });
+
+  app.get<{Params:{ticketId:string;contractId:string}}>(
+    "/api/v1/tickets/:ticketId/contracts/:contractId/renewal/preview",async request=>{
+      const scope=await scopeFromCookie(db,request);
+      return renewals.preview(scope,idParam(request),request.params.contractId);
+    });
+  app.post<{Params:{ticketId:string;contractId:string}}>(
+    "/api/v1/tickets/:ticketId/contracts/:contractId/renewal/start",async(request,reply)=>{
+      rejectCrossSite(request);
+      const scope=await scopeFromCookie(db,request);
+      return reply.code(201).send(await renewals.start(scope,idParam(request),
+        request.params.contractId,request.body));
+    });
+
   app.get<{Params:{ticketId:string;contractId:string}}>(
     "/api/v1/tickets/:ticketId/contracts/:contractId/pdf",async(request,reply)=>{
       const scope=await scopeFromCookie(db,request);

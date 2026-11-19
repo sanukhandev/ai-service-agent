@@ -9,7 +9,7 @@ import {PersistenceDatabase} from "../database/pool.js";
 import {appendEventTx} from "../repositories/events.js";
 import {TicketMessageRepository} from "../repositories/messages.js";
 import {workerTicketScope} from "../repositories/types.js";
-import {paymentEnabled} from "./payment-evidence.js";
+import {renewalLinkTx} from "./contract-renewal-operations.js";
 import {PURCHASE_CONSENT} from "./purchase-operations.js";
 import {allowUnnamedSyntheticPassport} from "./identity-extractor.js";
 import {extractInvoiceEmiratesId,nameKey} from "./identity-extractor.js";
@@ -168,6 +168,10 @@ async function annexPdf(file:IdentityFile):Promise<Buffer>{
     "Annex B — Emirates ID copy")+"</h1><img alt=\"Private identity document\" src=\""+src+"\"/>"));
 }
 
+/** Paid-document rendering must remain available when creating new payments is disabled. */
+export function contractPostPaymentEnabled(env:NodeJS.ProcessEnv=process.env):boolean{
+  return env.APP_ENV==="development" && env.ANCFZ_CONTRACT_RENDER_ENABLED!=="false";
+}
 export class ServiceContractWorker{
   private timer:ReturnType<typeof setInterval>|undefined;
   private busy=false;
@@ -175,7 +179,10 @@ export class ServiceContractWorker{
   constructor(private readonly db:PersistenceDatabase,
     private readonly log:(data:Record<string,unknown>,message:string)=>void){}
   start():void{
-    if(!paymentEnabled())return;
+    if(!contractPostPaymentEnabled()){
+      this.log({enabled:false},"ANCFZ postpaid contract rendering disabled");return;
+    }
+    this.log({enabled:true},"ANCFZ postpaid contract rendering enabled");
     this.timer=setInterval(()=>{void this.tick();},4000);
     this.timer.unref();void this.tick();
   }
@@ -208,17 +215,54 @@ export class ServiceContractWorker{
              SELECT 1 FROM ticket_service_contracts c WHERE c.agent_id=p.agent_id
                AND c.ticket_id=p.ticket_id AND c.payment_id=p.id
            )
+           -- Do not let an ineligible paid renewal starve recovery of every
+           -- other paid TEST agreement. Its source requires manual review.
+           AND NOT EXISTS (
+             SELECT 1 FROM ticket_contract_renewals r
+             WHERE r.agent_id=p.agent_id AND r.renewal_ticket_id=p.ticket_id
+               AND (
+                 r.status<>'requested' OR NOT EXISTS (
+                   SELECT 1 FROM ticket_service_contracts src
+                   WHERE src.agent_id=r.agent_id AND src.id=r.source_contract_id
+                     AND src.state='verified_completed'
+                     AND src.sha256=r.source_document_sha256
+                     AND src.contract_number=r.contract_number
+                     AND src.agreement_revision=r.source_revision
+                 ) OR EXISTS (
+                   SELECT 1 FROM ticket_service_contracts later
+                   WHERE later.agent_id=r.agent_id
+                     AND later.contract_number=r.contract_number
+                     AND later.agreement_revision>r.source_revision
+                 )
+               )
+           )
          ORDER BY p.created_at LIMIT 1`,[agentId,PURCHASE_CONSENT]);
       const x=r.rows[0];if(!x)return;
       const id=randomUUID();
-      const inserted=await client.query(
-        `INSERT INTO ticket_service_contracts
-           (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
-         VALUES($1,$2,$3,$4,$5,$6)
-         ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING
-         RETURNING id`,
-        [id,agentId,x.ticket_id,x.quotation_id,x.payment_id,
-          "ANCFZ-TEST-SC-"+id]);
+      const renewal=await renewalLinkTx(client,agentId,x.ticket_id);
+      const renewalRecord=await client.query(
+        "SELECT 1 FROM ticket_contract_renewals WHERE agent_id=$1 AND renewal_ticket_id=$2",
+        [agentId,x.ticket_id]);
+      if(renewalRecord.rows.length && !renewal) {
+        this.log({ticketId:x.ticket_id},"Paid renewal source requires contract review");
+        return;
+      }
+      const inserted=renewal
+        ?await client.query(
+          `INSERT INTO ticket_service_contracts
+            (id,agent_id,ticket_id,quotation_id,payment_id,document_number,
+             contract_number,agreement_revision,renewal_of_contract_id)
+           VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+           ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING RETURNING id`,
+          [id,agentId,x.ticket_id,x.quotation_id,x.payment_id,
+            "ANCFZ-TEST-SC-"+id,renewal.contract_number,
+            renewal.source_revision+1,renewal.source_contract_id])
+        :await client.query(
+          `INSERT INTO ticket_service_contracts
+             (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
+           VALUES($1,$2,$3,$4,$5,$6)
+           ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING RETURNING id`,
+          [id,agentId,x.ticket_id,x.quotation_id,x.payment_id,"ANCFZ-TEST-SC-"+id]);
       if(inserted.rows.length){
         await appendEventTx(client,agentId,x.ticket_id,
           "contract.queued_recovered",{contractId:id,paymentId:x.payment_id,testOnly:true});
@@ -464,7 +508,7 @@ export class ServiceContractWorker{
     });
   }
   private async tick():Promise<void>{
-    if(this.stopped||this.busy||!paymentEnabled())return;
+    if(this.stopped||this.busy||!contractPostPaymentEnabled())return;
     this.busy=true;
     try{
       const agentId=await this.agentId();if(!agentId)return;
@@ -500,6 +544,18 @@ export class ServiceContractWorker{
           "failure_code=$6,updated_at=now() WHERE agent_id=$1 AND id=$2",
           [agentId,claim.id,next,good?bytes:null,good?sha(bytes!):null,
             good?null:failureCode??"payment_not_verified"]);
+        if(good){
+          // This transition is atomic with the verified PDF. An invoice or a
+          // payment alone must never mark the renewal agreement complete.
+          await client.query(
+            "UPDATE ticket_contract_renewals SET status='completed',completed_at=now() "+
+            "WHERE agent_id=$1 AND renewal_ticket_id=$2 AND status='requested' "+
+            "AND EXISTS (SELECT 1 FROM ticket_service_contracts c WHERE c.agent_id=$1 "+
+            "AND c.id=$3 AND c.renewal_of_contract_id=source_contract_id "+
+            "AND c.contract_number=ticket_contract_renewals.contract_number "+
+            "AND c.agreement_revision=ticket_contract_renewals.source_revision+1)",
+            [agentId,claim.ticketId,claim.id]);
+        }
         await appendEventTx(client,agentId,claim.ticketId,
           good?"contract.generated":next==="queued"?"contract.retry_scheduled":"contract.needs_review",
           {contractId:claim.id,contractNumber:claim.contractNumber,
