@@ -111,6 +111,82 @@ export class ContractRenewalOperations {
       amount:x.amount,currency:x.currency.trim(),priceRevision:x.revision}));
   }
 
+  /**
+   * A synthetic licence alias is a human-facing key for the already registered
+   * ANCFZ-SC TEST contract. n8n does a read-only Data Table lookup; PostgreSQL
+   * independently proves ownership, original payment, document integrity,
+   * latest revision and renewal eligibility. Never trust n8n as authorizer.
+   */
+  async lookupByLicence(scope:TicketScope,ticketId:string,raw:unknown):Promise<{
+    licenceNumber:string;sourceTicketId:string;sourceContractId:string;
+    preview:RenewalPreview;
+  }>{
+    requireUuid(ticketId,"ticketId");
+    if(!renewalEnabled()||(process.env.ANCFZ_N8N_WEBHOOK_SECRET??"").length<32)
+      throw new PersistenceError("NOT_CONFIGURED","TEST renewal lookup is disabled");
+    const input=requestObject(raw);
+    if(Object.keys(input).length!==1||typeof input.licenceNumber!=="string")
+      throw new PersistenceError("INVALID_INPUT","Enter the synthetic licence reference");
+    const licenceNumber=input.licenceNumber.trim().toUpperCase();
+    if(!/^ANCFZ-TEST-SC-[0-9]{4}-[0-9]{6}$/.test(licenceNumber))
+      throw new PersistenceError("INVALID_INPUT","Expected ANCFZ-TEST-SC-YYYY-NNNNNN");
+    // The current conversation must be owned before n8n is contacted.
+    // Only five lookups per ticket per rolling hour; never record the code
+    // or private contract identity in the event stream.
+    await this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      const count=await client.query<{n:string}>(
+        "SELECT count(*)::text AS n FROM ticket_events "+
+        "WHERE agent_id=$1 AND ticket_id=$2 "+
+        "AND event_type='renewal.lookup.attempt' "+
+        "AND created_at>now()-interval '1 hour'",[scope.agentId,ticketId]);
+      if(Number(count.rows[0]?.n??0)>=5)
+        throw new PersistenceError("CONFLICT","Too many renewal lookups; contact support");
+      await appendEventTx(client,scope.agentId,ticketId,"renewal.lookup.attempt",
+        {testOnly:true});
+    });
+    const controller=new AbortController();
+    const timer=setTimeout(()=>controller.abort(),12000);
+    let responseBody:unknown;
+    try{
+      const reply=await fetch("http://n8n:5678/webhook/ancfz/contract-licence-lookup",{
+        method:"POST",redirect:"error",signal:controller.signal,
+        headers:{"Content-Type":"application/json",
+          "X-ANCFZ-Workflow-Key":process.env.ANCFZ_N8N_WEBHOOK_SECRET!},
+        body:JSON.stringify({agentKey:"ancfz",ticketId,licenceNumber}),
+      });
+      if(!reply.ok)throw Error("n8n lookup unavailable");
+      const text=await reply.text();
+      if(text.length>2000)throw Error("n8n response too large");
+      responseBody=JSON.parse(text);
+    }catch{
+      throw new PersistenceError("NOT_CONFIGURED","TEST licence lookup is temporarily unavailable");
+    }finally{clearTimeout(timer);}
+    if(!responseBody||typeof responseBody!=="object"||Array.isArray(responseBody))
+      throw new PersistenceError("NOT_CONFIGURED","Invalid TEST lookup response");
+    const found=responseBody as Record<string,unknown>;
+    if(found.status==="not_found"||found.status==="review")
+      throw new PersistenceError("NOT_FOUND","TEST licence not found or requires review");
+    const contractNumber=licenceNumber.replace("ANCFZ-TEST-SC-","ANCFZ-SC-");
+    if(found.status!=="found"||found.contractNumber!==contractNumber||
+      typeof found.contractId!=="string"||typeof found.ticketId!=="string"||
+      !Number.isInteger(found.revision)||Number(found.revision)<1||
+      Number(found.revision)>1000)
+      throw new PersistenceError("NOT_CONFIGURED","Invalid TEST contract registry response");
+    const contractId=requireUuid(found.contractId,"contractId");
+    const sourceTicketId=requireUuid(found.ticketId,"sourceTicketId");
+    // All n8n values remain untrusted until the source contract and its
+    // originating ticket are verified under the caller's guest/account scope.
+    await this.db.withAgent(scope.agentId,async client=>{
+      const src=await this.source(client,scope,sourceTicketId,contractId);
+      if(src.contract_number!==contractNumber||
+         src.agreement_revision!==found.revision)
+        throw new PersistenceError("NOT_FOUND","Verified TEST contract not available");
+    });
+    const preview=await this.preview(scope,sourceTicketId,contractId);
+    return {licenceNumber,sourceTicketId,sourceContractId:contractId,preview};
+  }
+
   async preview(scope:TicketScope,sourceTicketId:string,contractId:string):Promise<RenewalPreview>{
     requireUuid(sourceTicketId,"sourceTicketId");requireUuid(contractId,"contractId");
     return this.db.withAgent(scope.agentId,async client=>{
