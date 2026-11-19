@@ -140,6 +140,167 @@ async function pricedOptions(
      ) p ON true
      WHERE t.agent_id=$1 AND t.id=$2
        AND 'generate_quote'=ANY(i.allowed_actions)
+       AND (
+         (o.offering_key ~ '^renewal_[a-z0-9_]+       AND ($3::text IS NULL OR o.offering_key=$3)
+     ORDER BY o.offering_key`,
+    [agentId,ticketId,key??null],
+  );
+  return result.rows;
+}
+
+export class QuotationOperations {
+  constructor(private readonly db:PersistenceDatabase) {}
+
+  async options(scope:TicketScope,ticketId:string):Promise<{
+    enabled:boolean;leadVerified:boolean;options:QuoteOption[];
+  }> {
+    requireUuid(ticketId,"ticketId");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const enabled=quoteDispatchEnabled();
+      if(!enabled)return {enabled:false,leadVerified:false,options:[]};
+      try {
+        await requireEligibleTicket(client,scope.agentId,ticketId);
+      }catch(error) {
+        if(error instanceof PersistenceError&&error.code==="CONFLICT")
+          return {enabled:true,leadVerified:false,options:[]};
+        throw error;
+      }
+      const rows=await pricedOptions(client,scope.agentId,ticketId);
+      return {enabled:true,leadVerified:true,
+        options:rows.map(r=>({
+          offeringKey:r.offering_key,label:r.label,
+          currency:r.currency.trim(),amount:r.amount,
+          priceRevision:r.revision,conditions:r.conditions,
+        })),
+      };
+    });
+  }
+
+  async get(scope:TicketScope,ticketId:string):Promise<QuoteView|null> {
+    requireUuid(ticketId,"ticketId");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const r=await client.query<QuoteRow>(quoteSelect,[scope.agentId,ticketId]);
+      return r.rows[0]?toView(r.rows[0]):null;
+    });
+  }
+
+  async submit(scope:TicketScope,ticketId:string,raw:unknown,
+    expected?:{amount:string;currency:string;priceRevision:number}):Promise<{quotation:QuoteView;duplicated:boolean}> {
+    requireUuid(ticketId,"ticketId");
+    const input=parseQuoteRequest(raw);
+    if(process.env.APP_ENV==="production"&&!process.env.PUBLIC_BASE_URL?.startsWith("https://"))
+      throw new PersistenceError("NOT_CONFIGURED","HTTPS required for customer quotation requests");
+    if(!quoteDispatchEnabled())
+      throw new PersistenceError("NOT_CONFIGURED","ANCFZ quotation rendering is not enabled");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId,true);
+      const existing=await client.query<QuoteRow>(quoteSelect,[scope.agentId,ticketId]);
+      if(existing.rows[0]) {
+        const stored=existing.rows[0];
+        const name=await client.query<{customer_name:string}>(
+          "SELECT customer_name FROM ticket_quotations WHERE agent_id=$1 AND ticket_id=$2",
+          [scope.agentId,ticketId],
+        );
+        if(stored.offering_key!==input.offeringKey||
+           name.rows[0]?.customer_name!==input.customerName)
+          throw new PersistenceError("CONFLICT","Quotation already exists; changing the package needs a new authorization");
+        return {quotation:toView(stored),duplicated:true};
+      }
+      await assertCatalogActionRequirementsTx(client,scope.agentId,ticketId,"generate_quote");
+      const leadId=await requireEligibleTicket(client,scope.agentId,ticketId);
+      const options=await pricedOptions(client,scope.agentId,ticketId,input.offeringKey);
+      const chosen=options[0];
+      // The consented price snapshot must still match inside this same
+      // transaction. A between-calls price revision must not change the quote.
+      if(expected && (!chosen || chosen.revision!==expected.priceRevision ||
+          chosen.amount!==expected.amount || chosen.currency.trim()!==expected.currency))
+        throw new PersistenceError("CONFLICT","Quoted price changed after customer authorization");
+      if(!chosen)throw new PersistenceError("CONFLICT","Selected offering has no effective published price");
+      const amount=Number(chosen.amount);
+      if(!Number.isFinite(amount)||amount<=0||
+         !/^\d{1,12}\.\d{2}$/.test(chosen.amount))
+        throw new PersistenceError("CONFLICT","Invalid authoritative price");
+      const quotationId=randomUUID();
+      const documentNumber="ANCFZ-TEST-Q-"+quotationId;
+      // Embed a durable scope snapshot in the authorized outbox. The PDF must
+      // never reinterpret later mutable facts or a newly published catalog.
+      const proposal=quoteDetails(chosen.description,
+        await quoteRequirementsTx(client,scope.agentId,ticketId),chosen.conditions);
+      const payload={
+        agentKey:"ancfz",ticketId,documentType:"quotation" as const,
+        documentNumber,customerName:input.customerName,
+        currency:chosen.currency.trim(),
+        lines:[{label:chosen.label,amount}],total:amount,proposal,
+      };
+      const outbox=await client.query<{id:string}>(
+        "INSERT INTO event_outbox(agent_id,ticket_id,event_type,payload,idempotency_key) VALUES($1,$2,'ancfz_render_quote',$3::jsonb,$4) RETURNING id",
+        [scope.agentId,ticketId,JSON.stringify(payload),"ancfz-quote:"+input.requestId],
+      );
+      const outboxId=outbox.rows[0]?.id;
+      if(!outboxId)throw new PersistenceError("DATABASE_ERROR","Quotation queue unavailable");
+      const digest=createHash("sha256").update(JSON.stringify({
+        quotationId,leadId,priceRevision:chosen.price_id,price:chosen.amount,
+        currency:chosen.currency,customerName:input.customerName,
+      })).digest("hex");
+      const operation=await client.query<{id:string}>(
+        "INSERT INTO ticket_operations(agent_id,ticket_id,outbox_id,operation_key,payload_digest) VALUES($1,$2,$3,'ancfz_render_quote',$4) RETURNING id",
+        [scope.agentId,ticketId,outboxId,digest],
+      );
+      const operationId=operation.rows[0]?.id;
+      if(!operationId)throw new PersistenceError("DATABASE_ERROR","Quotation operation unavailable");
+      await client.query(
+        `INSERT INTO ticket_quotations(
+           id,agent_id,ticket_id,operation_id,offering_id,price_revision_id,
+           price_revision,offering_key,offering_label,customer_name,
+           salesforce_lead_id,document_number,amount,currency,conditions
+         ) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`,
+        [quotationId,scope.agentId,ticketId,operationId,chosen.offering_id,
+          chosen.price_id,chosen.revision,chosen.offering_key,chosen.label,
+          input.customerName,leadId,documentNumber,chosen.amount,
+          chosen.currency.trim(),chosen.conditions],
+      );
+      await appendEventTx(client,scope.agentId,ticketId,"operation.queued",{
+        operationId,quotationId,operationType:"ancfz_render_quote",
+        documentNumber,
+      });
+      const fresh=await client.query<QuoteRow>(quoteSelect,[scope.agentId,ticketId]);
+      if(!fresh.rows[0])throw new PersistenceError("DATABASE_ERROR","Quotation not persisted");
+      return {quotation:toView(fresh.rows[0]),duplicated:false};
+    });
+  }
+
+  async pdf(scope:TicketScope,ticketId:string,quotationId:string):Promise<{
+    bytes:Buffer;documentNumber:string;sha256:string;
+  }> {
+    requireUuid(ticketId,"ticketId");
+    requireUuid(quotationId,"quotationId");
+    return this.db.withAgent(scope.agentId,async client=>{
+      await authorizedTicket(client,scope,ticketId);
+      const found=await client.query<{bytes:Buffer;document_number:string;sha256:string}>(
+        `SELECT d.bytes,q.document_number,d.sha256 FROM ticket_quotation_pdfs d
+         JOIN ticket_quotations q ON q.agent_id=d.agent_id AND q.ticket_id=d.ticket_id
+           AND q.id=d.quotation_id
+         JOIN ticket_operations op ON op.agent_id=q.agent_id AND op.ticket_id=q.ticket_id
+           AND op.id=q.operation_id
+         WHERE d.agent_id=$1 AND d.ticket_id=$2 AND d.quotation_id=$3
+           AND op.state='verified_completed'`,
+        [scope.agentId,ticketId,quotationId],
+      );
+      const doc=found.rows[0];
+      if(!doc)throw new PersistenceError("NOT_FOUND","Quotation PDF unavailable");
+      return {bytes:doc.bytes,documentNumber:doc.document_number,sha256:doc.sha256};
+    });
+  }
+}
+
+          AND EXISTS(SELECT 1 FROM ticket_contract_renewals r WHERE r.agent_id=t.agent_id
+            AND r.renewal_ticket_id=t.id AND r.status='requested'))
+         OR (o.offering_key !~ '^renewal_'
+          AND NOT EXISTS(SELECT 1 FROM ticket_contract_renewals r WHERE r.agent_id=t.agent_id
+            AND r.renewal_ticket_id=t.id))
+       )
        AND p.amount>0
        AND ($3::text IS NULL OR o.offering_key=$3)
      ORDER BY o.offering_key`,
