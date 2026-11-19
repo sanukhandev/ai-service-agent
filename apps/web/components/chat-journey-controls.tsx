@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
-import { AlertCircleIcon, CheckIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, SparklesIcon } from "./icons";
+import { AlertCircleIcon, CheckIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, ShieldCheckIcon, SparklesIcon } from "./icons";
 
 /** Secure ticket-owned inputs in the chat transcript, not in the message
  * composer. Identity files and OTP codes never reach Foundry or chat logs. */
@@ -430,24 +430,24 @@ export function ChatJourneyControls({
       <button
         type="button"
         onClick={() => setModalOpen(true)}
-        className="group flex w-full max-w-xl items-center justify-between gap-3.5 rounded-2xl border border-white/80 bg-white/75 p-4 text-left shadow-[0_4px_20px_rgba(15,23,42,0.03)] backdrop-blur-xl ring-1 ring-slate-900/5 transition-all hover:bg-white/95 hover:border-amber-200/80 hover:shadow-md active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-slate-800"
+        className="group flex w-full max-w-xl items-center justify-between gap-3.5 rounded-2xl border border-zinc-200/90 bg-white/90 p-4 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)] backdrop-blur-xl ring-1 ring-zinc-900/5 transition-all hover:bg-white hover:border-zinc-300 hover:shadow-md active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-zinc-800"
       >
         <div className="flex items-center gap-3.5 min-w-0">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 text-amber-300 shadow-xs ring-1 ring-white/20">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-xs">
             <SparklesIcon className="size-5" />
           </div>
           <div className="min-w-0 flex-1">
-            <strong className="block text-sm font-semibold text-slate-900 group-hover:text-amber-950 transition-colors">
+            <strong className="block text-sm font-semibold text-zinc-900 transition-colors">
               Secure Transaction Hub
             </strong>
-            <span className="mt-0.5 block truncate text-xs text-slate-500">
+            <span className="mt-0.5 block truncate text-xs text-zinc-500">
               {quoteOtpConfirmed
                 ? "Quotation confirmed · Synthetic documents & checkout active"
                 : "Review verified quote & confirm via private OTP challenge"}
             </span>
           </div>
         </div>
-        <span className="shrink-0 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs group-hover:bg-slate-800 transition-colors">
+        <span className="shrink-0 rounded-xl bg-zinc-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs group-hover:bg-zinc-800 transition-colors">
           {modalOpen ? "Viewing" : "Open Hub"}
         </span>
       </button>
@@ -463,20 +463,20 @@ export function ChatJourneyControls({
             type="button"
             aria-label="Close secure transaction overlay"
             onClick={() => setModalOpen(false)}
-            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md animate-fade-in"
+            className="absolute inset-0 bg-zinc-950/60 backdrop-blur-md animate-fade-in"
           />
-          <div className="relative z-10 max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/80 bg-white/95 p-5 text-sm shadow-2xl backdrop-blur-2xl ring-1 ring-slate-900/10 sm:p-7 animate-modal-scale">
+          <div className="relative z-10 max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-zinc-200/90 bg-white p-5 text-sm shadow-2xl backdrop-blur-2xl ring-1 ring-zinc-900/10 sm:p-7 animate-modal-scale">
             {/* Header */}
-            <div className="mb-5 flex items-center justify-between gap-4 border-b border-slate-200/70 pb-4">
-              <div className="flex items-center gap-2.5">
-                <div className="flex size-8 items-center justify-center rounded-lg bg-slate-900 text-amber-300">
+            <div className="mb-5 flex items-center justify-between gap-4 border-b border-zinc-200 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="flex size-8.5 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-xs">
                   <SparklesIcon className="size-4.5" />
                 </div>
                 <div>
-                  <h2 id="secure-transaction-title" className="text-base font-bold text-slate-900">
-                    Sara · Secure Transaction Hub
+                  <h2 id="secure-transaction-title" className="text-base font-bold text-zinc-900 tracking-tight">
+                    Sara · Transaction & Compliance Hub
                   </h2>
-                  <p className="text-xs text-slate-500">Official ANCFZ Regulatory & Payment Pipeline</p>
+                  <p className="text-xs text-zinc-500">Official ANCFZ Regulatory & Payment Pipeline</p>
                 </div>
               </div>
               <button
@@ -484,56 +484,63 @@ export function ChatJourneyControls({
                 onClick={() => setModalOpen(false)}
                 autoFocus
                 aria-label="Close secure transaction"
-                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-all hover:bg-slate-100 hover:text-slate-950 active:scale-95"
+                className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs transition-all hover:bg-zinc-100 hover:text-zinc-950 active:scale-95"
               >
                 Close
               </button>
             </div>
 
             {/* Quotation summary card */}
-            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50/70 via-amber-50/40 to-white p-4 shadow-2xs">
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/80 p-4 shadow-2xs">
               <div>
-                <span className="text-[0.7rem] font-semibold tracking-wider uppercase text-amber-800">
-                  Verified Quotation
+                <span className="text-[0.68rem] font-semibold tracking-wider uppercase text-zinc-500">
+                  Verified Quotation Total
                 </span>
-                <p className="text-base font-bold text-slate-900">
+                <p className="text-lg font-bold text-zinc-900">
                   {quote.currency} {quote.amount}
                 </p>
               </div>
-              <a
-                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800"
-                href={root + "/quotations/" + encodeURIComponent(quote.id) + "/pdf"}
-              >
-                <DownloadIcon className="size-3.5 text-amber-300" />
-                <span>Download {quote.documentNumber} PDF</span>
-              </a>
+              <div className="flex items-center gap-2">
+                <span className="rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-mono font-medium text-zinc-700 shadow-2xs">
+                  Ref: {quote.documentNumber}
+                </span>
+                <span className="flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-2.5 py-1 text-xs font-semibold text-zinc-900 shadow-2xs">
+                  <CheckIcon className="size-3.5 text-zinc-700" />
+                  <span>Verified</span>
+                </span>
+              </div>
             </div>
 
             {/* Quotation confirmation / OTP challenge */}
             {!quoteOtpConfirmed && (
-              <div className="mt-5 space-y-3 rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4.5 shadow-2xs">
-                <h3 className="text-sm font-bold text-slate-900">Confirm this quotation</h3>
-                <p className="text-xs leading-relaxed text-slate-600">
+              <div className="mt-5 space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-zinc-900">Confirm this quotation</h3>
+                  <span className="rounded-full border border-zinc-300 bg-white px-2.5 py-0.5 text-[0.68rem] font-semibold text-zinc-700">
+                    Step 1 of 3
+                  </span>
+                </div>
+                <p className="text-xs leading-relaxed text-zinc-600">
                   Confirm the contact email already provided in our conversation.
                   This sandbox OTP is stored in the private test table; no real email is sent.
                   Identity documents stay locked until the code is verified.
                 </p>
                 {data?.quoteConfirmation?.contactEmail ? (
-                  <div className="rounded-xl border border-amber-200/60 bg-white/80 px-3.5 py-2">
-                    <span className="text-[0.68rem] font-semibold uppercase text-slate-400">Authorized Contact</span>
-                    <p className="break-all text-sm font-semibold text-slate-900">
+                  <div className="rounded-xl border border-zinc-200 bg-white px-3.5 py-2">
+                    <span className="text-[0.68rem] font-semibold uppercase text-zinc-400">Authorized Contact</span>
+                    <p className="break-all text-sm font-semibold text-zinc-900">
                       {data.quoteConfirmation.contactEmail}
                     </p>
                   </div>
                 ) : (
-                  <p role="alert" className="text-xs font-medium text-amber-800">
+                  <p role="alert" className="text-xs font-medium text-zinc-600">
                     Sara needs to confirm the contact email from your conversation before requesting a code.
                   </p>
                 )}
                 {quoteOtpChallenge?.state === "mock_recorded" &&
                 new Date(quoteOtpChallenge.expiresAt).getTime() > Date.now() ? (
                   <form onSubmit={verifyQuoteOtp} className="space-y-3 pt-1">
-                    <label htmlFor="quote-confirmation-code" className="block text-xs font-semibold text-slate-700">
+                    <label htmlFor="quote-confirmation-code" className="block text-xs font-semibold text-zinc-700">
                       Synthetic quotation confirmation OTP (6 digits)
                     </label>
                     <div className="flex flex-wrap items-center gap-2">
@@ -548,12 +555,12 @@ export function ChatJourneyControls({
                         value={quoteCode}
                         onChange={(event) => setQuoteCode(event.currentTarget.value)}
                         disabled={busy !== null}
-                        className="w-44 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-slate-900 outline-none transition-all focus:border-slate-800 focus:ring-3 focus:ring-slate-800/10"
+                        className="w-44 rounded-xl border border-zinc-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-zinc-900 outline-none transition-all focus:border-zinc-900 focus:ring-3 focus:ring-zinc-900/10"
                       />
                       <button
                         type="submit"
                         disabled={busy !== null || !/^[0-9]{6}$/.test(quoteCode)}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                        className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                       >
                         {busy === "quote-otp-verify" ? "Verifying quotation…" : "Verify quotation OTP"}
                       </button>
@@ -566,7 +573,7 @@ export function ChatJourneyControls({
                       void requestQuoteOtp();
                     }}
                     disabled={busy !== null || !data?.quoteConfirmation?.contactEmail}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                    className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                   >
                     {busy === "quote-otp-request"
                       ? "Recording test code…"
@@ -574,7 +581,7 @@ export function ChatJourneyControls({
                   </button>
                 )}
                 {quoteOtpChallenge && quoteOtpChallenge.state !== "mock_recorded" && (
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-zinc-500">
                     The previous code is no longer active. Request another after the cooldown.
                   </p>
                 )}
@@ -585,9 +592,9 @@ export function ChatJourneyControls({
             {quoteOtpConfirmed && (
               <p
                 role="status"
-                className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs font-semibold text-emerald-900 shadow-2xs"
+                className="mt-4 flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs font-semibold text-zinc-900 shadow-2xs"
               >
-                <CheckIcon className="size-4 text-emerald-700 shrink-0" />
+                <CheckIcon className="size-4 text-zinc-800 shrink-0" />
                 <span>Quotation OTP verified. Secure document collection is now unlocked.</span>
               </p>
             )}
@@ -596,19 +603,19 @@ export function ChatJourneyControls({
             {purchase?.supported && quoteOtpConfirmed && documents.length > 0 && (
               <div className="mt-5 space-y-4">
                 {documentsComplete && (
-                  <div className="space-y-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 shadow-2xs">
-                    <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900" role="status">
-                      <CheckIcon className="size-4 text-emerald-700 shrink-0" />
+                  <div className="space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4 shadow-2xs">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-zinc-900" role="status">
+                      <CheckIcon className="size-4 text-zinc-800 shrink-0" />
                       <span>Required synthetic documents received</span>
                     </p>
                     {documents.some((doc) => doc.status === "synthetic_name_unverified") && (
-                      <p className="text-xs font-medium text-amber-800">
+                      <p className="text-xs font-medium text-zinc-600">
                         POC only: the synthetic passport was classified, but its holder name
                         was not verified. The TEST invoice will use the Emirates ID name.
                         This is not identity verification.
                       </p>
                     )}
-                    <p className="text-xs leading-relaxed text-slate-600">
+                    <p className="text-xs leading-relaxed text-zinc-600">
                       {purchase.reviewIssued
                         ? "Sara's purchase review is available in the chat. Answer the requested billing question or review the exact-amount proposal before authorizing."
                         : "Checkout has not started. Sara is preparing the next purchase-review question; you can also request it using the button below."}{" "}
@@ -621,7 +628,7 @@ export function ChatJourneyControls({
                           void continuePurchase();
                         }}
                         disabled={busy !== null || conversationBusy}
-                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                        className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                       >
                         {busy === "purchase"
                           ? "Requesting purchase review…"
@@ -633,7 +640,7 @@ export function ChatJourneyControls({
                         type="button"
                         onClick={() => setEditingDocuments((value) => !value)}
                         disabled={busy !== null || conversationBusy}
-                        className="text-xs font-medium text-slate-600 underline hover:text-slate-900 disabled:opacity-40"
+                        className="text-xs font-medium text-zinc-600 underline hover:text-zinc-900 disabled:opacity-40"
                       >
                         {editingDocuments ? "Hide document inputs" : "Replace synthetic documents"}
                       </button>
@@ -642,19 +649,24 @@ export function ChatJourneyControls({
                 )}
 
                 {(!documentsComplete || editingDocuments) && (
-                  <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4.5 shadow-2xs">
-                    <p className="font-bold text-slate-900">Upload your synthetic identity documents</p>
+                  <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4.5 shadow-2xs">
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-zinc-900">Upload your synthetic identity documents</p>
+                      <span className="rounded-full border border-zinc-300 bg-zinc-50 px-2.5 py-0.5 text-[0.68rem] font-semibold text-zinc-700">
+                        Step 2 of 3
+                      </span>
+                    </div>
                     {uploadStage && (
                       <p
                         role="status"
                         aria-live="polite"
-                        className="flex items-center gap-2 rounded-xl border border-amber-200/80 bg-amber-50 p-3 text-xs font-semibold text-amber-900 shadow-2xs"
+                        className="flex items-center gap-2 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs font-semibold text-zinc-900 shadow-2xs"
                       >
-                        <RefreshCwIcon className="size-4 animate-spin text-amber-700 shrink-0" />
+                        <RefreshCwIcon className="size-4 animate-spin text-zinc-700 shrink-0" />
                         <span>{uploadStage}</span>
                       </p>
                     )}
-                    <p className="text-xs font-medium text-amber-800">
+                    <p className="text-xs text-zinc-500">
                       Development sandbox only. Never upload real identity documents on local HTTP.
                       Files go directly to a private Node endpoint, not to Sara's AI transcript.
                     </p>
@@ -662,27 +674,27 @@ export function ChatJourneyControls({
                       {documents.map((doc) => (
                         <label
                           key={doc.key}
-                          className="block cursor-pointer rounded-xl border border-slate-200 bg-white/90 p-3.5 shadow-2xs transition-all hover:border-slate-400 hover:bg-white"
+                          className="block cursor-pointer rounded-xl border border-zinc-200 bg-zinc-50/50 p-3.5 shadow-2xs transition-all hover:border-zinc-400 hover:bg-white"
                         >
                           <div className="flex items-center justify-between">
-                            <span className="block text-xs font-bold text-slate-900">{doc.label}</span>
+                            <span className="block text-xs font-bold text-zinc-900">{doc.label}</span>
                             <span
                               className={`rounded-md px-1.5 py-0.5 text-[0.65rem] font-bold uppercase ${
                                 doc.uploaded
-                                  ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
-                                  : "border border-amber-200 bg-amber-50 text-amber-800"
+                                  ? "border border-zinc-300 bg-zinc-900 text-white"
+                                  : "border border-zinc-200 bg-white text-zinc-600"
                               }`}
                             >
                               {doc.uploaded ? "Uploaded" : doc.required ? "Required" : "Optional"}
                             </span>
                           </div>
-                          <span className="mt-1 block text-[0.72rem] text-slate-500">
+                          <span className="mt-1 block text-[0.72rem] text-zinc-500">
                             {doc.uploaded
                               ? "Uploaded — replace anytime before consent"
                               : "PDF, PNG or JPEG, max 1 MiB"}
                           </span>
                           <input
-                            className="mt-2 block w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+                            className="mt-2 block w-full text-xs text-zinc-500 file:mr-2 file:rounded-lg file:border-0 file:bg-zinc-200 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-zinc-800 hover:file:bg-zinc-300"
                             type="file"
                             accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
                             disabled={busy !== null || conversationBusy}
@@ -707,15 +719,15 @@ export function ChatJourneyControls({
 
             {/* Purchase confirmed status */}
             {purchase?.confirmed && !currentPayment && (
-              <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium text-slate-700">
+              <p className="mt-4 rounded-xl border border-zinc-200 bg-zinc-50 p-3 text-xs font-medium text-zinc-700">
                 Sandbox purchase authorized. A synthetic OTP is required before the test order.
               </p>
             )}
 
             {/* OTP Challenge Form */}
             {showOtp && (
-              <form className="mt-4 space-y-3 rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4.5 shadow-2xs" onSubmit={verifyOtp}>
-                <label className="block text-xs font-bold text-slate-900" htmlFor="secure-chat-otp">
+              <form className="mt-4 space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4.5 shadow-2xs" onSubmit={verifyOtp}>
+                <label className="block text-xs font-bold text-zinc-900" htmlFor="secure-chat-otp">
                   Enter synthetic payment OTP securely (not in your message)
                 </label>
                 <div className="flex flex-wrap items-center gap-2">
@@ -729,12 +741,12 @@ export function ChatJourneyControls({
                     placeholder="••••••"
                     value={otp}
                     onChange={(event) => setOtp(event.currentTarget.value)}
-                    className="w-44 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-slate-900 outline-none transition-all focus:border-slate-800 focus:ring-3 focus:ring-slate-800/10"
+                    className="w-44 rounded-xl border border-zinc-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-zinc-900 outline-none transition-all focus:border-zinc-900 focus:ring-3 focus:ring-zinc-900/10"
                   />
                   <button
                     type="submit"
                     disabled={busy !== null || !/^\d{6}$/.test(otp)}
-                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                    className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                   >
                     {busy === "otp" ? "Verifying…" : "Verify test OTP"}
                   </button>
@@ -744,8 +756,8 @@ export function ChatJourneyControls({
 
             {/* Expired OTP retry */}
             {challenge && !showOtp && !currentPayment && purchase?.confirmed && (
-              <div className="mt-4 space-y-2 rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-2xs">
-                <p className="text-xs font-medium text-amber-800">
+              <div className="mt-4 space-y-2 rounded-2xl border border-zinc-200 bg-zinc-50/50 p-4 shadow-2xs">
+                <p className="text-xs font-medium text-zinc-700">
                   This test OTP is no longer usable. Request a fresh code; the original cannot be reused.
                 </p>
                 <button
@@ -754,7 +766,7 @@ export function ChatJourneyControls({
                   onClick={() => {
                     void renewPaymentOtp();
                   }}
-                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-800 shadow-2xs transition-all hover:bg-slate-50 disabled:opacity-40"
+                  className="rounded-xl border border-zinc-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-800 shadow-2xs transition-all hover:bg-zinc-50 disabled:opacity-40"
                 >
                   {busy === "renew-otp" ? "Requesting…" : "Request new OTP"}
                 </button>
@@ -763,17 +775,17 @@ export function ChatJourneyControls({
 
             {/* Current Payment Section */}
             {currentPayment && (
-              <div className="mt-5 space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4.5 shadow-2xs">
+              <div className="mt-5 space-y-3 rounded-2xl border border-zinc-200 bg-zinc-50/60 p-4.5 shadow-2xs">
                 <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-slate-900">Sandbox Order</span>
-                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-bold uppercase text-slate-800">
+                  <span className="text-xs font-bold text-zinc-900">Sandbox Order</span>
+                  <span className="rounded-lg border border-zinc-200 bg-white px-2.5 py-0.5 text-xs font-bold uppercase text-zinc-800">
                     {currentPayment.state.replaceAll("_", " ")}
                   </span>
                 </div>
 
                 {currentPayment.state === "payment_declined" && !showOtp && (
                   <div className="space-y-2.5 pt-1">
-                    <p className="text-xs font-medium text-amber-800">
+                    <p className="text-xs font-medium text-zinc-700">
                       The provider confirmed DECLINED. Your quotation and identity documents are retained.
                       A new sandbox link requires a fresh OTP; your old order will not be retried.
                     </p>
@@ -783,7 +795,7 @@ export function ChatJourneyControls({
                       onClick={() => {
                         void renewPaymentOtp();
                       }}
-                      className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                      className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                     >
                       {busy === "renew-otp" ? "Requesting…" : "Retry declined payment — request new OTP"}
                     </button>
@@ -802,7 +814,7 @@ export function ChatJourneyControls({
                           void reopenCheckout();
                         }}
                         disabled={busy !== null || checkoutWatcher.current !== null}
-                        className="inline-block rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                        className="inline-block rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                       >
                         {busy === "checkout"
                           ? "Opening secure checkout…"
@@ -815,7 +827,7 @@ export function ChatJourneyControls({
                           href={fallbackCheckoutUrl}
                           target="_blank"
                           rel="noopener noreferrer nofollow"
-                          className="block text-xs font-medium text-slate-700 underline hover:text-slate-950"
+                          className="block text-xs font-medium text-zinc-700 underline hover:text-zinc-950"
                         >
                           Open existing checkout in a new tab (popup fallback)
                         </a>
@@ -825,17 +837,17 @@ export function ChatJourneyControls({
 
                 {currentPayment.state === "unknown_outcome" && (
                   <div className="space-y-2.5 pt-1">
-                    <p role="alert" className="text-xs font-medium text-amber-800">
+                    <p role="alert" className="text-xs font-medium text-zinc-800">
                       Provider outcome unknown. Do not create another payment order.
                     </p>
                     {currentPayment.providerStatus && (
-                      <p className="text-xs text-slate-600">
+                      <p className="text-xs text-zinc-600">
                         Dispatch diagnostic: {currentPayment.providerStatus}
                       </p>
                     )}
                     {!currentPayment.orderReference && (
                       <form className="space-y-2.5" onSubmit={reconcileOrder}>
-                        <label className="block text-xs font-semibold text-slate-700" htmlFor="existing-gateway-order">
+                        <label className="block text-xs font-semibold text-zinc-700" htmlFor="existing-gateway-order">
                           Existing MockGateway RefNo / OrderNo (operator recovery)
                         </label>
                         <input
@@ -845,9 +857,9 @@ export function ChatJourneyControls({
                           onChange={(event) => setOrderReference(event.currentTarget.value)}
                           maxLength={120}
                           placeholder="Existing provider order number"
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-800 focus:ring-2 focus:ring-slate-800/10"
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10"
                         />
-                        <label className="block text-xs font-semibold text-slate-700" htmlFor="existing-gateway-payment-id">
+                        <label className="block text-xs font-semibold text-zinc-700" htmlFor="existing-gateway-payment-id">
                           MockGateway transaction ID (for record matching, not GET lookup)
                         </label>
                         <input
@@ -857,9 +869,9 @@ export function ChatJourneyControls({
                           onChange={(event) => setProviderPaymentId(event.currentTarget.value)}
                           maxLength={120}
                           placeholder="Transaction ID from MockGateway dashboard"
-                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-800 focus:ring-2 focus:ring-slate-800/10"
+                          className="w-full rounded-xl border border-zinc-300 bg-white px-3 py-2 text-xs text-zinc-900 outline-none focus:border-zinc-900 focus:ring-2 focus:ring-zinc-900/10"
                         />
-                        <p className="text-[0.72rem] text-slate-500">
+                        <p className="text-[0.72rem] text-zinc-500">
                           Read-only gateway lookup uses the existing RefNo/OrderNo. Enter its matching
                           dashboard transaction ID for recovery tracking. No new order or OTP will be generated.
                         </p>
@@ -870,7 +882,7 @@ export function ChatJourneyControls({
                             !/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim()) ||
                             !/^[A-Za-z0-9_-]{1,120}$/.test(providerPaymentId.trim())
                           }
-                          className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                          className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                         >
                           {busy === "reconcile" ? "Checking existing order…" : "Reconcile existing order (GET only)"}
                         </button>
@@ -881,37 +893,138 @@ export function ChatJourneyControls({
               </div>
             )}
 
-            {/* Document Downloads (Contract & Invoice) */}
-            {contract?.pdfAvailable === true && (
-              <a
-                href={root + "/contracts/" + encodeURIComponent(contract.id) + "/pdf"}
-                className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl border border-amber-200/80 bg-amber-50/60 px-3.5 py-2 text-xs font-semibold text-amber-900 shadow-2xs hover:bg-amber-100/80 transition-colors"
-              >
-                <DownloadIcon className="size-3.5 text-amber-700" />
-                <span>Download private TEST service agreement {contract.documentNumber}</span>
-              </a>
-            )}
-            {contract && ["queued", "running"].includes(contract.state) && (
-              <p role="status" className="mt-3 text-xs text-slate-600">
-                Your TEST invoice is available. Service agreement {contract.documentNumber} is being prepared
-                and will appear here after independent checks.
-              </p>
-            )}
-            {contract?.state === "needs_review" && (
-              <p role="alert" className="mt-3 text-xs font-medium text-amber-800">
-                Your TEST invoice remains available. Service agreement {contract.documentNumber} needs
-                document review before it can be issued; no identity number has been fabricated.
-              </p>
-            )}
-            {invoice?.pdfAvailable === true && (
-              <a
-                href={root + "/invoices/" + encodeURIComponent(invoice.id) + "/pdf"}
-                className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-3.5 py-2 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100/80 transition-colors"
-              >
-                <DownloadIcon className="size-3.5 text-emerald-700" />
-                <span>Download verified TEST invoice {invoice.documentNumber}</span>
-              </a>
-            )}
+            {/* Unified Generated Documents Section */}
+            <div className="mt-6 border-t border-zinc-200/90 pt-5 space-y-3">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h3 className="text-xs font-bold tracking-wider uppercase text-zinc-900">
+                    Official Generated Documents
+                  </h3>
+                  <p className="text-[0.72rem] text-zinc-500">
+                    Verified PDF documents issued by the regulatory & payment pipeline
+                  </p>
+                </div>
+                <span className="rounded-full bg-zinc-100 px-2.5 py-0.5 text-[0.68rem] font-semibold text-zinc-700 border border-zinc-200">
+                  PDF
+                </span>
+              </div>
+
+              <div className="space-y-2.5">
+                {/* 1. Official Quotation */}
+                {quote.pdfAvailable && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 transition-all hover:border-zinc-300 hover:bg-zinc-50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white border border-zinc-200 text-zinc-900 shadow-2xs">
+                        <FileTextIcon className="size-5 text-zinc-800" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-zinc-900">Official Quotation</p>
+                          <span className="rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 text-[0.65rem] font-mono font-semibold text-zinc-700">
+                            {quote.documentNumber}
+                          </span>
+                        </div>
+                        <p className="text-[0.72rem] text-zinc-500 truncate">
+                          {quote.currency} {quote.amount} · Verified Service Proposal
+                        </p>
+                      </div>
+                    </div>
+                    <a
+                      href={root + "/quotations/" + encodeURIComponent(quote.id) + "/pdf"}
+                      className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-zinc-800 active:scale-95 transition-all shrink-0"
+                    >
+                      <DownloadIcon className="size-3.5 text-zinc-300" />
+                      <span>Download PDF</span>
+                    </a>
+                  </div>
+                )}
+
+                {/* 2. Service Agreement */}
+                {contract && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 transition-all hover:border-zinc-300 hover:bg-zinc-50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white border border-zinc-200 text-zinc-900 shadow-2xs">
+                        <ShieldCheckIcon className="size-5 text-zinc-800" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-zinc-900">Service Agreement</p>
+                          <span className="rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 text-[0.65rem] font-mono font-semibold text-zinc-700">
+                            {contract.documentNumber}
+                          </span>
+                        </div>
+                        <p className="text-[0.72rem] text-zinc-500 truncate">
+                          {contract.pdfAvailable
+                            ? "Private TEST Service Agreement (Non-binding Demo)"
+                            : ["queued", "running"].includes(contract.state)
+                              ? "Preparing agreement following independent checks…"
+                              : contract.state === "needs_review"
+                                ? "Review pending — no identity number fabricated"
+                                : "Awaiting issuance"}
+                        </p>
+                      </div>
+                    </div>
+                    {contract.pdfAvailable ? (
+                      <a
+                        href={root + "/contracts/" + encodeURIComponent(contract.id) + "/pdf"}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-zinc-800 active:scale-95 transition-all shrink-0"
+                      >
+                        <DownloadIcon className="size-3.5 text-zinc-300" />
+                        <span>Download PDF</span>
+                      </a>
+                    ) : ["queued", "running"].includes(contract.state) ? (
+                      <span className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-2xs shrink-0">
+                        <RefreshCwIcon className="size-3.5 animate-spin text-zinc-400" />
+                        <span>Preparing…</span>
+                      </span>
+                    ) : contract.state === "needs_review" ? (
+                      <span className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-600 shadow-2xs shrink-0">
+                        <AlertCircleIcon className="size-3.5 text-zinc-500" />
+                        <span>Needs Review</span>
+                      </span>
+                    ) : null}
+                  </div>
+                )}
+
+                {/* 3. Tax Invoice */}
+                {invoice && (
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-zinc-50/70 p-3.5 transition-all hover:border-zinc-300 hover:bg-zinc-50">
+                    <div className="flex items-center gap-3 min-w-0">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-white border border-zinc-200 text-zinc-900 shadow-2xs">
+                        <FileTextIcon className="size-5 text-zinc-800" />
+                      </div>
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <p className="text-xs font-bold text-zinc-900">Tax Invoice</p>
+                          <span className="rounded-md border border-zinc-200 bg-white px-1.5 py-0.5 text-[0.65rem] font-mono font-semibold text-zinc-700">
+                            {invoice.documentNumber}
+                          </span>
+                        </div>
+                        <p className="text-[0.72rem] text-zinc-500 truncate">
+                          {invoice.pdfAvailable
+                            ? "Verified Commercial Tax Invoice (Paid)"
+                            : "Invoice generation in progress…"}
+                        </p>
+                      </div>
+                    </div>
+                    {invoice.pdfAvailable ? (
+                      <a
+                        href={root + "/invoices/" + encodeURIComponent(invoice.id) + "/pdf"}
+                        className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs hover:bg-zinc-800 active:scale-95 transition-all shrink-0"
+                      >
+                        <DownloadIcon className="size-3.5 text-zinc-300" />
+                        <span>Download PDF</span>
+                      </a>
+                    ) : (
+                      <span className="inline-flex items-center justify-center gap-1.5 rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-medium text-zinc-500 shadow-2xs shrink-0">
+                        <RefreshCwIcon className="size-3.5 animate-spin text-zinc-400" />
+                        <span>Processing…</span>
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
 
             {/* Error & Notice Callouts */}
             {error && (
@@ -921,8 +1034,8 @@ export function ChatJourneyControls({
               </div>
             )}
             {notice && (
-              <div role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs text-slate-700 shadow-2xs">
-                <CheckIcon className="size-4 text-emerald-600 shrink-0" />
+              <div role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-zinc-200/80 bg-zinc-50/80 p-3 text-xs text-zinc-700 shadow-2xs">
+                <CheckIcon className="size-4 text-zinc-800 shrink-0" />
                 <span>{notice}</span>
               </div>
             )}

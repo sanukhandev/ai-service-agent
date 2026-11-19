@@ -128,7 +128,7 @@ export function ChatComposer({
             type="submit"
             disabled={disabled || sending || !text}
             aria-label={sending ? "Sending message" : "Send message"}
-            className="flex size-10 sm:size-10.5 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm backdrop-blur-xs transition-all hover:bg-slate-800 hover:shadow-md active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
+            className="flex size-10 sm:size-10.5 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm backdrop-blur-xs transition-all hover:bg-zinc-800 hover:shadow-md active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none"
           >
             {sending ? (
               <span
@@ -136,13 +136,13 @@ export function ChatComposer({
                 aria-hidden="true"
               />
             ) : (
-              <SendIcon className="size-4.5 text-amber-300" />
+              <SendIcon className="size-4.5 text-white" />
             )}
           </button>
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between px-2 text-[0.72rem] text-slate-500">
+      <div className="mt-2 flex items-center justify-between px-2 text-[0.72rem] text-zinc-500">
         <span className="hidden sm:inline-flex items-center gap-1.5 font-medium">
           <kbd className="rounded border border-slate-200/90 bg-white/70 backdrop-blur-xs px-1.5 py-0.5 font-sans font-semibold text-slate-700 shadow-2xs">
             Enter ↵
@@ -157,7 +157,7 @@ export function ChatComposer({
           Official ANCFZ Regulatory Concierge
         </span>
         {isNearLimit && (
-          <span className="text-amber-600 font-semibold ml-auto">
+          <span className="text-zinc-800 font-semibold ml-auto">
             {draft.length.toLocaleString()} / 12,000 characters
           </span>
         )}

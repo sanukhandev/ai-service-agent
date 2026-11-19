@@ -13,13 +13,13 @@ html, body {
 
 body {
   margin: 0;
-  background-color: #f8fafc;
+  background-color: #fafafa;
   background-image: 
-    radial-gradient(at 15% 15%, rgba(245, 158, 11, 0.04) 0px, transparent 50%),
-    radial-gradient(at 85% 10%, rgba(148, 163, 184, 0.08) 0px, transparent 55%),
-    radial-gradient(at 50% 90%, rgba(226, 232, 240, 0.45) 0px, transparent 60%);
+    radial-gradient(at 20% 15%, rgba(228, 228, 231, 0.45) 0px, transparent 50%),
+    radial-gradient(at 80% 10%, rgba(212, 212, 216, 0.35) 0px, transparent 50%),
+    radial-gradient(at 50% 85%, rgba(244, 244, 245, 0.6) 0px, transparent 60%);
   background-attachment: fixed;
-  color: #0f172a;
+  color: #18181b;
 }
 
 button, input, textarea {
@@ -35,14 +35,14 @@ button:disabled {
 }
 
 ::selection {
-  background: #fef3c7;
-  color: #78350f;
+  background: #18181b;
+  color: #ffffff;
 }
 
 /* Custom sleek slim scrollbar */
 ::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+  width: 5px;
+  height: 5px;
 }
 
 ::-webkit-scrollbar-track {
@@ -50,13 +50,13 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.45);
+  background: rgba(161, 161, 170, 0.4);
   border-radius: 9999px;
   transition: background 0.2s ease;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(100, 116, 139, 0.65);
+  background: rgba(113, 113, 122, 0.7);
 }
 
 @keyframes fadeIn {
@@ -92,7 +92,7 @@ button:disabled {
 @keyframes modalScaleIn {
   from {
     opacity: 0;
-    transform: scale(0.96) translateY(6px);
+    transform: scale(0.97) translateY(4px);
   }
   to {
     opacity: 1;
@@ -107,11 +107,11 @@ button:disabled {
 @keyframes pulseGlow {
   0%, 100% {
     opacity: 1;
-    filter: drop-shadow(0 0 6px rgba(245, 158, 11, 0.35));
+    filter: drop-shadow(0 0 5px rgba(24, 24, 27, 0.25));
   }
   50% {
-    opacity: 0.7;
-    filter: drop-shadow(0 0 1px rgba(245, 158, 11, 0.1));
+    opacity: 0.65;
+    filter: drop-shadow(0 0 1px rgba(24, 24, 27, 0.05));
   }
 }
 
