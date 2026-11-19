@@ -174,7 +174,7 @@ export class ChatJourney {
       // the last two messages are always customer + proposal. Asynchronous
       // verified lifecycle notices may be inserted between those messages.
       const visible=await client.query<{id:string;content:string;message_sequence:string}>(
-        "SELECT id,content,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND message_sequence<$3::bigint AND position($4 IN content)>0 AND position($5 IN content)>0 ORDER BY message_sequence DESC LIMIT 1",
+        "SELECT id,content,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND message_sequence<$3::bigint AND position($4 IN content)>0 AND position($5 IN content)>0 ORDER BY ticket_messages.message_sequence DESC LIMIT 1",
         [scope.agentId,ticketId,customer.message_sequence,
           "Proposal reference: "+p.id,
           kind==="lead_quote"?LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL],
@@ -182,7 +182,7 @@ export class ChatJourney {
       const displayed=visible.rows[0];
       if(!displayed)return denied("NOT_DISPLAYED");
       const intervening=await client.query<{role:string;content:string}>(
-        "SELECT role,content FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND message_sequence>$3::bigint AND message_sequence<$4::bigint ORDER BY message_sequence",
+        "SELECT role,content FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND message_sequence>$3::bigint AND message_sequence<$4::bigint ORDER BY ticket_messages.message_sequence",
         [scope.agentId,ticketId,displayed.message_sequence,customer.message_sequence],
       );
       // No customer can amend the proposal or ask an unrelated question
