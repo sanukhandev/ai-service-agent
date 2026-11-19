@@ -737,6 +737,19 @@ export class PaymentOperations {
         if(contractConsent.rows.length){
           const contractId=randomUUID();
           const renewal=await renewalLinkTx(client,scope.agentId,ticketId);
+          // A renewal ticket must never silently fall back to a fresh root
+          // agreement when its original version is stale or already finalized.
+          const renewalTicket=await client.query(
+            "SELECT 1 FROM ticket_contract_renewals WHERE agent_id=$1 AND renewal_ticket_id=$2",
+            [scope.agentId,ticketId]);
+          if(renewalTicket.rows.length && !renewal){
+            const prior=await client.query(
+              "SELECT 1 FROM ticket_service_contracts WHERE agent_id=$1 "+
+              "AND ticket_id=$2 AND payment_id=$3",
+              [scope.agentId,ticketId,paymentId]);
+            if(!prior.rows.length)
+              throw new PersistenceError("CONFLICT","Renewal source changed; contract requires review");
+          }
           if(renewal){
             // Independent gateway verification is necessary but never enough to
             // change the source agreement or invent renewal pricing.
@@ -766,7 +779,7 @@ export class PaymentOperations {
               [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
                 "ANCFZ-TEST-SC-"+contractId,renewal.contract_number,
                 renewal.source_revision+1,renewal.source_contract_id]);
-          }else{
+          }else if(!renewalTicket.rows.length){
             await client.query(
               `INSERT INTO ticket_service_contracts
                 (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
