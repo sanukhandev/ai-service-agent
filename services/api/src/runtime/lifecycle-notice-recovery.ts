@@ -10,7 +10,7 @@ import { leadDispatchEnabled } from "./lead-operations.js";
 import { paymentEnabled } from "./payment-evidence.js";
 
 const LEAD_TEXT =
-  "Your ANCFZ Salesforce lead has been created and verified. Its reference is available in your ticket.";
+  "Your details have been verified. Sara is now preparing your quotation.";
 const OTP_TEXT =
   "Your synthetic test OTP has been verified. Your sandbox order is queued; payment has not yet been confirmed.";
 const PAYMENT_TEXT =

@@ -22,7 +22,11 @@ import {quoteDetails,quoteDetailsMarkdown,quoteRequirementsTx,
   type QuoteProposalDetails} from "./quote-proposal.js";
 
 export const LEAD_QUOTE_APPROVAL =
+  "I authorize ANCFZ to prepare the non-binding quotation shown.";
+export const LEGACY_LEAD_QUOTE_APPROVAL =
   "I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.";
+export const SHORT_LEAD_QUOTE_APPROVAL =
+  "I authorize ANCFZ to prepare the quotation shown.";
 export const PURCHASE_PAYMENT_APPROVAL =
   "I authorize this ANCFZ sandbox purchase and test payment, and inclusion of my uploaded passport and Emirates ID in the private nonbinding TEST service contract.";
 
@@ -62,7 +66,11 @@ const canonical=(v:string):string=>v.trim()
   .replace(/\s+/g," ").toLowerCase();
 export const isLeadQuoteApproval=(s:string):boolean=>
   canonical(s)===canonical(LEAD_QUOTE_APPROVAL) ||
-  canonical(s)===canonical("Yes, "+LEAD_QUOTE_APPROVAL);
+  canonical(s)===canonical("Yes, "+LEAD_QUOTE_APPROVAL) ||
+  canonical(s)===canonical(SHORT_LEAD_QUOTE_APPROVAL) ||
+  canonical(s)===canonical("Yes, "+SHORT_LEAD_QUOTE_APPROVAL) ||
+  canonical(s)===canonical(LEGACY_LEAD_QUOTE_APPROVAL) ||
+  canonical(s)===canonical("Yes, "+LEGACY_LEAD_QUOTE_APPROVAL);
 export const isPurchasePaymentApproval=(s:string):boolean=>
   canonical(s)===canonical(PURCHASE_PAYMENT_APPROVAL) ||
   canonical(s)===canonical("Yes, "+PURCHASE_PAYMENT_APPROVAL);
@@ -77,7 +85,7 @@ function proposalCopy(p:Base):string {
   if(p.kind==="lead_quote"){
     const x=p.payload.data as LeadQuoteData;
     return [
-      "**Review your ANCFZ enquiry and quotation**",
+      "**Review your ANCFZ quotation**",
       "Proposal reference: "+p.id,
       "Customer: "+x.lead.name+" | Company: "+x.lead.company,
       "Contact: "+x.lead.email+" | "+x.lead.phone,
@@ -91,9 +99,8 @@ function proposalCopy(p:Base):string {
       "This is a non-binding test quotation. Licensing, visa issuance and activities"+
         " remain subject to authority approval. Full published scope and conditions"+
         " will be included in the independently generated quotation PDF.",
-      "With your permission I will share the reviewed contact details with Salesforce"+
-        " once, then prepare this exact quotation only after its lead is verified.",
-      'To authorize these actions, reply: "'+LEAD_QUOTE_APPROVAL+'"',
+      "With your permission I will prepare this official quotation.",
+      'To authorize, reply: "'+LEAD_QUOTE_APPROVAL+'"',
     ].filter(Boolean).join("\n\n");
   }
   const x=p.payload.data as PurchaseData;
@@ -174,10 +181,12 @@ export class ChatJourney {
       // the last two messages are always customer + proposal. Asynchronous
       // verified lifecycle notices may be inserted between those messages.
       const visible=await client.query<{id:string;content:string;message_sequence:string}>(
-        "SELECT id,content,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND message_sequence<$3::bigint AND position($4 IN content)>0 AND position($5 IN content)>0 ORDER BY ticket_messages.message_sequence DESC LIMIT 1",
+        "SELECT id,content,message_sequence::text FROM ticket_messages WHERE agent_id=$1 AND ticket_id=$2 AND role='assistant' AND message_sequence<$3::bigint AND position($4 IN content)>0 AND (position($5 IN content)>0 OR position($6 IN content)>0 OR position($7 IN content)>0) ORDER BY ticket_messages.message_sequence DESC LIMIT 1",
         [scope.agentId,ticketId,customer.message_sequence,
           "Proposal reference: "+p.id,
-          kind==="lead_quote"?LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL],
+          kind==="lead_quote"?LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL,
+          kind==="lead_quote"?SHORT_LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL,
+          kind==="lead_quote"?LEGACY_LEAD_QUOTE_APPROVAL:PURCHASE_PAYMENT_APPROVAL],
       );
       const displayed=visible.rows[0];
       if(!displayed)return denied("NOT_DISPLAYED");
@@ -326,7 +335,7 @@ export class ChatJourney {
       const data=await this.db.withAgent(scope.agentId,async client=>
         this.leadQuoteData(client,scope.agentId,ticketId));
       if(!leadDispatchEnabled()||!quoteDispatchEnabled())
-        return "Salesforce or quotation generation is temporarily unavailable. I can collect the details, but no external enquiry or PDF will be submitted.";
+        return "Quotation generation is temporarily unavailable. I can collect your details, but no PDF quotation can be prepared right now.";
       // Missing/invalid facts are exposed as structured Node readiness to the
       // Foundry conversation. Never replace a model turn with a fixed form field.
       if(!data)return null;

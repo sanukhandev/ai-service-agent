@@ -159,28 +159,28 @@ export class ConversationActionHandoff {
     const lead=actions.find(a=>a.actionKey==="create_lead");
     const quotation=actions.find(a=>a.actionKey==="generate_quote");
     const purchase=actions.find(a=>a.actionKey==="purchase_quotation");
-    if(!lead && request==="create_lead")return step("unsupported","This service doesn't have an authorized Salesforce enquiry action.");
+    if(!lead && request==="create_lead")return step("unsupported","This service doesn't have an authorized quotation action.");
     if(!quotation && request!=="create_lead")return step("unsupported","A formal quotation isn't configured for this service yet. I can still explain the available options.");
 
-    // A formal quote is never issued before the customer authorizes a lead and
-    // an independently verified Salesforce response exists.
+    // A formal quote is never issued before the customer authorizes and
+    // an independently verified response exists.
     const leads=lead?await new LeadOperations(this.db).list(scope,ticketId):[];
     const leadState=leads.find(l=>l.operation==="ancfz_salesforce_lead")?.state??null;
     if(lead && leadState!=="verified_completed") {
       if(leadState==="unknown_outcome"||leadState==="terminal_failed")
-        return step("lead_review","Your Salesforce enquiry needs staff review. I won't submit another one or issue a quotation until it is verified.");
+        return step("lead_review","Your request needs staff review. I won't submit another one or issue a quotation until it is verified.");
       if(leadState==="queued"||leadState==="running")
-        return step("lead_processing","Your Salesforce enquiry is being processed. Once it is verified, we can prepare the formal quotation.");
+        return step("lead_processing","Your request is being processed. Once it is verified, we can prepare the formal quotation.");
       const missing=missingFor(lead);
       if(missing.length){
         return step("lead_facts","Some contact or company requirements are still missing; ask a relevant, natural clarification without losing earlier facts.",missing.length,missing.map(f=>f.key));
       }
       if(!leadDispatchEnabled())
-        return step("lead_disabled","Salesforce enquiry submission is currently unavailable. Your details are saved, and no lead has been submitted.");
-      return step("lead_consent","I have your enquiry details. I'll summarize the exact Salesforce contact-sharing and quotation proposal here in chat; please review it before authorizing.");
+        return step("lead_disabled","Quotation requests are currently unavailable. Your details are saved.");
+      return step("lead_consent","I have your details. I'll summarize the quotation proposal here in chat; please review it before authorizing.");
     }
     if(request==="create_lead")
-      return step("lead_complete","Your Salesforce lead is verified. Would you like me to help prepare a formal quotation?");
+      return step("lead_complete","Your details are verified. Would you like me to help prepare a formal quotation?");
 
     if(quotation) {
       const missing=missingFor(quotation);

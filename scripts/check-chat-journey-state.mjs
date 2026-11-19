@@ -179,7 +179,7 @@ try{
     "A country-less phone must not reach Salesforce/quotation consent");
   facts.customer_phone="+971500000000";
   const prepared=await journey.prepare(scope,ticketId,"generate_quote");
-  assert.match(prepared,/Review your ANCFZ enquiry and quotation/);
+  assert.match(prepared,/Review your ANCFZ (?:enquiry and )?quotation/);
   await journey.advance(log);
   assert.equal(leadSubmits,1);
   assert.equal(quoteSubmits,0,"No quotation before a verified CRM lead");
