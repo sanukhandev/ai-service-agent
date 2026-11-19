@@ -62,4 +62,58 @@ assert.match(ui,/Renew this agreement/);
 assert.match(ui,/consentText:preview\.disclosure/);
 assert.match(ui,/renewalRequestId\.current/);
 assert.match(customer,/onRenewalCreated/);
+// Synthetic prices are intentionally distinguished from real published fees.
+const catalog=JSON.parse(get("infra/catalog/ancfz-test-2026.json"));
+assert.equal(catalog.environment,"test");
+assert.match(catalog.reviewStatus,/synthetic renewal rates/i);
+for(const [years,amount] of [[1,999],[2,1998],[3,2997]]){
+  const offer=catalog.offerings.find(x=>x.key==="renewal_test_y"+years);
+  assert.ok(offer,"Missing TEST rate for "+years+" years");
+  assert.equal(offer.intentKey,"company_formation");
+  assert.equal(offer.price.currency,"AED");
+  assert.equal(offer.price.amount,amount);
+  assert.match(offer.price.conditions,/SYNTHETIC TEST AMOUNT ONLY/);
+}
+assert.match(get("docker-compose.yml"),/ANCFZ_RENEWAL_ENABLED:/);
+assert.match(api,/renewal\\/lookup/);
+assert.match(backend,/async lookupByLicence\\(/);
+assert.match(backend,/ANCFZ-TEST-SC-\\[0-9\\]/);
+assert.match(backend,/authorizedTicket\\(client,scope,ticketId,true\\)/);
+assert.match(backend,/await this\\.source\\(client,scope,sourceTicketId,contractId\\)/);
+assert.match(backend,/renewal\\.lookup\\.attempt/);
+const licenceUi=get("apps/web/components/chat-renewal-lookup.tsx");
+assert.match(get("apps/web/components/customer-chat.tsx"),/ChatRenewalLookup/);
+assert.match(licenceUi,/result\\.sourceTicketId/);
+assert.match(licenceUi,/consentText:result\\.preview\\.disclosure/);
+const n8n=JSON.parse(get("infra/n8n/ancfz/08-test-licence-contract-lookup.json"));
+assert.equal(n8n.active,false);
+assert.equal(n8n.settings.saveDataSuccessExecution,"none");
+assert.equal(n8n.settings.saveDataErrorExecution,"none");
+assert.ok(n8n.nodes.every(x=>!["n8n-nodes-base.httpRequest","n8n-nodes-base.emailSend"].includes(x.type)));
+const webhook=n8n.nodes.find(x=>x.type==="n8n-nodes-base.webhook");
+assert.equal(webhook.parameters.authentication,"headerAuth");
+assert.equal(webhook.parameters.path,"ancfz/contract-licence-lookup");
+const dataTable=n8n.nodes.find(x=>x.type==="n8n-nodes-base.dataTable");
+assert.equal(dataTable.parameters.operation,"get");
+assert.equal(dataTable.parameters.dataTableId.value,"ANCFZ_POC_CONTRACTS");
+assert.equal(dataTable.parameters.filters.conditions[0].keyName,"contractNumber");
+const validate=n8n.nodes.find(x=>x.name==="Validate Synthetic Licence");
+const run=new Function("$input",validate.parameters.jsCode);
+const input=body=>({first:()=>({json:{body}})});
+const testReq={agentKey:"ancfz",ticketId:"11111111-1111-4111-8111-111111111111",
+  licenceNumber:"ANCFZ-TEST-SC-2026-000001"};
+assert.equal(run(input(testReq))[0].json.contractNumber,"ANCFZ-SC-2026-000001");
+assert.throws(()=>run(input({...testReq,agentKey:"other"})),/Invalid synthetic licence/);
+assert.throws(()=>run(input({...testReq,licenceNumber:"ANCFZ-SC-2026-000001"})),/Invalid synthetic licence/);
+const sanitize=n8n.nodes.find(x=>x.name==="Return Contract Mapping");
+const clean=new Function("$","$input",sanitize.parameters.jsCode);
+const lookup=()=>({first:()=>({json:{contractNumber:"ANCFZ-SC-2026-000001"}})});
+const items=rows=>({all:()=>rows.map(json=>({json}))});
+assert.equal(clean(lookup,items([]))[0].json.status,"not_found");
+const row={contractNumber:"ANCFZ-SC-2026-000001",status:"verified_completed",
+  contractId:"11111111-1111-4111-8111-111111111111",
+  ticketId:"22222222-2222-4222-8222-222222222222",revision:1};
+assert.equal(clean(lookup,items([row]))[0].json.status,"found");
+assert.equal(clean(lookup,items([row,{...row,contractId:"33333333-3333-4333-8333-333333333333"}]))[0].json.status,"review");
+
 console.log("ANCFZ renewal offline contract checks PASS: source ownership, separate quote, price snapshot, consent, provenance, paid revision, recovery");
