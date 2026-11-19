@@ -4,7 +4,7 @@
  * explicit approval when an unrelated lifecycle notice was interleaved. */
 import assert from "node:assert/strict";
 import {createHash,randomUUID} from "node:crypto";
-import {ChatJourney, LEAD_QUOTE_APPROVAL} from "../services/api/dist/runtime/chat-journey.js";
+import {ChatJourney, LEAD_QUOTE_APPROVAL, PURCHASE_PAYMENT_APPROVAL, approvalInterruption} from "../services/api/dist/runtime/chat-journey.js";
 import {workerTicketScope} from "../services/api/dist/repositories/types.js";
 
 const agentId="aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -25,16 +25,16 @@ const displayed="**Review your ANCFZ enquiry and quotation**\nProposal reference
 const scope=workerTicketScope(agentId,ticketId);
 
 async function scenario({messageText=LEAD_QUOTE_APPROVAL,notice=null,
-  interveningCustomer=false,stale=false,previousApproval=false,visible=true}={}){
+  interveningCustomer=false,interveningExactConsent=false,stale=false,previousApproval=false,visible=true}={}){
   const state={notices:0,consents:0};
   const messages=[{id:randomUUID(),role:"assistant",content:displayed,message_sequence:"10"}];
   if(!visible)messages[0].content="Unrelated assistant message";
   if(notice)messages.push({id:randomUUID(),role:"assistant",
     content:notice,message_sequence:"11"});
-  if(interveningCustomer)messages.push({id:randomUUID(),role:"customer",
-    content:"I want to change my package",message_sequence:"12"});
+  if(interveningCustomer||interveningExactConsent)messages.push({id:randomUUID(),role:"customer",
+    content:interveningExactConsent?LEAD_QUOTE_APPROVAL:"I want to change my package",message_sequence:"12"});
   messages.push({id:customerId,role:"customer",
-    content:messageText,message_sequence:interveningCustomer?"13":"12"});
+    content:messageText,message_sequence:interveningCustomer||interveningExactConsent?"13":"12"});
   const client={query:async(sql,params=[])=>{
     if(sql.startsWith("SELECT * FROM tickets"))
       return {rows:[{id:ticketId,status:"processing"}]};
@@ -83,6 +83,26 @@ async function scenario({messageText=LEAD_QUOTE_APPROVAL,notice=null,
   // snapshot; independent state regression covers worker and provider gates.
   journey.leadQuoteData=async()=>stale?{...proposalData,amount:"10900.00"}:proposalData;
   return {result:()=>journey.accept(scope,ticketId,customerId,messageText),state};
+}
+
+// Repeat approvals must be idempotent, not a new side effect.
+assert.equal(approvalInterruption([{role:"customer",content:PURCHASE_PAYMENT_APPROVAL}],
+  PURCHASE_PAYMENT_APPROVAL,"purchase_payment"),null);
+assert.equal(approvalInterruption([{role:"customer",content:"Change my package"}],
+  PURCHASE_PAYMENT_APPROVAL,"purchase_payment"),"CUSTOMER_INTERVENED");
+assert.equal(approvalInterruption([{role:"customer",content:LEAD_QUOTE_APPROVAL}],
+  PURCHASE_PAYMENT_APPROVAL,"purchase_payment"),"CUSTOMER_INTERVENED");
+assert.equal(approvalInterruption([{role:"assistant",content:"Another Proposal reference: 456"}],
+  PURCHASE_PAYMENT_APPROVAL,"purchase_payment"),"AMBIGUOUS_ASSISTANT");
+{
+  const a=await scenario({interveningExactConsent:true});
+  assert.equal(await a.result(),"lead_quote");
+  assert.equal(a.state.consents,1);
+}
+{
+  const a=await scenario({interveningCustomer:true,previousApproval:true});
+  assert.equal(await a.result(),"lead_quote");
+  assert.equal(a.state.consents,0);
 }
 
 // The user's failing transcript had precisely this pattern. A lifecycle
