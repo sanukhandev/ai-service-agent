@@ -25,8 +25,8 @@ assert.equal(contractPostPaymentEnabled({...noDispatch,APP_ENV:"development",
 const worker=readFileSync("services/api/src/runtime/service-contract-worker.ts","utf8");
 assert.match(worker,/contractPostPaymentEnabled\(\)/);
 assert.doesNotMatch(worker,/paymentEnabled\(\)/);
-assert.match(worker,/ANCFZ TEST contract worker started/);
-assert.match(worker,/ANCFZ TEST contract worker disabled/);
+assert.match(worker,/ANCFZ postpaid contract rendering enabled/);
+assert.match(worker,/ANCFZ postpaid contract rendering disabled/);
 assert.match(worker,/p\.state='verified_test_payment'/);
 assert.match(worker,/i\.state='verified_completed'/);
 assert.match(worker,/pc\.consent_text=\$2/);
