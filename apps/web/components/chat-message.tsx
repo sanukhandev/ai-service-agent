@@ -2,7 +2,7 @@
 
 import { useRef, useState, type ReactNode } from "react";
 import type { ChatMessage, SourceReference } from "../lib/chat-api";
-import { conversationalText } from "../lib/chat-display";
+import { conversationalText, safeChatTransactionUrl } from "../lib/chat-display";
 
 // Source evidence remains durable and available to the backend. Customer chat
 // hides IQ citations and all source download links until explicitly enabled.
@@ -97,12 +97,9 @@ function formatInline(
       if (match) {
         const linkText = match[1];
         const linkUrl = match[2];
-        // Invoice PDFs are ticket-owned application attachments, not IQ
-        // source IDs. Never rewrite the route through Foundry source download.
-        const transactionRoute = ticketId
-          ? new RegExp("^/api/v1/tickets/"+encodeURIComponent(ticketId)+"/(?:quotations|invoices)/[0-9a-f-]{36}/pdf$")
-          : null;
-        if(transactionRoute?.test(linkUrl)){
+        // Ticket-owned quotation, invoice and service-contract PDFs must
+        // use their Node download endpoints, never Foundry IQ source downloads.
+        if (linkUrl.startsWith("/api/v1/") && safeChatTransactionUrl(linkUrl, ticketId)) {
           return <a key={index} href={linkUrl} download
             className="inline-flex items-center gap-1 font-semibold text-indigo-700 underline">
             <DownloadIcon className="size-3" />{linkText}
