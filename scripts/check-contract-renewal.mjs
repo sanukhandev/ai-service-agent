@@ -75,16 +75,16 @@ for(const [years,amount] of [[1,999],[2,1998],[3,2997]]){
   assert.match(offer.price.conditions,/SYNTHETIC TEST AMOUNT ONLY/);
 }
 assert.match(get("docker-compose.yml"),/ANCFZ_RENEWAL_ENABLED:/);
-assert.match(api,/renewal\\/lookup/);
-assert.match(backend,/async lookupByLicence\\(/);
-assert.match(backend,/ANCFZ-TEST-SC-\\[0-9\\]/);
-assert.match(backend,/authorizedTicket\\(client,scope,ticketId,true\\)/);
-assert.match(backend,/await this\\.source\\(client,scope,sourceTicketId,contractId\\)/);
-assert.match(backend,/renewal\\.lookup\\.attempt/);
+assert.ok(api.includes('/renewal/lookup'));
+assert.ok(backend.includes('async lookupByLicence('));
+assert.ok(backend.includes('ANCFZ-TEST-SC-'));
+assert.ok(backend.includes('authorizedTicket(client,scope,ticketId,true)'));
+assert.ok(backend.includes('await this.source(client,scope,sourceTicketId,contractId)'));
+assert.ok(backend.includes('renewal.lookup.attempt'));
 const licenceUi=get("apps/web/components/chat-renewal-lookup.tsx");
 assert.match(get("apps/web/components/customer-chat.tsx"),/ChatRenewalLookup/);
-assert.match(licenceUi,/result\\.sourceTicketId/);
-assert.match(licenceUi,/consentText:result\\.preview\\.disclosure/);
+assert.ok(licenceUi.includes('result.sourceTicketId'));
+assert.ok(licenceUi.includes('consentText:result.preview.disclosure'));
 const n8n=JSON.parse(get("infra/n8n/ancfz/08-test-licence-contract-lookup.json"));
 assert.equal(n8n.active,false);
 assert.equal(n8n.settings.saveDataSuccessExecution,"none");
