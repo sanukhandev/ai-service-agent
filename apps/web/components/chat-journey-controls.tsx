@@ -105,6 +105,9 @@ export function ChatJourneyControls({
   const [uploadStage,setUploadStage]=useState<string|null>(null);
   const quoteRequest=useRef<string|null>(null);
   const autoOpenedQuote=useRef<string|null>(null);
+  const autoOpenedQuoteOtp=useRef<string|null>(null);
+  const autoOpenedDocuments=useRef<string|null>(null);
+  const autoOpenedPaymentOtp=useRef<string|null>(null);
   const otpRequest=useRef<string|null>(null);
   const reviewRequestedForQuote=useRef<string|null>(null);
   const checkoutPopup=useRef<Window|null>(null);
@@ -125,7 +128,7 @@ export function ChatJourneyControls({
       .catch(()=>{if(live)setData(null);});
     return ()=>{live=false;};
   },[root,revision]);
-  // Treat the quote confirmation as a separate step from the later payment OTP.
+  // 1. Auto-open modal when a verified quotation is ready to review/confirm
   useEffect(()=>{
     const quote=data?.quotation;
     if(quote?.state==="verified_completed"&&quote.pdfAvailable &&
@@ -135,6 +138,49 @@ export function ChatJourneyControls({
       setModalOpen(true);
     }
   },[data?.quotation,data?.quoteConfirmation]);
+
+  // 2. Auto-open modal when quotation OTP challenge is recorded and waiting for code
+  useEffect(()=>{
+    const quoteChallenge=data?.quoteConfirmation?.challenge;
+    if(quoteChallenge?.state==="mock_recorded" &&
+       quoteChallenge.challengeId &&
+       new Date(quoteChallenge.expiresAt).getTime()>Date.now() &&
+       autoOpenedQuoteOtp.current!==quoteChallenge.challengeId){
+      autoOpenedQuoteOtp.current=quoteChallenge.challengeId;
+      setModalOpen(true);
+    }
+  },[data?.quoteConfirmation?.challenge]);
+
+  // 3. Auto-open modal when quotation is confirmed and synthetic ID documents are required
+  useEffect(()=>{
+    const quote=data?.quotation;
+    const purchase=data?.purchase;
+    const quoteConfirmed=data?.quoteConfirmation?.verified===true;
+    if(quote?.id && quoteConfirmed && purchase?.supported && !purchase.confirmed &&
+       purchase.missing.length>0 && autoOpenedDocuments.current!==quote.id){
+      autoOpenedDocuments.current=quote.id;
+      setModalOpen(true);
+    }
+  },[data?.quotation,data?.quoteConfirmation,data?.purchase]);
+
+  // 4. Auto-open modal when payment OTP challenge is recorded and waiting for code
+  useEffect(()=>{
+    const quote=data?.quotation;
+    const challenge=data?.otp;
+    const currentPayment=data?.payment?.payments?.[0]??null;
+    const showPaymentOtp=Boolean(
+      quote?.state==="verified_completed" &&
+      (!currentPayment || currentPayment.state==="payment_declined") &&
+      challenge?.state==="mock_recorded" &&
+      challenge.challengeId &&
+      challenge.quotationId===quote.id &&
+      new Date(challenge.expiresAt).getTime()>Date.now(),
+    );
+    if(showPaymentOtp && challenge?.challengeId && autoOpenedPaymentOtp.current!==challenge.challengeId){
+      autoOpenedPaymentOtp.current=challenge.challengeId;
+      setModalOpen(true);
+    }
+  },[data?.quotation,data?.otp,data?.payment?.payments]);
 
   const activeStage=(()=>{
     const leadState=data?.lead?.state;
@@ -266,9 +312,11 @@ export function ChatJourneyControls({
     try{
       // Use the existing customer-message path. This is a REQUEST, never
       // payment authorization, and cannot bypass the server's quote/OTP gates.
+      setModalOpen(false);
       await onContinuePurchase();
     }catch(e){
       setError(e instanceof Error?e.message:"Unable to request purchase review");
+      setModalOpen(true);
     }finally{setBusy(null);}
   }
 
@@ -482,7 +530,6 @@ export function ChatJourneyControls({
               <button
                 type="button"
                 onClick={() => setModalOpen(false)}
-                autoFocus
                 aria-label="Close secure transaction"
                 className="rounded-xl border border-zinc-200 bg-white px-3 py-1.5 text-xs font-semibold text-zinc-700 shadow-2xs transition-all hover:bg-zinc-100 hover:text-zinc-950 active:scale-95"
               >
@@ -555,6 +602,7 @@ export function ChatJourneyControls({
                         value={quoteCode}
                         onChange={(event) => setQuoteCode(event.currentTarget.value)}
                         disabled={busy !== null}
+                        autoFocus
                         className="w-44 rounded-xl border border-zinc-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-zinc-900 outline-none transition-all focus:border-zinc-900 focus:ring-3 focus:ring-zinc-900/10"
                       />
                       <button
@@ -741,6 +789,7 @@ export function ChatJourneyControls({
                     placeholder="••••••"
                     value={otp}
                     onChange={(event) => setOtp(event.currentTarget.value)}
+                    autoFocus
                     className="w-44 rounded-xl border border-zinc-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-zinc-900 outline-none transition-all focus:border-zinc-900 focus:ring-3 focus:ring-zinc-900/10"
                   />
                   <button
