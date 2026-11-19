@@ -169,7 +169,7 @@ export class N8nLeadWorker {
           await new TicketMessageRepository(this.db).tryAssistantLifecycleNoticeTx(
             client,workerTicketScope(op.agentId,op.ticketId),op.ticketId,
             lifecycleNoticeId("lead.verified",op.operationId),
-            "Your ANCFZ Salesforce lead has been created and verified. Its reference is available in your ticket.",
+            "Your details have been verified. Sara is now preparing your quotation.",
           );
         }
       }

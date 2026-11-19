@@ -4,7 +4,11 @@
 import type { ChatMessage } from "./chat-api";
 
 export const QUOTATION_CONSENT_TEXT =
+  "I authorize ANCFZ to prepare the non-binding quotation shown.";
+export const LEGACY_QUOTATION_CONSENT_TEXT =
   "I authorize ANCFZ to send my contact details to Salesforce and prepare the non-binding quotation shown.";
+export const SHORT_QUOTATION_CONSENT_TEXT =
+  "I authorize ANCFZ to prepare the quotation shown.";
 export const PURCHASE_CONSENT_TEXT =
   "I authorize this ANCFZ sandbox purchase and test payment, and inclusion of my uploaded passport and Emirates ID in the private nonbinding TEST service contract.";
 
@@ -22,8 +26,8 @@ function proposalText(message:Pick<ChatMessage,"role"|"text">):
   if(message.role!=="assistant"||!REFERENCE.test(message.text))return null;
   // Whitespace/Markdown variations must not hide the exact Node consent CTA.
   const visible=message.text.replace(/[\*\r\n]+/g," ").replace(/\s+/g," ");
-  if(visible.includes("Review your ANCFZ enquiry and quotation") &&
-     visible.includes(QUOTATION_CONSENT_TEXT))
+  if((visible.includes("Review your ANCFZ quotation") || visible.includes("Review your ANCFZ enquiry and quotation")) &&
+     (visible.includes(QUOTATION_CONSENT_TEXT) || visible.includes(SHORT_QUOTATION_CONSENT_TEXT) || visible.includes(LEGACY_QUOTATION_CONSENT_TEXT)))
     return {kind:"quotation",text:QUOTATION_CONSENT_TEXT};
   if(visible.includes("Review your sandbox purchase and test payment") &&
      visible.includes(PURCHASE_CONSENT_TEXT))
@@ -33,6 +37,8 @@ function proposalText(message:Pick<ChatMessage,"role"|"text">):
 function approvedCustomerReply(text:string):boolean{
   const normalized=text.trim().replace(/[.!]+$/g,"").toLowerCase();
   return normalized===QUOTATION_CONSENT_TEXT.toLowerCase().replace(/\.$/,"") ||
+    normalized===SHORT_QUOTATION_CONSENT_TEXT.toLowerCase().replace(/\.$/,"") ||
+    normalized===LEGACY_QUOTATION_CONSENT_TEXT.toLowerCase().replace(/\.$/,"") ||
     normalized===PURCHASE_CONSENT_TEXT.toLowerCase().replace(/\.$/,"") ||
     /^(?:yes|yes please|yes, please|go ahead|i approve|i consent|approved|please proceed|proceed)$/i.test(normalized);
 }

@@ -195,7 +195,7 @@ export function ChatJourneyControls({
   const activeStage=(()=>{
     const leadState=data?.lead?.state;
     if(leadState && ["queued","running","creating"].includes(leadState))
-      return "Sara is submitting and verifying your Salesforce enquiry…";
+      return "Sara is preparing your quotation…";
     const quoteState=data?.quotation?.state;
     if(quoteState && ["queued","running","creating"].includes(quoteState))
       return "Sara is preparing and verifying the formal quotation…";
@@ -740,7 +740,7 @@ export function ChatJourneyControls({
                   </div>
                 )}
 
-                {(!documentsComplete || editingDocuments) && (
+                {(!documentsComplete||editingDocuments) && (
                   <div className="space-y-3 rounded-2xl border border-zinc-200 bg-white p-4.5 shadow-2xs">
                     <div className="flex items-center justify-between">
                       <p className="font-bold text-zinc-900">Upload your synthetic identity documents</p>
@@ -856,9 +856,7 @@ export function ChatJourneyControls({
                 <button
                   type="button"
                   disabled={busy !== null}
-                  onClick={() => {
-                    void renewPaymentOtp();
-                  }}
+                  onClick={()=>{void renewPaymentOtp();}}
                   className="rounded-xl border border-zinc-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-zinc-800 shadow-2xs transition-all hover:bg-zinc-50 disabled:opacity-40"
                 >
                   {busy === "renew-otp" ? "Requesting…" : "Request new OTP"}
@@ -885,9 +883,7 @@ export function ChatJourneyControls({
                     <button
                       type="button"
                       disabled={busy !== null}
-                      onClick={() => {
-                        void renewPaymentOtp();
-                      }}
+                      onClick={()=>{void renewPaymentOtp();}}
                       className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-zinc-800 active:scale-95 disabled:opacity-40"
                     >
                       {busy === "renew-otp" ? "Requesting…" : "Retry declined payment — request new OTP"}
