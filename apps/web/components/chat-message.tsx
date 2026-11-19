@@ -184,7 +184,7 @@ function formatInline(
     // 4. Bold: **text**
     if (part.startsWith("**") && part.endsWith("**")) {
       return (
-        <strong key={index} className="font-semibold text-zinc-950">
+        <strong key={index} className="font-semibold text-slate-950">
           {part.slice(2, -2)}
         </strong>
       );
@@ -193,7 +193,7 @@ function formatInline(
     // 5. Italic: *text*
     if (part.startsWith("*") && part.endsWith("*")) {
       return (
-        <em key={index} className="italic text-zinc-700">
+        <em key={index} className="italic text-slate-700">
           {part.slice(1, -1)}
         </em>
       );
@@ -204,7 +204,7 @@ function formatInline(
       return (
         <code
           key={index}
-          className="rounded-md border border-zinc-200/80 bg-zinc-100/90 px-1.5 py-0.5 text-[0.85em] font-mono font-medium text-zinc-850"
+          className="rounded-md border border-slate-200/90 bg-slate-100/90 px-1.5 py-0.5 text-[0.84em] font-mono font-medium text-slate-800"
         >
           {part.slice(1, -1)}
         </code>
@@ -234,7 +234,7 @@ function RichTextContent({
   const rawParagraphs = text.split(/\n{2,}/);
 
   return (
-    <div className="space-y-3 text-[0.9375rem] leading-relaxed text-zinc-800">
+    <div className="space-y-3 text-[0.9375rem] leading-relaxed text-slate-800">
       {rawParagraphs.map((para, pIdx) => {
         const lines = para.split("\n").map((l) => l.trimEnd());
 
@@ -246,7 +246,7 @@ function RichTextContent({
           return (
             <pre
               key={pIdx}
-              className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-950/95 p-3.5 font-mono text-xs leading-5 text-zinc-200 shadow-inner"
+              className="overflow-x-auto rounded-xl border border-slate-800 bg-slate-950 p-3.5 font-mono text-xs leading-5 text-slate-200 shadow-inner"
             >
               <code>{codeContent}</code>
             </pre>
@@ -263,10 +263,10 @@ function RichTextContent({
                 .map((line, lIdx) => {
                   const content = line.replace(/^[-*•]\s+/, "");
                   return (
-                    <li key={lIdx} className="flex items-start gap-2">
+                    <li key={lIdx} className="flex items-start gap-2.5">
                       <span
                         aria-hidden="true"
-                        className="mt-2 size-1.5 shrink-0 rounded-full bg-zinc-700"
+                        className="mt-2.5 size-1.5 shrink-0 rounded-full bg-amber-500"
                       />
                       <span className="min-w-0 flex-1">{formatInline(content, ticketId, sourceReferences)}</span>
                     </li>
@@ -289,7 +289,7 @@ function RichTextContent({
                   const content = match ? match[2] : line;
                   return (
                     <li key={lIdx} className="flex items-start gap-2.5">
-                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-zinc-200 bg-zinc-100 text-[0.7rem] font-semibold text-zinc-800">
+                      <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded-full border border-amber-200/80 bg-amber-50/70 text-[0.7rem] font-bold text-amber-900 shadow-2xs">
                         {num}
                       </span>
                       <span className="min-w-0 flex-1">{formatInline(content, ticketId, sourceReferences)}</span>
@@ -306,13 +306,13 @@ function RichTextContent({
           const headerText = lines[0].replace(/^#+\s*/, "");
           if (headerLevel <= 2) {
             return (
-              <h3 key={pIdx} className="pt-1 text-base font-semibold tracking-tight text-zinc-950">
+              <h3 key={pIdx} className="pt-1.5 text-base font-bold tracking-tight text-slate-950">
                 {formatInline(headerText, ticketId, sourceReferences)}
               </h3>
             );
           }
           return (
-            <h4 key={pIdx} className="pt-1 text-sm font-semibold tracking-tight text-zinc-950">
+            <h4 key={pIdx} className="pt-1 text-sm font-bold tracking-tight text-slate-950">
               {formatInline(headerText, ticketId, sourceReferences)}
             </h4>
           );
@@ -324,7 +324,7 @@ function RichTextContent({
           return (
             <blockquote
               key={pIdx}
-              className="border-l-2 border-zinc-700 bg-zinc-100/70 py-1.5 pl-3 pr-2 text-sm italic text-zinc-700 rounded-r-lg"
+              className="border-l-3 border-amber-500 bg-gradient-to-r from-amber-50/50 to-slate-50/30 py-2 pl-3.5 pr-3 text-sm italic text-slate-700 rounded-r-xl"
             >
               {formatInline(quote, ticketId, sourceReferences)}
             </blockquote>
@@ -487,16 +487,16 @@ export function MessageBubble({
 
   return (
     <li
-      className={`group flex min-w-0 items-start gap-3 animate-fade-in ${
+      className={`group flex min-w-0 items-start gap-3 animate-message-slide ${
         assistant ? "justify-start" : "justify-end"
       }`}
     >
       {assistant && (
         <div
           aria-hidden="true"
-          className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-zinc-950 via-zinc-900 to-zinc-800 text-white shadow-xs ring-2 ring-white/80 border border-white/30 backdrop-blur-md"
+          className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 text-white shadow-xs ring-2 ring-white/90 border border-white/20 backdrop-blur-md"
         >
-          <SparklesIcon className="size-4.5 text-zinc-200" />
+          <SparklesIcon className="size-4.5 text-amber-300" />
         </div>
       )}
 
@@ -505,13 +505,13 @@ export function MessageBubble({
         aria-label={assistant ? "Sara" : "You"}
       >
         <div
-          className={`mb-1.5 flex items-center gap-2 text-xs font-medium text-zinc-500 ${
+          className={`mb-1.5 flex items-center gap-2 text-xs font-medium text-slate-500 ${
             assistant ? "" : "justify-end"
           }`}
         >
-          <span>{assistant ? "Sara · ANCFZ Assistant" : "You"}</span>
+          <span className="font-semibold text-slate-700">{assistant ? "Sara · ANCFZ Assistant" : "You"}</span>
           {validDate && (
-            <time dateTime={message.createdAt} className="text-[0.7rem] text-zinc-400">
+            <time dateTime={message.createdAt} className="text-[0.7rem] text-slate-400">
               {time.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}
             </time>
           )}
@@ -521,8 +521,8 @@ export function MessageBubble({
         <div
           className={`relative break-words rounded-2xl text-[0.9375rem] leading-relaxed transition-all ${
             assistant
-              ? "rounded-tl-xs border border-white/80 bg-white/75 backdrop-blur-md p-4 text-zinc-850 shadow-[0_2px_16px_rgba(0,0,0,0.03)] ring-1 ring-zinc-900/5 hover:bg-white/85"
-              : "rounded-tr-xs border border-zinc-800/80 bg-zinc-900/95 backdrop-blur-md px-4 py-3 text-white shadow-[0_4px_16px_rgba(24,24,27,0.15)] ring-1 ring-white/10"
+              ? "rounded-tl-xs border border-white/80 bg-white/85 backdrop-blur-md p-4.5 text-slate-850 shadow-[0_2px_16px_rgba(15,23,42,0.03)] ring-1 ring-slate-900/5 hover:bg-white/95"
+              : "rounded-tr-xs border border-slate-800 bg-slate-900 px-4.5 py-3 text-white shadow-[0_4px_16px_rgba(15,23,42,0.12)] ring-1 ring-white/10"
           }`}
         >
           <RichTextContent
@@ -535,7 +535,7 @@ export function MessageBubble({
           {/* Chat-only confirmation: send the displayed exact consent text
               through the same customer message transport as the composer. */}
           {assistant && (
-            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-zinc-200/50 pt-2 text-[0.72rem] text-zinc-400">
+            <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-slate-200/60 pt-2.5 text-[0.72rem] text-slate-400">
               {consentText && onConsent && (
                 <button type="button"
                   onClick={()=>{void sendConsent();}}
@@ -546,8 +546,8 @@ export function MessageBubble({
                   title={consentMode==="consent"
                      ?"Sends the exact confirmation text to Sara"
                      :"An intervening question requires a fresh server-side proposal"}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-zinc-900 px-3.5 py-2 text-xs font-semibold text-white shadow-sm transition-colors hover:bg-zinc-800 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-800 disabled:cursor-not-allowed disabled:opacity-50">
-                  <CheckIcon className="size-3.5" />
+                  className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-sm transition-all hover:bg-slate-800 active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:opacity-50">
+                  <CheckIcon className="size-3.5 text-amber-300" />
                   <span>{submittingConsent?"Sending…":
                      consentMode==="consent"?"I Consent":"Review proposal again"}</span>
                 </button>
@@ -556,12 +556,12 @@ export function MessageBubble({
                 type="button"
                 onClick={copyContent}
                 aria-label={copied ? "Copied to clipboard" : "Copy response"}
-                className="ml-auto inline-flex items-center gap-1 rounded-md px-2 py-1 font-medium text-zinc-500 transition-colors hover:bg-zinc-100 hover:text-zinc-800 focus-visible:outline-2 focus-visible:outline-zinc-800"
+                className="ml-auto inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1 font-medium text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-800 active:scale-95 focus-visible:outline-2 focus-visible:outline-slate-800"
               >
                 {copied ? (
                   <>
                     <CheckIcon className="size-3.5 text-emerald-600" />
-                    <span className="text-emerald-700">Copied</span>
+                    <span className="text-emerald-700 font-semibold">Copied</span>
                   </>
                 ) : (
                   <>
