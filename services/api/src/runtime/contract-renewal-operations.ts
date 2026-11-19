@@ -36,8 +36,9 @@ function requestObject(raw:unknown):Record<string,unknown>{
 
 /** Used only after independent payment verification; lock in same DB transaction. */
 export async function renewalLinkTx(client:PoolClient,agentId:string,ticketId:string){
-  const r=await client.query<{source_contract_id:string;contract_number:string;source_revision:number}>(
-    "SELECT r.source_contract_id,r.contract_number,r.source_revision "+
+  const r=await client.query<{source_contract_id:string;contract_number:string;source_revision:number;offering_key:string;price_revision:number;amount:string;currency:string;source_document_sha256:string}>(
+    "SELECT r.source_contract_id,r.contract_number,r.source_revision,r.offering_key,"+
+    "r.price_revision,r.amount::text AS amount,r.currency,r.source_document_sha256 "+
     "FROM ticket_contract_renewals r WHERE r.agent_id=$1 AND r.renewal_ticket_id=$2 "+
     "AND r.status='requested' FOR UPDATE",
     [agentId,ticketId]);
