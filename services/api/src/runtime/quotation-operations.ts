@@ -141,7 +141,7 @@ async function pricedOptions(
      WHERE t.agent_id=$1 AND t.id=$2
        AND 'generate_quote'=ANY(i.allowed_actions)
        AND (
-         (o.offering_key ~ '^renewal_[a-z0-9_]+       AND ($3::text IS NULL OR o.offering_key=$3)
+         (o.offering_key ~ '^renewal_[a-z0-9_]+
      ORDER BY o.offering_key`,
     [agentId,ticketId,key??null],
   );
@@ -294,12 +294,15 @@ export class QuotationOperations {
     });
   }
 }
-
-          AND EXISTS(SELECT 1 FROM ticket_contract_renewals r WHERE r.agent_id=t.agent_id
-            AND r.renewal_ticket_id=t.id AND r.status='requested'))
-         OR (o.offering_key !~ '^renewal_'
-          AND NOT EXISTS(SELECT 1 FROM ticket_contract_renewals r WHERE r.agent_id=t.agent_id
-            AND r.renewal_ticket_id=t.id))
+ AND EXISTS(
+           SELECT 1 FROM ticket_contract_renewals r
+           WHERE r.agent_id=t.agent_id AND r.renewal_ticket_id=t.id AND r.status='requested'
+         ))
+         OR
+         (o.offering_key !~ '^renewal_' AND NOT EXISTS(
+           SELECT 1 FROM ticket_contract_renewals r
+           WHERE r.agent_id=t.agent_id AND r.renewal_ticket_id=t.id
+         ))
        )
        AND p.amount>0
        AND ($3::text IS NULL OR o.offering_key=$3)
