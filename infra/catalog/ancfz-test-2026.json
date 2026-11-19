@@ -1,14 +1,14 @@
 {
   "schemaVersion": "ancfz-poc-catalog-1",
-  "seedKey": "ancfz-test-2026-v1",
+  "seedKey": "ancfz-test-2026-synthetic-renewal-v1",
   "agentKey": "ancfz",
   "agentDisplayName": "Sara",
-  "intentRevision": 20261113,
-  "offeringRevision": 20261113,
+  "intentRevision": 2026111901,
+  "offeringRevision": 2026111901,
   "publication": "published",
   "environment": "test",
-  "reviewStatus": "Source-derived test data; no ANCFZ business-owner approval asserted",
-  "statement": "Prices and services copied from supplied ANCFZ descriptive DOCX files for test conversations only. No regulatory, bank, visa or quotation guarantee.",
+  "reviewStatus": "DEVELOPMENT-ONLY synthetic renewal rates; NOT ANCFZ commercial prices or official licence fees.",
+  "statement": "All newly added renewal prices are deliberately invented TEST values used solely for local workflow validation. They are not ANCFZ-approved or government-issued rates; no real licence is renewed.",
   "sourceDocuments": [
     "ANCFZ_Business_Activity_Categories.docx",
     "ANCFZ_Contact_Us.docx",
@@ -1916,6 +1916,48 @@
       "intentKey": "business_activity_selection",
       "price": null,
       "sourceDocument": "ANCFZ_Business_Activity_Categories.docx"
+    },
+    {
+      "key": "renewal_test_y1",
+      "label": "TEST Renewal — 1 Year (SIMULATED)",
+      "description": "DEMO ONLY: contract-linked 1-year synthetic renewal; not an official ANCFZ licence or approved renewal rate. Generates a TEST quotation, simulated payment and a revised nonbinding TEST agreement.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 999,
+        "conditions": "SYNTHETIC TEST AMOUNT ONLY; deliberately arbitrary, not an approved commercial rate, government fee or actual renewal quote; no regulatory licence extension.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2028-01-01T00:00:00Z"
+      },
+      "sourceDocument": "SYNTHETIC_TEST_FIXTURE"
+    },
+    {
+      "key": "renewal_test_y2",
+      "label": "TEST Renewal — 2 Years (SIMULATED)",
+      "description": "DEMO ONLY: contract-linked 2-year synthetic renewal; not an official ANCFZ licence or approved renewal rate. Generates a TEST quotation, simulated payment and a revised nonbinding TEST agreement.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 1998,
+        "conditions": "SYNTHETIC TEST AMOUNT ONLY; deliberately arbitrary, not an approved commercial rate, government fee or actual renewal quote; no regulatory licence extension.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2028-01-01T00:00:00Z"
+      },
+      "sourceDocument": "SYNTHETIC_TEST_FIXTURE"
+    },
+    {
+      "key": "renewal_test_y3",
+      "label": "TEST Renewal — 3 Years (SIMULATED)",
+      "description": "DEMO ONLY: contract-linked 3-year synthetic renewal; not an official ANCFZ licence or approved renewal rate. Generates a TEST quotation, simulated payment and a revised nonbinding TEST agreement.",
+      "intentKey": "company_formation",
+      "price": {
+        "currency": "AED",
+        "amount": 2997,
+        "conditions": "SYNTHETIC TEST AMOUNT ONLY; deliberately arbitrary, not an approved commercial rate, government fee or actual renewal quote; no regulatory licence extension.",
+        "effectiveFrom": "2026-01-01T00:00:00Z",
+        "effectiveTo": "2028-01-01T00:00:00Z"
+      },
+      "sourceDocument": "SYNTHETIC_TEST_FIXTURE"
     }
   ]
 }
