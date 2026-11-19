@@ -41,7 +41,7 @@ assert.match(backend,/new QuotationOperations\(this\.db\)\.submit/);
 assert.doesNotMatch(backend,/LeadOperations[\s\S]*\.submit/);
 assert.match(quotes,/ticket_contract_renewals r/);
 assert.match(quotes,/o\.offering_key ~ '\^renewal_/);
-assert.match(quotes,/NOT EXISTS\(SELECT 1 FROM ticket_contract_renewals r/);
+assert.match(quotes,/NOT EXISTS\(\s*SELECT 1 FROM ticket_contract_renewals r/);
 assert.match(payments,/renewalLinkTx/);
 assert.match(payments,/renewal\.source_revision\+1/);
 assert.match(payments,/renewal\.contract_number/);
