@@ -33,7 +33,7 @@ assert.match(backend,/source\.sha256/);
 assert.match(backend,/assertIdentityDocumentsReadyTx/);
 assert.match(backend,/renewal_\[a-z0-9_\]/);
 assert.match(backend,/pr\.amount>0 AND pr\.currency='AED'/);
-assert.match(backend,/rate\.priceRevision===input\.priceRevision/);
+assert.match(backend,/x\.priceRevision===input\.priceRevision/);
 assert.match(backend,/renewalReuse:true/);
 assert.match(backend,/reused_verified_lead/);
 assert.match(backend,/QUOTATION_ACKNOWLEDGMENT/);
