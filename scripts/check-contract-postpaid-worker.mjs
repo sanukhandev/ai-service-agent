@@ -31,4 +31,6 @@ assert.match(worker,/p\.state='verified_test_payment'/);
 assert.match(worker,/i\.state='verified_completed'/);
 assert.match(worker,/pc\.consent_text=\$2/);
 assert.match(worker,/AND c\.bytes IS NULL/);
+assert.ok(worker.includes("r.status<>'requested' OR NOT EXISTS"));
+assert.ok(worker.includes("later.agreement_revision>r.source_revision"));
 console.log("Contract post-payment worker PASS: sandbox-only recovery independent of new payments, no financial replay");
