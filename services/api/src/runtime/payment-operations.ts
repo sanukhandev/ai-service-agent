@@ -11,6 +11,7 @@ import { appendEventTx } from "../repositories/events.js";
 import { lifecycleNoticeId, TicketMessageRepository } from "../repositories/messages.js";
 import { createHash } from "node:crypto";
 import { PurchaseOperations, PURCHASE_CONSENT } from "./purchase-operations.js";
+import {renewalLinkTx} from "./contract-renewal-operations.js";
 import { assertPurchaseReady } from "./purchase-operations.js";
 import { PAYMENT_CONSENT, checkOtp, otpHmac, paymentEnabled, paymentReadEnabled,
   verifyPaymentStatus, existingCheckoutUrl, type PaymentIdentity } from "./payment-evidence.js";
@@ -735,13 +736,45 @@ export class PaymentOperations {
           [scope.agentId,ticketId,expected.quotationId,PURCHASE_CONSENT]);
         if(contractConsent.rows.length){
           const contractId=randomUUID();
-          await client.query(
-            `INSERT INTO ticket_service_contracts
-              (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
-             VALUES($1,$2,$3,$4,$5,$6)
-             ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
-            [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
-              "ANCFZ-TEST-SC-"+contractId]);
+          const renewal=await renewalLinkTx(client,scope.agentId,ticketId);
+          if(renewal){
+            // Independent gateway verification is necessary but never enough to
+            // change the source agreement or invent renewal pricing.
+            const q=await client.query<{offering_key:string;price_revision:number;
+              amount:string;currency:string}>(
+              "SELECT offering_key,price_revision,amount::text,currency "+
+              "FROM ticket_quotations WHERE agent_id=$1 AND ticket_id=$2 AND id=$3",
+              [scope.agentId,ticketId,expected.quotationId]);
+            const quoted=q.rows[0];
+            if(!quoted||quoted.offering_key!==renewal.offering_key||
+              quoted.price_revision!==renewal.price_revision||
+              quoted.amount!==renewal.amount||quoted.currency.trim()!==renewal.currency.trim())
+              throw new PersistenceError("CONFLICT","Renewal invoice has an unauthorized price snapshot");
+            const source=await client.query<{sha256:string;state:string}>(
+              "SELECT sha256,state FROM ticket_service_contracts "+
+              "WHERE agent_id=$1 AND id=$2 AND contract_number=$3 AND agreement_revision=$4 FOR UPDATE",
+              [scope.agentId,renewal.source_contract_id,renewal.contract_number,renewal.source_revision]);
+            if(source.rows[0]?.state!=="verified_completed"||
+              source.rows[0]?.sha256!==renewal.source_document_sha256)
+              throw new PersistenceError("CONFLICT","Original agreement evidence changed; staff review required");
+            await client.query(
+              `INSERT INTO ticket_service_contracts
+                (id,agent_id,ticket_id,quotation_id,payment_id,document_number,
+                 contract_number,agreement_revision,renewal_of_contract_id)
+               VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9)
+               ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
+              [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
+                "ANCFZ-TEST-SC-"+contractId,renewal.contract_number,
+                renewal.source_revision+1,renewal.source_contract_id]);
+          }else{
+            await client.query(
+              `INSERT INTO ticket_service_contracts
+                (id,agent_id,ticket_id,quotation_id,payment_id,document_number)
+               VALUES($1,$2,$3,$4,$5,$6)
+               ON CONFLICT(agent_id,ticket_id,payment_id) DO NOTHING`,
+              [contractId,scope.agentId,ticketId,expected.quotationId,paymentId,
+                "ANCFZ-TEST-SC-"+contractId]);
+          }
         }
         if(claim.previousState!=="verified_test_payment") {
           await appendEventTx(client,scope.agentId,ticketId,"payment.verified",{
