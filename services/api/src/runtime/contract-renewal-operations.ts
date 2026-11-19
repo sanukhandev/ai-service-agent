@@ -39,8 +39,14 @@ export async function renewalLinkTx(client:PoolClient,agentId:string,ticketId:st
   const r=await client.query<{source_contract_id:string;contract_number:string;source_revision:number;offering_key:string;price_revision:number;amount:string;currency:string;source_document_sha256:string}>(
     "SELECT r.source_contract_id,r.contract_number,r.source_revision,r.offering_key,"+
     "r.price_revision,r.amount::text AS amount,r.currency,r.source_document_sha256 "+
-    "FROM ticket_contract_renewals r WHERE r.agent_id=$1 AND r.renewal_ticket_id=$2 "+
-    "AND r.status='requested' FOR UPDATE",
+    "FROM ticket_contract_renewals r "+
+    "JOIN ticket_service_contracts sc ON sc.agent_id=r.agent_id AND sc.id=r.source_contract_id "+
+    "AND sc.contract_number=r.contract_number AND sc.agreement_revision=r.source_revision "+
+    "AND sc.sha256=r.source_document_sha256 AND sc.state='verified_completed' "+
+    "WHERE r.agent_id=$1 AND r.renewal_ticket_id=$2 AND r.status='requested' "+
+    "AND NOT EXISTS (SELECT 1 FROM ticket_service_contracts later WHERE later.agent_id=r.agent_id "+
+    "AND later.contract_number=r.contract_number AND later.agreement_revision>r.source_revision) "+
+    "FOR UPDATE OF r",
     [agentId,ticketId]);
   return r.rows[0]??null;
 }
@@ -214,8 +220,7 @@ export class ContractRenewalOperations {
         "JOIN intent_document_requirements n ON n.agent_id=d.agent_id AND n.intent_id=$4 "+
         "AND n.requirement_key=oldr.requirement_key "+
         "WHERE d.agent_id=$1 AND d.ticket_id=$2 AND d.state='received' "+
-        "AND oldr.requirement_key IN ('passport','emirates_id') RETURNING "+
-        "(SELECT requirement_key FROM intent_document_requirements WHERE id=requirement_id) AS requirement_key",
+        "AND oldr.requirement_key IN ('passport','emirates_id') RETURNING id",
         [scope.agentId,sourceTicketId,next.id,intentId]);
       if(copied.rows.length!==2)
         throw new PersistenceError("CONFLICT","Both original private identity documents must be available");
