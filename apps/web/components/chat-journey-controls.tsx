@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
+import { AlertCircleIcon, CheckIcon, DownloadIcon, FileTextIcon, RefreshCwIcon, SparklesIcon } from "./icons";
 
 /** Secure ticket-owned inputs in the chat transcript, not in the message
  * composer. Identity files and OTP codes never reach Foundry or chat logs. */
@@ -426,304 +427,505 @@ export function ChatJourneyControls({
 
   return (
     <div className="mt-5" aria-label="Secure in-chat journey">
-      <button type="button" onClick={()=>setModalOpen(true)}
-        className="flex w-full max-w-xl items-center justify-between gap-3 rounded-2xl border border-zinc-200 bg-white p-4 text-left text-sm shadow-sm hover:border-zinc-400 focus-visible:outline-2 focus-visible:outline-indigo-600">
-        <span>
-          <strong className="block text-zinc-900">Secure transaction</strong>
-          <span className="mt-1 block text-xs text-zinc-600">
-            {quoteOtpConfirmed?"Quotation confirmed — manage synthetic documents and checkout":
-              "Review your verified quotation and confirm with a private OTP"}
-          </span>
-        </span>
-        <span className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white">
-          {modalOpen?"Viewing":"Open"}
+      <button
+        type="button"
+        onClick={() => setModalOpen(true)}
+        className="group flex w-full max-w-xl items-center justify-between gap-3.5 rounded-2xl border border-white/80 bg-white/75 p-4 text-left shadow-[0_4px_20px_rgba(15,23,42,0.03)] backdrop-blur-xl ring-1 ring-slate-900/5 transition-all hover:bg-white/95 hover:border-amber-200/80 hover:shadow-md active:scale-[0.99] focus-visible:outline-2 focus-visible:outline-slate-800"
+      >
+        <div className="flex items-center gap-3.5 min-w-0">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 text-amber-300 shadow-xs ring-1 ring-white/20">
+            <SparklesIcon className="size-5" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <strong className="block text-sm font-semibold text-slate-900 group-hover:text-amber-950 transition-colors">
+              Secure Transaction Hub
+            </strong>
+            <span className="mt-0.5 block truncate text-xs text-slate-500">
+              {quoteOtpConfirmed
+                ? "Quotation confirmed · Synthetic documents & checkout active"
+                : "Review verified quote & confirm via private OTP challenge"}
+            </span>
+          </div>
+        </div>
+        <span className="shrink-0 rounded-xl bg-slate-900 px-3.5 py-1.5 text-xs font-semibold text-white shadow-xs group-hover:bg-slate-800 transition-colors">
+          {modalOpen ? "Viewing" : "Open Hub"}
         </span>
       </button>
+
       {modalOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5"
-          role="dialog" aria-modal="true" aria-labelledby="secure-transaction-title">
-          <button type="button" aria-label="Close secure transaction overlay"
-            onClick={()=>setModalOpen(false)}
-            className="absolute inset-0 bg-zinc-950/60 backdrop-blur-sm"/>
-          <div className="relative z-10 max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-2xl border border-zinc-200 bg-white p-5 text-sm shadow-2xl sm:p-7">
-            <div className="mb-4 flex items-center justify-between gap-4">
-              <h2 id="secure-transaction-title" className="text-base font-semibold text-zinc-900">
-                Sara · Secure transaction
-              </h2>
-              <button type="button" onClick={()=>setModalOpen(false)}
-                autoFocus aria-label="Close secure transaction"
-                className="rounded-lg border border-zinc-300 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-100">
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center p-3 sm:p-5"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="secure-transaction-title"
+        >
+          <button
+            type="button"
+            aria-label="Close secure transaction overlay"
+            onClick={() => setModalOpen(false)}
+            className="absolute inset-0 bg-slate-950/60 backdrop-blur-md animate-fade-in"
+          />
+          <div className="relative z-10 max-h-[90dvh] w-full max-w-2xl overflow-y-auto rounded-3xl border border-white/80 bg-white/95 p-5 text-sm shadow-2xl backdrop-blur-2xl ring-1 ring-slate-900/10 sm:p-7 animate-modal-scale">
+            {/* Header */}
+            <div className="mb-5 flex items-center justify-between gap-4 border-b border-slate-200/70 pb-4">
+              <div className="flex items-center gap-2.5">
+                <div className="flex size-8 items-center justify-center rounded-lg bg-slate-900 text-amber-300">
+                  <SparklesIcon className="size-4.5" />
+                </div>
+                <div>
+                  <h2 id="secure-transaction-title" className="text-base font-bold text-slate-900">
+                    Sara · Secure Transaction Hub
+                  </h2>
+                  <p className="text-xs text-slate-500">Official ANCFZ Regulatory & Payment Pipeline</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalOpen(false)}
+                autoFocus
+                aria-label="Close secure transaction"
+                className="rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-2xs transition-all hover:bg-slate-100 hover:text-slate-950 active:scale-95"
+              >
                 Close
               </button>
             </div>
-        <p className="font-medium">Verified quotation — {quote.currency} {quote.amount}</p>
-        <a className="mt-1 inline-block text-sm font-medium text-indigo-700 underline"
-          href={root+"/quotations/"+encodeURIComponent(quote.id)+"/pdf"}>
-          Download {quote.documentNumber} PDF
-        </a>
-        {!quoteOtpConfirmed && (
-          <div className="mt-5 space-y-3 rounded-xl border border-indigo-100 bg-indigo-50/50 p-4">
-            <h3 className="text-sm font-semibold text-zinc-900">Confirm this quotation</h3>
-            <p className="text-xs leading-5 text-zinc-700">
-              Confirm the contact email already provided in our conversation.
-              This sandbox OTP is stored in the private test table; no real email is sent.
-              Identity documents stay locked until the code is verified.
-            </p>
-            {data?.quoteConfirmation?.contactEmail ? (
-              <p className="break-all text-sm font-medium text-zinc-900">
-                {data.quoteConfirmation.contactEmail}
-              </p>
-            ) : (
-              <p role="alert" className="text-xs text-amber-800">
-                Sara needs to confirm the contact email from your conversation before requesting a code.
-              </p>
-            )}
-            {quoteOtpChallenge?.state==="mock_recorded" &&
-             new Date(quoteOtpChallenge.expiresAt).getTime()>Date.now() ? (
-              <form onSubmit={verifyQuoteOtp} className="space-y-2">
-                <label htmlFor="quote-confirmation-code" className="block text-xs font-medium">
-                  Synthetic quotation confirmation OTP
-                </label>
-                <input id="quote-confirmation-code" type="password" inputMode="numeric"
-                  autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}"
-                  value={quoteCode} onChange={event=>setQuoteCode(event.currentTarget.value)}
-                  disabled={busy!==null}
-                  className="w-40 rounded-lg border border-zinc-300 px-3 py-2"/>
-                <button type="submit" disabled={busy!==null||!/^[0-9]{6}$/.test(quoteCode)}
-                  className="block rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                  {busy==="quote-otp-verify"?"Verifying quotation…":"Verify quotation OTP"}
-                </button>
-              </form>
-            ) : (
-              <button type="button" onClick={()=>{void requestQuoteOtp();}}
-                disabled={busy!==null||!data?.quoteConfirmation?.contactEmail}
-                className="rounded-lg bg-zinc-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                {busy==="quote-otp-request"?"Recording test code…":
-                  "Confirm this email and request quote OTP"}
-              </button>
-            )}
-            {quoteOtpChallenge && quoteOtpChallenge.state!=="mock_recorded" && (
-              <p className="text-xs text-zinc-600">
-                The previous code is no longer active. Request another after the cooldown.
-              </p>
-            )}
-          </div>
-        )}
-        {quoteOtpConfirmed && (
-          <p role="status" className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-xs font-medium text-emerald-900">
-            Quotation OTP verified. Secure document collection is now unlocked.
-          </p>
-        )}
-        {purchase?.supported && quoteOtpConfirmed && documents.length>0 && (
-          <div className="mt-4 space-y-3">
-            {documentsComplete && (
-              <div className="space-y-2">
-                <p className="text-sm font-medium text-emerald-800" role="status">
-                  Required synthetic documents received
+
+            {/* Quotation summary card */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-amber-200/80 bg-gradient-to-r from-amber-50/70 via-amber-50/40 to-white p-4 shadow-2xs">
+              <div>
+                <span className="text-[0.7rem] font-semibold tracking-wider uppercase text-amber-800">
+                  Verified Quotation
+                </span>
+                <p className="text-base font-bold text-slate-900">
+                  {quote.currency} {quote.amount}
                 </p>
-                {documents.some(doc=>doc.status==="synthetic_name_unverified") && (
-                  <p className="text-xs text-amber-800">
-                    POC only: the synthetic passport was classified, but its holder name
-                    was not verified. The TEST invoice will use the Emirates ID name.
-                    This is not identity verification.
-                  </p>
-                )}
-                <p className="text-xs text-zinc-700">
-                  {purchase.reviewIssued
-                    ? "Sara's purchase review is available in the chat. Answer the requested billing question or review the exact-amount proposal before authorizing."
-                    : "Checkout has not started. Sara is preparing the next purchase-review question; you can also request it using the button below."}
-                  A test OTP, order and invoice require separate authorization and verified payment.
-                </p>
-                <button type="button" onClick={()=>{void continuePurchase();}}
-                  disabled={busy!==null||conversationBusy}
-                  className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                  {busy==="purchase"?"Requesting purchase review…":
-                    purchase.reviewIssued?"Ask Sara to show purchase review again":"Continue to sandbox purchase review"}
-                </button>
-                <button type="button" onClick={()=>setEditingDocuments(value=>!value)}
-                  disabled={busy!==null||conversationBusy}
-                  className="ml-3 text-xs text-zinc-700 underline disabled:opacity-40">
-                  {editingDocuments?"Hide document inputs":"Replace synthetic documents"}
-                </button>
               </div>
-            )}
-            {(!documentsComplete||editingDocuments) && (
-              <div className="space-y-3">
-                <p className="font-medium">Upload your synthetic identity documents here</p>
-                {uploadStage && (
-                  <p role="status" aria-live="polite"
-                    className="flex items-center gap-2 rounded-lg bg-indigo-50 p-3 text-xs font-medium text-indigo-900">
-                    <span className="size-4 animate-spin rounded-full border-2 border-indigo-700 border-r-transparent"/>
-                    {uploadStage}
-                  </p>
-                )}
-                <p className="text-xs text-amber-800">
-                  Development sandbox only. Never upload real identity documents on local HTTP.
-                  Files go directly to a private Node endpoint, not to Sara's AI transcript.
+              <a
+                className="inline-flex items-center gap-1.5 rounded-xl bg-slate-900 px-3.5 py-2 text-xs font-semibold text-white shadow-xs transition-colors hover:bg-slate-800"
+                href={root + "/quotations/" + encodeURIComponent(quote.id) + "/pdf"}
+              >
+                <DownloadIcon className="size-3.5 text-amber-300" />
+                <span>Download {quote.documentNumber} PDF</span>
+              </a>
+            </div>
+
+            {/* Quotation confirmation / OTP challenge */}
+            {!quoteOtpConfirmed && (
+              <div className="mt-5 space-y-3 rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4.5 shadow-2xs">
+                <h3 className="text-sm font-bold text-slate-900">Confirm this quotation</h3>
+                <p className="text-xs leading-relaxed text-slate-600">
+                  Confirm the contact email already provided in our conversation.
+                  This sandbox OTP is stored in the private test table; no real email is sent.
+                  Identity documents stay locked until the code is verified.
                 </p>
-                {documents.map(doc=>(
-                  <label key={doc.key} className="block rounded-lg border border-zinc-200 p-3">
-                    <span className="block text-sm font-medium">
-                      {doc.label}{doc.required?" (required)":""}
-                    </span>
-                    <span className="block text-xs text-zinc-600">
-                      {doc.uploaded?"Uploaded — you may replace it before purchase consent":
-                        "PDF, PNG or JPEG, max 1 MiB"}
-                    </span>
-                    <input className="mt-2 block w-full text-xs" type="file"
-                      accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
-                      disabled={busy!==null||conversationBusy}
-                      onChange={event=>{
-                        const file=event.currentTarget.files?.[0];
-                        event.currentTarget.value="";
-                        void upload(doc.key,file);
-                      }}/>
-                  </label>
-                ))}
-                {purchase.missing.includes("identity_name_mismatch") && (
-                  <p role="alert" className="text-xs text-red-700">
-                    Extracted identity names do not match. Purchase and invoice are blocked.
-                  </p>
-                )}
-              </div>
-            )}
-          </div>
-        )}
-        {purchase?.confirmed && !currentPayment && (
-          <p className="mt-3 text-xs text-zinc-700">
-            Sandbox purchase authorized. A synthetic OTP is required before the test order.
-          </p>
-        )}
-        {showOtp && (
-          <form className="mt-3 space-y-2" onSubmit={verifyOtp}>
-            <label className="block text-xs font-medium" htmlFor="secure-chat-otp">
-              Enter synthetic OTP securely (not in your message)
-            </label>
-            <input id="secure-chat-otp" type="password" inputMode="numeric"
-              autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}"
-              value={otp} onChange={event=>setOtp(event.currentTarget.value)}
-              className="w-40 rounded-lg border border-zinc-300 px-3 py-2"/>
-            <button type="submit" disabled={busy!==null||!/^\d{6}$/.test(otp)}
-              className="block rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">
-              {busy==="otp"?"Verifying…":"Verify test OTP"}
-            </button>
-          </form>
-        )}
-        {challenge && !showOtp && !currentPayment && purchase?.confirmed && (
-          <div className="mt-3 space-y-2">
-            <p className="text-xs text-amber-800">
-              This test OTP is no longer usable. Request a fresh code; the original cannot be reused.
-            </p>
-            <button type="button" disabled={busy!==null}
-              onClick={()=>{void renewPaymentOtp();}}
-              className="rounded-lg border border-zinc-300 px-3 py-2 text-xs font-medium disabled:opacity-40">
-              {busy==="renew-otp"?"Requesting…":"Request new OTP"}
-            </button>
-          </div>
-        )}
-        {currentPayment && (
-          <div className="mt-3 space-y-2">
-            <p className="text-xs">Sandbox order: <strong>{currentPayment.state.replaceAll("_"," ")}</strong></p>
-            {currentPayment.state==="payment_declined" && !showOtp && (
-              <div className="space-y-2">
-                <p className="text-xs text-amber-800">
-                  The provider confirmed DECLINED. Your quotation and identity documents are retained.
-                  A new sandbox link requires a fresh OTP; your old order will not be retried.
-                </p>
-                <button type="button" disabled={busy!==null}
-                  onClick={()=>{void renewPaymentOtp();}}
-                  className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">
-                  {busy==="renew-otp"?"Requesting…":"Retry declined payment — request new OTP"}
-                </button>
-              </div>
-            )}
-            {currentPayment.orderReference && currentPayment.providerPaymentId &&
-              ["checkout_available","order_created_checkout_unavailable","payment_pending"].includes(currentPayment.state) && (
-              <div className="space-y-2">
-                <button type="button" onClick={()=>{void reopenCheckout();}}
-                  disabled={busy!==null||checkoutWatcher.current!==null}
-                  className="inline-block rounded-lg bg-zinc-900 px-3 py-2 text-xs font-semibold text-white disabled:opacity-40">
-                  {busy==="checkout"?"Opening secure checkout…":
-                   checkoutWatcher.current?"Checkout window open":
-                   "Click to pay"}
-                </button>
-                {safeCheckoutUrl(fallbackCheckoutUrl) && (
-                  <a href={fallbackCheckoutUrl} target="_blank" rel="noopener noreferrer nofollow"
-                    className="block text-xs text-indigo-700 underline">
-                    Open existing checkout in a new tab (popup fallback)
-                  </a>
-                )}
-              </div>
-            )}
-            {currentPayment.state==="unknown_outcome" && (
-              <div className="space-y-2">
-                <p role="alert" className="text-xs text-amber-800">
-                  Provider outcome unknown. Do not create another payment order.
-                </p>
-                {currentPayment.providerStatus && (
-                  <p className="text-xs text-zinc-600">
-                    Dispatch diagnostic: {currentPayment.providerStatus}
-                  </p>
-                )}
-                {!currentPayment.orderReference && (
-                  <form className="space-y-2" onSubmit={reconcileOrder}>
-                    <label className="block text-xs font-medium" htmlFor="existing-gateway-order">
-                      Existing MockGateway RefNo / OrderNo (operator recovery)
-                    </label>
-                    <input id="existing-gateway-order" autoComplete="off"
-                      value={orderReference} onChange={event=>setOrderReference(event.currentTarget.value)}
-                      maxLength={120} placeholder="Existing provider order number"
-                      className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs"/>
-                    <label className="block text-xs font-medium" htmlFor="existing-gateway-payment-id">
-                      MockGateway transaction ID (for record matching, not GET lookup)
-                    </label>
-                    <input id="existing-gateway-payment-id" autoComplete="off"
-                      value={providerPaymentId}
-                      onChange={event=>setProviderPaymentId(event.currentTarget.value)}
-                      maxLength={120} placeholder="Transaction ID from MockGateway dashboard"
-                      className="w-full rounded-lg border border-zinc-300 px-3 py-2 text-xs"/>
-                    <p className="text-xs text-zinc-600">
-                      Read-only gateway lookup uses the existing RefNo/OrderNo. Enter its matching
-                      dashboard transaction ID for recovery tracking. No new order or OTP will be generated.
+                {data?.quoteConfirmation?.contactEmail ? (
+                  <div className="rounded-xl border border-amber-200/60 bg-white/80 px-3.5 py-2">
+                    <span className="text-[0.68rem] font-semibold uppercase text-slate-400">Authorized Contact</span>
+                    <p className="break-all text-sm font-semibold text-slate-900">
+                      {data.quoteConfirmation.contactEmail}
                     </p>
-                    <button type="submit" disabled={busy!==null||
-                      !/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim())||
-                      !/^[A-Za-z0-9_-]{1,120}$/.test(providerPaymentId.trim())}
-                      className="rounded-lg bg-zinc-900 px-3 py-2 text-xs font-medium text-white disabled:opacity-40">
-                      {busy==="reconcile"?"Checking existing order…":"Reconcile existing order (GET only)"}
-                    </button>
+                  </div>
+                ) : (
+                  <p role="alert" className="text-xs font-medium text-amber-800">
+                    Sara needs to confirm the contact email from your conversation before requesting a code.
+                  </p>
+                )}
+                {quoteOtpChallenge?.state === "mock_recorded" &&
+                new Date(quoteOtpChallenge.expiresAt).getTime() > Date.now() ? (
+                  <form onSubmit={verifyQuoteOtp} className="space-y-3 pt-1">
+                    <label htmlFor="quote-confirmation-code" className="block text-xs font-semibold text-slate-700">
+                      Synthetic quotation confirmation OTP (6 digits)
+                    </label>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <input
+                        id="quote-confirmation-code"
+                        type="password"
+                        inputMode="numeric"
+                        autoComplete="one-time-code"
+                        maxLength={6}
+                        pattern="[0-9]{6}"
+                        placeholder="••••••"
+                        value={quoteCode}
+                        onChange={(event) => setQuoteCode(event.currentTarget.value)}
+                        disabled={busy !== null}
+                        className="w-44 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-slate-900 outline-none transition-all focus:border-slate-800 focus:ring-3 focus:ring-slate-800/10"
+                      />
+                      <button
+                        type="submit"
+                        disabled={busy !== null || !/^[0-9]{6}$/.test(quoteCode)}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                      >
+                        {busy === "quote-otp-verify" ? "Verifying quotation…" : "Verify quotation OTP"}
+                      </button>
+                    </div>
                   </form>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      void requestQuoteOtp();
+                    }}
+                    disabled={busy !== null || !data?.quoteConfirmation?.contactEmail}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                  >
+                    {busy === "quote-otp-request"
+                      ? "Recording test code…"
+                      : "Confirm this email and request quote OTP"}
+                  </button>
+                )}
+                {quoteOtpChallenge && quoteOtpChallenge.state !== "mock_recorded" && (
+                  <p className="text-xs text-slate-500">
+                    The previous code is no longer active. Request another after the cooldown.
+                  </p>
                 )}
               </div>
             )}
-          </div>
-        )}
-        {contract?.pdfAvailable===true && (
-          <a href={root+"/contracts/"+encodeURIComponent(contract.id)+"/pdf"}
-            className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">
-            Download private TEST service agreement {contract.documentNumber}
-          </a>
-        )}
-        {contract && ["queued","running"].includes(contract.state) && (
-          <p role="status" className="mt-3 text-xs text-zinc-600">
-            Your TEST invoice is available. Service agreement {contract.documentNumber}
-            {" "}is being prepared and will appear here after independent checks.
-          </p>
-        )}
-        {contract?.state==="needs_review" && (
-          <p role="alert" className="mt-3 text-xs text-amber-800">
-            Your TEST invoice remains available. Service agreement {contract.documentNumber}
-            {" "}needs document review before it can be issued; no identity number has been fabricated.
-          </p>
-        )}
-        {invoice?.pdfAvailable===true && (
-          <a href={root+"/invoices/"+encodeURIComponent(invoice.id)+"/pdf"}
-            className="mt-3 inline-block text-sm font-semibold text-indigo-700 underline">
-            Download verified TEST invoice {invoice.documentNumber}
-          </a>
-        )}
-        {error && <p role="alert" className="mt-3 text-xs text-red-700">{error}</p>}
-        {notice && <p role="status" className="mt-3 text-xs text-zinc-700">{notice}</p>}
+
+            {/* Quote OTP verified notice */}
+            {quoteOtpConfirmed && (
+              <p
+                role="status"
+                className="mt-4 flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50/80 p-3 text-xs font-semibold text-emerald-900 shadow-2xs"
+              >
+                <CheckIcon className="size-4 text-emerald-700 shrink-0" />
+                <span>Quotation OTP verified. Secure document collection is now unlocked.</span>
+              </p>
+            )}
+
+            {/* Document Collection Flow */}
+            {purchase?.supported && quoteOtpConfirmed && documents.length > 0 && (
+              <div className="mt-5 space-y-4">
+                {documentsComplete && (
+                  <div className="space-y-3 rounded-2xl border border-emerald-200/80 bg-emerald-50/50 p-4 shadow-2xs">
+                    <p className="flex items-center gap-2 text-sm font-semibold text-emerald-900" role="status">
+                      <CheckIcon className="size-4 text-emerald-700 shrink-0" />
+                      <span>Required synthetic documents received</span>
+                    </p>
+                    {documents.some((doc) => doc.status === "synthetic_name_unverified") && (
+                      <p className="text-xs font-medium text-amber-800">
+                        POC only: the synthetic passport was classified, but its holder name
+                        was not verified. The TEST invoice will use the Emirates ID name.
+                        This is not identity verification.
+                      </p>
+                    )}
+                    <p className="text-xs leading-relaxed text-slate-600">
+                      {purchase.reviewIssued
+                        ? "Sara's purchase review is available in the chat. Answer the requested billing question or review the exact-amount proposal before authorizing."
+                        : "Checkout has not started. Sara is preparing the next purchase-review question; you can also request it using the button below."}{" "}
+                      A test OTP, order and invoice require separate authorization and verified payment.
+                    </p>
+                    <div className="flex flex-wrap items-center gap-3 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void continuePurchase();
+                        }}
+                        disabled={busy !== null || conversationBusy}
+                        className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                      >
+                        {busy === "purchase"
+                          ? "Requesting purchase review…"
+                          : purchase.reviewIssued
+                            ? "Ask Sara to show purchase review again"
+                            : "Continue to sandbox purchase review"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setEditingDocuments((value) => !value)}
+                        disabled={busy !== null || conversationBusy}
+                        className="text-xs font-medium text-slate-600 underline hover:text-slate-900 disabled:opacity-40"
+                      >
+                        {editingDocuments ? "Hide document inputs" : "Replace synthetic documents"}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {(!documentsComplete || editingDocuments) && (
+                  <div className="space-y-3 rounded-2xl border border-slate-200/80 bg-white/70 p-4.5 shadow-2xs">
+                    <p className="font-bold text-slate-900">Upload your synthetic identity documents</p>
+                    {uploadStage && (
+                      <p
+                        role="status"
+                        aria-live="polite"
+                        className="flex items-center gap-2 rounded-xl border border-amber-200/80 bg-amber-50 p-3 text-xs font-semibold text-amber-900 shadow-2xs"
+                      >
+                        <RefreshCwIcon className="size-4 animate-spin text-amber-700 shrink-0" />
+                        <span>{uploadStage}</span>
+                      </p>
+                    )}
+                    <p className="text-xs font-medium text-amber-800">
+                      Development sandbox only. Never upload real identity documents on local HTTP.
+                      Files go directly to a private Node endpoint, not to Sara's AI transcript.
+                    </p>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                      {documents.map((doc) => (
+                        <label
+                          key={doc.key}
+                          className="block cursor-pointer rounded-xl border border-slate-200 bg-white/90 p-3.5 shadow-2xs transition-all hover:border-slate-400 hover:bg-white"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="block text-xs font-bold text-slate-900">{doc.label}</span>
+                            <span
+                              className={`rounded-md px-1.5 py-0.5 text-[0.65rem] font-bold uppercase ${
+                                doc.uploaded
+                                  ? "border border-emerald-200 bg-emerald-50 text-emerald-800"
+                                  : "border border-amber-200 bg-amber-50 text-amber-800"
+                              }`}
+                            >
+                              {doc.uploaded ? "Uploaded" : doc.required ? "Required" : "Optional"}
+                            </span>
+                          </div>
+                          <span className="mt-1 block text-[0.72rem] text-slate-500">
+                            {doc.uploaded
+                              ? "Uploaded — replace anytime before consent"
+                              : "PDF, PNG or JPEG, max 1 MiB"}
+                          </span>
+                          <input
+                            className="mt-2 block w-full text-xs text-slate-500 file:mr-2 file:rounded-lg file:border-0 file:bg-slate-100 file:px-2.5 file:py-1 file:text-xs file:font-semibold file:text-slate-700 hover:file:bg-slate-200"
+                            type="file"
+                            accept=".pdf,.png,.jpg,.jpeg,application/pdf,image/png,image/jpeg"
+                            disabled={busy !== null || conversationBusy}
+                            onChange={(event) => {
+                              const file = event.currentTarget.files?.[0];
+                              event.currentTarget.value = "";
+                              void upload(doc.key, file);
+                            }}
+                          />
+                        </label>
+                      ))}
+                    </div>
+                    {purchase.missing.includes("identity_name_mismatch") && (
+                      <p role="alert" className="text-xs font-semibold text-rose-700">
+                        Extracted identity names do not match. Purchase and invoice are blocked.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Purchase confirmed status */}
+            {purchase?.confirmed && !currentPayment && (
+              <p className="mt-4 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs font-medium text-slate-700">
+                Sandbox purchase authorized. A synthetic OTP is required before the test order.
+              </p>
+            )}
+
+            {/* OTP Challenge Form */}
+            {showOtp && (
+              <form className="mt-4 space-y-3 rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4.5 shadow-2xs" onSubmit={verifyOtp}>
+                <label className="block text-xs font-bold text-slate-900" htmlFor="secure-chat-otp">
+                  Enter synthetic payment OTP securely (not in your message)
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    id="secure-chat-otp"
+                    type="password"
+                    inputMode="numeric"
+                    autoComplete="one-time-code"
+                    maxLength={6}
+                    pattern="[0-9]{6}"
+                    placeholder="••••••"
+                    value={otp}
+                    onChange={(event) => setOtp(event.currentTarget.value)}
+                    className="w-44 rounded-xl border border-slate-300 bg-white px-3.5 py-2 text-center text-sm font-mono tracking-widest text-slate-900 outline-none transition-all focus:border-slate-800 focus:ring-3 focus:ring-slate-800/10"
+                  />
+                  <button
+                    type="submit"
+                    disabled={busy !== null || !/^\d{6}$/.test(otp)}
+                    className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                  >
+                    {busy === "otp" ? "Verifying…" : "Verify test OTP"}
+                  </button>
+                </div>
+              </form>
+            )}
+
+            {/* Expired OTP retry */}
+            {challenge && !showOtp && !currentPayment && purchase?.confirmed && (
+              <div className="mt-4 space-y-2 rounded-2xl border border-amber-200/80 bg-amber-50/40 p-4 shadow-2xs">
+                <p className="text-xs font-medium text-amber-800">
+                  This test OTP is no longer usable. Request a fresh code; the original cannot be reused.
+                </p>
+                <button
+                  type="button"
+                  disabled={busy !== null}
+                  onClick={() => {
+                    void renewPaymentOtp();
+                  }}
+                  className="rounded-xl border border-slate-300 bg-white px-3.5 py-1.5 text-xs font-semibold text-slate-800 shadow-2xs transition-all hover:bg-slate-50 disabled:opacity-40"
+                >
+                  {busy === "renew-otp" ? "Requesting…" : "Request new OTP"}
+                </button>
+              </div>
+            )}
+
+            {/* Current Payment Section */}
+            {currentPayment && (
+              <div className="mt-5 space-y-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 p-4.5 shadow-2xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-slate-900">Sandbox Order</span>
+                  <span className="rounded-lg border border-slate-200 bg-white px-2.5 py-0.5 text-xs font-bold uppercase text-slate-800">
+                    {currentPayment.state.replaceAll("_", " ")}
+                  </span>
+                </div>
+
+                {currentPayment.state === "payment_declined" && !showOtp && (
+                  <div className="space-y-2.5 pt-1">
+                    <p className="text-xs font-medium text-amber-800">
+                      The provider confirmed DECLINED. Your quotation and identity documents are retained.
+                      A new sandbox link requires a fresh OTP; your old order will not be retried.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={busy !== null}
+                      onClick={() => {
+                        void renewPaymentOtp();
+                      }}
+                      className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                    >
+                      {busy === "renew-otp" ? "Requesting…" : "Retry declined payment — request new OTP"}
+                    </button>
+                  </div>
+                )}
+
+                {currentPayment.orderReference &&
+                  currentPayment.providerPaymentId &&
+                  ["checkout_available", "order_created_checkout_unavailable", "payment_pending"].includes(
+                    currentPayment.state,
+                  ) && (
+                    <div className="space-y-2.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          void reopenCheckout();
+                        }}
+                        disabled={busy !== null || checkoutWatcher.current !== null}
+                        className="inline-block rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                      >
+                        {busy === "checkout"
+                          ? "Opening secure checkout…"
+                          : checkoutWatcher.current
+                            ? "Checkout window open"
+                            : "Click to pay"}
+                      </button>
+                      {safeCheckoutUrl(fallbackCheckoutUrl) && (
+                        <a
+                          href={fallbackCheckoutUrl}
+                          target="_blank"
+                          rel="noopener noreferrer nofollow"
+                          className="block text-xs font-medium text-slate-700 underline hover:text-slate-950"
+                        >
+                          Open existing checkout in a new tab (popup fallback)
+                        </a>
+                      )}
+                    </div>
+                  )}
+
+                {currentPayment.state === "unknown_outcome" && (
+                  <div className="space-y-2.5 pt-1">
+                    <p role="alert" className="text-xs font-medium text-amber-800">
+                      Provider outcome unknown. Do not create another payment order.
+                    </p>
+                    {currentPayment.providerStatus && (
+                      <p className="text-xs text-slate-600">
+                        Dispatch diagnostic: {currentPayment.providerStatus}
+                      </p>
+                    )}
+                    {!currentPayment.orderReference && (
+                      <form className="space-y-2.5" onSubmit={reconcileOrder}>
+                        <label className="block text-xs font-semibold text-slate-700" htmlFor="existing-gateway-order">
+                          Existing MockGateway RefNo / OrderNo (operator recovery)
+                        </label>
+                        <input
+                          id="existing-gateway-order"
+                          autoComplete="off"
+                          value={orderReference}
+                          onChange={(event) => setOrderReference(event.currentTarget.value)}
+                          maxLength={120}
+                          placeholder="Existing provider order number"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-800 focus:ring-2 focus:ring-slate-800/10"
+                        />
+                        <label className="block text-xs font-semibold text-slate-700" htmlFor="existing-gateway-payment-id">
+                          MockGateway transaction ID (for record matching, not GET lookup)
+                        </label>
+                        <input
+                          id="existing-gateway-payment-id"
+                          autoComplete="off"
+                          value={providerPaymentId}
+                          onChange={(event) => setProviderPaymentId(event.currentTarget.value)}
+                          maxLength={120}
+                          placeholder="Transaction ID from MockGateway dashboard"
+                          className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs text-slate-900 outline-none focus:border-slate-800 focus:ring-2 focus:ring-slate-800/10"
+                        />
+                        <p className="text-[0.72rem] text-slate-500">
+                          Read-only gateway lookup uses the existing RefNo/OrderNo. Enter its matching
+                          dashboard transaction ID for recovery tracking. No new order or OTP will be generated.
+                        </p>
+                        <button
+                          type="submit"
+                          disabled={
+                            busy !== null ||
+                            !/^[A-Za-z0-9_-]{1,120}$/.test(orderReference.trim()) ||
+                            !/^[A-Za-z0-9_-]{1,120}$/.test(providerPaymentId.trim())
+                          }
+                          className="rounded-xl bg-slate-900 px-4 py-2 text-xs font-semibold text-white shadow-xs transition-all hover:bg-slate-800 active:scale-95 disabled:opacity-40"
+                        >
+                          {busy === "reconcile" ? "Checking existing order…" : "Reconcile existing order (GET only)"}
+                        </button>
+                      </form>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Document Downloads (Contract & Invoice) */}
+            {contract?.pdfAvailable === true && (
+              <a
+                href={root + "/contracts/" + encodeURIComponent(contract.id) + "/pdf"}
+                className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl border border-amber-200/80 bg-amber-50/60 px-3.5 py-2 text-xs font-semibold text-amber-900 shadow-2xs hover:bg-amber-100/80 transition-colors"
+              >
+                <DownloadIcon className="size-3.5 text-amber-700" />
+                <span>Download private TEST service agreement {contract.documentNumber}</span>
+              </a>
+            )}
+            {contract && ["queued", "running"].includes(contract.state) && (
+              <p role="status" className="mt-3 text-xs text-slate-600">
+                Your TEST invoice is available. Service agreement {contract.documentNumber} is being prepared
+                and will appear here after independent checks.
+              </p>
+            )}
+            {contract?.state === "needs_review" && (
+              <p role="alert" className="mt-3 text-xs font-medium text-amber-800">
+                Your TEST invoice remains available. Service agreement {contract.documentNumber} needs
+                document review before it can be issued; no identity number has been fabricated.
+              </p>
+            )}
+            {invoice?.pdfAvailable === true && (
+              <a
+                href={root + "/invoices/" + encodeURIComponent(invoice.id) + "/pdf"}
+                className="mt-3.5 inline-flex items-center gap-1.5 rounded-xl border border-emerald-200/80 bg-emerald-50/60 px-3.5 py-2 text-xs font-semibold text-emerald-900 shadow-2xs hover:bg-emerald-100/80 transition-colors"
+              >
+                <DownloadIcon className="size-3.5 text-emerald-700" />
+                <span>Download verified TEST invoice {invoice.documentNumber}</span>
+              </a>
+            )}
+
+            {/* Error & Notice Callouts */}
+            {error && (
+              <div role="alert" className="mt-4 flex items-center gap-2 rounded-xl border border-rose-200/80 bg-rose-50/80 p-3 text-xs text-rose-800 shadow-2xs">
+                <AlertCircleIcon className="size-4 text-rose-600 shrink-0" />
+                <span>{error}</span>
+              </div>
+            )}
+            {notice && (
+              <div role="status" className="mt-4 flex items-center gap-2 rounded-xl border border-slate-200/80 bg-slate-50/80 p-3 text-xs text-slate-700 shadow-2xs">
+                <CheckIcon className="size-4 text-emerald-600 shrink-0" />
+                <span>{notice}</span>
+              </div>
+            )}
           </div>
         </div>
       )}
