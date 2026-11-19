@@ -215,6 +215,27 @@ export class ServiceContractWorker{
              SELECT 1 FROM ticket_service_contracts c WHERE c.agent_id=p.agent_id
                AND c.ticket_id=p.ticket_id AND c.payment_id=p.id
            )
+           -- Do not let an ineligible paid renewal starve recovery of every
+           -- other paid TEST agreement. Its source requires manual review.
+           AND NOT EXISTS (
+             SELECT 1 FROM ticket_contract_renewals r
+             WHERE r.agent_id=p.agent_id AND r.renewal_ticket_id=p.ticket_id
+               AND (
+                 r.status<>'requested' OR NOT EXISTS (
+                   SELECT 1 FROM ticket_service_contracts src
+                   WHERE src.agent_id=r.agent_id AND src.id=r.source_contract_id
+                     AND src.state='verified_completed'
+                     AND src.sha256=r.source_document_sha256
+                     AND src.contract_number=r.contract_number
+                     AND src.agreement_revision=r.source_revision
+                 ) OR EXISTS (
+                   SELECT 1 FROM ticket_service_contracts later
+                   WHERE later.agent_id=r.agent_id
+                     AND later.contract_number=r.contract_number
+                     AND later.agreement_revision>r.source_revision
+                 )
+               )
+           )
          ORDER BY p.created_at LIMIT 1`,[agentId,PURCHASE_CONSENT]);
       const x=r.rows[0];if(!x)return;
       const id=randomUUID();
