@@ -113,11 +113,15 @@ export class ContractRenewalOperations {
 
   async preview(scope:TicketScope,sourceTicketId:string,contractId:string):Promise<RenewalPreview>{
     requireUuid(sourceTicketId,"sourceTicketId");requireUuid(contractId,"contractId");
-    if(!renewalEnabled())
-      return {available:false,reason:"Sandbox renewals are disabled",sourceContractId:contractId,
-        contractNumber:"",nextRevision:0,customerName:"",options:[],disclosure:RENEWAL_DISCLOSURE};
     return this.db.withAgent(scope.agentId,async client=>{
+      // Even when the feature is disabled, do not reveal a ticket/contract
+      // reference until its session ownership and verified source are checked.
       const src=await this.source(client,scope,sourceTicketId,contractId);
+      if(!renewalEnabled())return {
+        available:false,reason:"Sandbox renewals are disabled",sourceContractId:src.id,
+        contractNumber:src.contract_number,nextRevision:src.agreement_revision+1,
+        customerName:src.customer_name,options:[],disclosure:RENEWAL_DISCLOSURE,
+      };
       const binding=await publishedBinding(client,scope.agentId);
       const rates=binding.offeringCatalogVersionId
         ?await this.rates(client,scope.agentId,src,binding.offeringCatalogVersionId):[];
