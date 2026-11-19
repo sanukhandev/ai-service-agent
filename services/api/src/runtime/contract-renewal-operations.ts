@@ -103,7 +103,9 @@ export class ContractRenewalOperations {
       " WHERE p.agent_id=o.agent_id AND p.offering_id=o.id "+
       " AND p.effective_from<=now() AND (p.effective_to IS NULL OR p.effective_to>now()) "+
       " ORDER BY p.revision DESC LIMIT 1) pr ON true "+
-      "WHERE o.agent_id=$1 AND o.catalog_version_id=$2 AND o.intent_key=$3 "+
+      "WHERE o.agent_id=$1 AND o.catalog_version_id=$2 "+
+      "AND (o.intent_key=$3 OR ($3 IN ('quotation_request','package_comparison') "+
+      "AND o.intent_key='company_formation')) "+
       "AND o.offering_key ~ '^renewal_[a-z0-9_]+$' "+
       "AND pr.amount>0 AND pr.currency='AED' ORDER BY o.offering_key",
       [agentId,catalogVersionId,source.intent_key]);
