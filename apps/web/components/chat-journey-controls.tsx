@@ -85,11 +85,12 @@ async function base64File(file:File):Promise<string>{
 }
 
 export function ChatJourneyControls({
-  ticketId,revision,onContinuePurchase,onDocumentsUpdated,onTransactionStateChange,conversationBusy,
+  ticketId,revision,onContinuePurchase,onDocumentsUpdated,onTransactionStateChange,onRenewalCreated,conversationBusy,
 }:{
   ticketId:string;revision:number;
   onContinuePurchase:()=>Promise<void>;onDocumentsUpdated:()=>void;
   onTransactionStateChange:(status:string|null)=>void;
+  onRenewalCreated:(ticketId:string)=>void;
   conversationBusy:boolean;
 }){
   const [data,setData]=useState<Journey|null>(null);
@@ -113,6 +114,14 @@ export function ChatJourneyControls({
   const checkoutPopup=useRef<Window|null>(null);
   const checkoutWatcher=useRef<ReturnType<typeof setInterval>|null>(null);
   const [fallbackCheckoutUrl,setFallbackCheckoutUrl]=useState<string|null>(null);
+  const [renewalPreview,setRenewalPreview]=useState<{
+    available:boolean;reason:string|null;sourceContractId:string;
+    contractNumber:string;nextRevision:number;disclosure:string;
+    options:Array<{offeringKey:string;label:string;amount:string;currency:string;priceRevision:number}>;
+  }|null>(null);
+  const [renewalOffering,setRenewalOffering]=useState("");
+  const [renewalConsent,setRenewalConsent]=useState(false);
+
   useEffect(()=>()=>{if(checkoutWatcher.current)clearInterval(checkoutWatcher.current);},[]);
 
   const root="/api/v1/tickets/"+encodeURIComponent(ticketId);
@@ -446,6 +455,37 @@ export function ChatJourneyControls({
       setError(e instanceof Error?e.message:"Could not reopen the existing payment");
       setFallbackCheckoutUrl(null);
     }finally{setBusy(null);}
+  }
+
+  async function previewRenewal(){
+    const c=data?.payment?.contract;
+    if(!c?.pdfAvailable||busy||conversationBusy)return;
+    setBusy("renewal-preview");setError(null);setRenewalConsent(false);
+    try{
+      const preview=await requestJson<NonNullable<typeof renewalPreview>>(
+        root+"/contracts/"+encodeURIComponent(c.id)+"/renewal/preview");
+      setRenewalPreview(preview);
+      setRenewalOffering(preview.options[0]?.offeringKey??"");
+    }catch(e){setError(e instanceof Error?e.message:"Renewal preview unavailable");}
+    finally{setBusy(null);}
+  }
+  async function startRenewal(){
+    const c=data?.payment?.contract;
+    const preview=renewalPreview;
+    const rate=preview?.options.find(x=>x.offeringKey===renewalOffering);
+    if(!c||!preview?.available||!rate||!renewalConsent||busy||conversationBusy)return;
+    setBusy("renewal-start");setError(null);
+    try{
+      const result=await requestJson<{ticketId:string;quotationId:string}>(
+        root+"/contracts/"+encodeURIComponent(c.id)+"/renewal/start",{
+          requestId:crypto.randomUUID(),offeringKey:rate.offeringKey,
+          priceRevision:rate.priceRevision,amount:rate.amount,currency:rate.currency,
+          consent:true,consentText:preview.disclosure,
+        });
+      // Move to the newly created ticket; it contains the fresh quote cycle.
+      onRenewalCreated(result.ticketId);
+    }catch(e){setError(e instanceof Error?e.message:"Renewal was not started");}
+    finally{setBusy(null);}
   }
 
   const quote=data?.quotation;
@@ -1032,6 +1072,57 @@ export function ChatJourneyControls({
                         <span>Needs Review</span>
                       </span>
                     ) : null}
+                  </div>
+                )}
+
+                {/* Renewal is a new commercial transaction, never an edit of the old PDF. */}
+                {contract?.pdfAvailable && (
+                  <div className="rounded-2xl border border-zinc-200 bg-white p-4">
+                    {!renewalPreview && (
+                      <button type="button" disabled={busy!==null||conversationBusy}
+                        onClick={()=>{void previewRenewal();}}
+                        className="rounded-xl border border-zinc-300 px-3 py-2 text-xs font-semibold text-zinc-900 disabled:opacity-50">
+                        {busy==="renewal-preview"?"Checking approved renewal rates…":"Renew this agreement"}
+                      </button>
+                    )}
+                    {renewalPreview && !renewalPreview.available && (
+                      <p role="status" className="text-xs text-zinc-700">
+                        {renewalPreview.reason??"An authorized renewal price is unavailable."}
+                      </p>
+                    )}
+                    {renewalPreview?.available && (
+                      <div className="space-y-3">
+                        <p className="text-sm font-semibold text-zinc-900">
+                          Renewal of {renewalPreview.contractNumber} — revision {renewalPreview.nextRevision}
+                        </p>
+                        <label className="block text-xs font-medium text-zinc-700">
+                          Owner-published renewal offering
+                          <select value={renewalOffering} onChange={e=>{setRenewalOffering(e.target.value);setRenewalConsent(false);}}
+                            className="mt-1 w-full rounded-lg border border-zinc-300 bg-white p-2 text-sm">
+                            {renewalPreview.options.map(rate=>(
+                              <option key={rate.offeringKey} value={rate.offeringKey}>
+                                {rate.label} · {rate.currency} {rate.amount}
+                              </option>
+                            ))}
+                          </select>
+                        </label>
+                        <p className="text-xs text-zinc-600">
+                          The old contract and invoice stay unchanged. This starts a fresh quotation, secure OTP,
+                          test payment and revised TEST agreement only after independent verification.
+                        </p>
+                        <label className="flex items-start gap-2 text-xs text-zinc-700">
+                          <input type="checkbox" checked={renewalConsent}
+                            onChange={e=>setRenewalConsent(e.target.checked)}
+                            className="mt-0.5" />
+                          <span>{renewalPreview.disclosure}</span>
+                        </label>
+                        <button type="button" onClick={()=>{void startRenewal();}}
+                          disabled={!renewalConsent||!renewalOffering||busy!==null||conversationBusy}
+                          className="rounded-xl bg-zinc-900 px-4 py-2 text-xs font-semibold text-white disabled:opacity-50">
+                          {busy==="renewal-start"?"Recording approval…":"Approve renewal quotation"}
+                        </button>
+                      </div>
+                    )}
                   </div>
                 )}
 
