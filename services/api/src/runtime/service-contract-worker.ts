@@ -219,6 +219,13 @@ export class ServiceContractWorker{
       const x=r.rows[0];if(!x)return;
       const id=randomUUID();
       const renewal=await renewalLinkTx(client,agentId,x.ticket_id);
+      const renewalRecord=await client.query(
+        "SELECT 1 FROM ticket_contract_renewals WHERE agent_id=$1 AND renewal_ticket_id=$2",
+        [agentId,x.ticket_id]);
+      if(renewalRecord.rows.length && !renewal) {
+        this.log({ticketId:x.ticket_id},"Paid renewal source requires contract review");
+        return;
+      }
       const inserted=renewal
         ?await client.query(
           `INSERT INTO ticket_service_contracts
