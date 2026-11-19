@@ -46,6 +46,8 @@ assert.match(payments,/renewalLinkTx/);
 assert.match(payments,/renewal\.source_revision\+1/);
 assert.match(payments,/renewal\.contract_number/);
 assert.match(payments,/renewal\.source_contract_id/);
+assert.match(payments,/renewalTicket\.rows\.length && !renewal/);
+assert.match(worker,/renewalRecord\.rows\.length && !renewal/);
 assert.match(payments,/quoted\.amount!==renewal\.amount/);
 assert.match(worker,/contractPostPaymentEnabled/);
 assert.match(worker,/recoverMissingContract/);
