@@ -107,8 +107,11 @@ export class ContractRenewalOperations {
       "AND o.offering_key ~ '^renewal_[a-z0-9_]+$' "+
       "AND pr.amount>0 AND pr.currency='AED' ORDER BY o.offering_key",
       [agentId,catalogVersionId,source.intent_key]);
-    return r.rows.map(x=>({offeringKey:x.offering_key,label:x.label,
-      amount:x.amount,currency:x.currency.trim(),priceRevision:x.revision}));
+    // The published test SKU encodes the renewal period explicitly.
+    // Otherwise copied source 'term_years' could misstate the selected offer.
+    return r.rows.filter(x=>/_y[1-5]$/.test(x.offering_key))
+      .map(x=>({offeringKey:x.offering_key,label:x.label,
+        amount:x.amount,currency:x.currency.trim(),priceRevision:x.revision}));
   }
 
   /**
@@ -252,6 +255,9 @@ export class ContractRenewalOperations {
       const rate=prices.find(x=>x.offeringKey===input.offeringKey&&
         x.priceRevision===input.priceRevision&&x.amount===input.amount&&x.currency===input.currency);
       if(!rate)throw new PersistenceError("CONFLICT","Published renewal price changed; review again");
+      const match=rate.offeringKey.match(/_y([1-5])$/);
+      if(!match)throw new PersistenceError("CONFLICT","Published renewal term is invalid");
+      const renewalTermYears=Number(match[1]);
       const intent=await client.query<{id:string}>(
         "SELECT id FROM intents WHERE agent_id=$1 AND catalog_version_id=$2 "+
         "AND intent_key=$3 AND 'generate_quote'=ANY(allowed_actions) "+
@@ -278,9 +284,10 @@ export class ContractRenewalOperations {
       // Replay sourced facts with fresh customer authorization; never grant provenance to the LLM.
       await client.query(
         "INSERT INTO ticket_facts(agent_id,ticket_id,fact_key,value,verification_status,source_message_id) "+
-        "SELECT agent_id,$3,fact_key,value,'customer_stated',$4 FROM ticket_facts "+
+        "SELECT agent_id,$3,fact_key,CASE WHEN fact_key='term_years' "+
+        "THEN to_jsonb($5::integer) ELSE value END,'customer_stated',$4 FROM ticket_facts "+
         "WHERE agent_id=$1 AND ticket_id=$2 AND verification_status<>'disputed'",
-        [scope.agentId,sourceTicketId,next.id,consent.message.id]);
+        [scope.agentId,sourceTicketId,next.id,consent.message.id,renewalTermYears]);
       await client.query(
         "INSERT INTO ticket_fact_events(agent_id,ticket_id,fact_id,old_value,new_value,source_message_id,new_verification_status) "+
         "SELECT agent_id,ticket_id,id,NULL,value,$3,'customer_stated' FROM ticket_facts "+
@@ -327,7 +334,8 @@ export class ContractRenewalOperations {
       await appendEventTx(client,scope.agentId,next.id,"contract.renewal.requested",
         {contractNumber:source.contract_number,previousRevision:source.agreement_revision,
           nextRevision:source.agreement_revision+1,amount:rate.amount,currency:"AED",
-          offeringKey:rate.offeringKey,priceRevision:rate.priceRevision,testOnly:true});
+          offeringKey:rate.offeringKey,priceRevision:rate.priceRevision,
+          termYears:renewalTermYears,testOnly:true});
       await new TicketMessageRepository(this.db).createAssistantMessageTx(
         client,scope,next.id,randomUUID(),
         "Your renewal for **"+source.contract_number+"** has been requested at **AED "+
