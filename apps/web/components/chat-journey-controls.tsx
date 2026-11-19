@@ -121,6 +121,7 @@ export function ChatJourneyControls({
   }|null>(null);
   const [renewalOffering,setRenewalOffering]=useState("");
   const [renewalConsent,setRenewalConsent]=useState(false);
+  const renewalRequestId=useRef<string|null>(null);
 
   useEffect(()=>()=>{if(checkoutWatcher.current)clearInterval(checkoutWatcher.current);},[]);
 
@@ -460,7 +461,7 @@ export function ChatJourneyControls({
   async function previewRenewal(){
     const c=data?.payment?.contract;
     if(!c?.pdfAvailable||busy||conversationBusy)return;
-    setBusy("renewal-preview");setError(null);setRenewalConsent(false);
+    setBusy("renewal-preview");setError(null);setRenewalConsent(false);renewalRequestId.current=null;
     try{
       const preview=await requestJson<NonNullable<typeof renewalPreview>>(
         root+"/contracts/"+encodeURIComponent(c.id)+"/renewal/preview");
@@ -475,14 +476,17 @@ export function ChatJourneyControls({
     const rate=preview?.options.find(x=>x.offeringKey===renewalOffering);
     if(!c||!preview?.available||!rate||!renewalConsent||busy||conversationBusy)return;
     setBusy("renewal-start");setError(null);
+    const requestId=renewalRequestId.current??crypto.randomUUID();
+    renewalRequestId.current=requestId;
     try{
       const result=await requestJson<{ticketId:string;quotationId:string}>(
         root+"/contracts/"+encodeURIComponent(c.id)+"/renewal/start",{
-          requestId:crypto.randomUUID(),offeringKey:rate.offeringKey,
+          requestId,offeringKey:rate.offeringKey,
           priceRevision:rate.priceRevision,amount:rate.amount,currency:rate.currency,
           consent:true,consentText:preview.disclosure,
         });
       // Move to the newly created ticket; it contains the fresh quote cycle.
+      renewalRequestId.current=null;
       onRenewalCreated(result.ticketId);
     }catch(e){setError(e instanceof Error?e.message:"Renewal was not started");}
     finally{setBusy(null);}
@@ -1097,7 +1101,7 @@ export function ChatJourneyControls({
                         </p>
                         <label className="block text-xs font-medium text-zinc-700">
                           Owner-published renewal offering
-                          <select value={renewalOffering} onChange={e=>{setRenewalOffering(e.target.value);setRenewalConsent(false);}}
+                          <select value={renewalOffering} onChange={e=>{setRenewalOffering(e.target.value);setRenewalConsent(false);renewalRequestId.current=null;}}
                             className="mt-1 w-full rounded-lg border border-zinc-300 bg-white p-2 text-sm">
                             {renewalPreview.options.map(rate=>(
                               <option key={rate.offeringKey} value={rate.offeringKey}>
