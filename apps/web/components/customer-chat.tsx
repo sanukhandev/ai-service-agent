@@ -38,20 +38,20 @@ type TurnState = "idle" | "sending" | "accepted" | "processing";
 
 const statusConfig: Record<Ticket["status"], { label: string; badgeClass: string }> = {
   open: {
-    label: "Open",
-    badgeClass: "bg-emerald-50/80 text-emerald-800 border-emerald-200/80",
+    label: "Active Ticket",
+    badgeClass: "bg-emerald-50 text-emerald-800 border-emerald-200/80 shadow-2xs",
   },
   awaiting_customer: {
-    label: "Awaiting reply",
-    badgeClass: "bg-zinc-100/80 text-zinc-800 border-zinc-200/80",
+    label: "Awaiting Reply",
+    badgeClass: "bg-amber-50 text-amber-900 border-amber-200/80 shadow-2xs",
   },
   processing: {
-    label: "In progress",
-    badgeClass: "bg-amber-50/80 text-amber-800 border-amber-200/80",
+    label: "In Progress",
+    badgeClass: "bg-sky-50 text-sky-800 border-sky-200/80 shadow-2xs",
   },
   closed: {
-    label: "Closed",
-    badgeClass: "bg-zinc-100/80 text-zinc-500 border-zinc-200",
+    label: "Resolved",
+    badgeClass: "bg-slate-100 text-slate-600 border-slate-200/80 shadow-2xs",
   },
 };
 
@@ -110,27 +110,27 @@ function displayError(error: unknown): string {
 const STARTER_PROMPTS = [
   {
     icon: BuildingIcon,
-    title: "Business Licensing",
-    description: "Requirements, categories, and steps to apply for an ANCFZ trade license.",
-    prompt: "What are the requirements and steps to apply for a new business license in ANCFZ?",
+    title: "Trade Licensing & Packages",
+    description: "Commercial, service, and freelance license fees, zero-tax benefits, and visa quotas.",
+    prompt: "What are the requirements, approved activities, and package fees for a new commercial trade license in ANCFZ?",
   },
   {
     icon: PassportIcon,
-    title: "Visa & Residency",
-    description: "Investor and employment visas, family sponsorship, and processing times.",
-    prompt: "What are the requirements and process for investor and employment visas in ANCFZ?",
+    title: "Investor & Employment Visas",
+    description: "Fast-track residency, partner visas, family sponsorship rules, and Emirates ID timelines.",
+    prompt: "What is the procedure and timeline for obtaining an ANCFZ investor residency visa and Emirates ID?",
   },
   {
     icon: ClipboardCheckIcon,
-    title: "Company Setup Docs",
-    description: "Legal documents, shareholder resolutions, and compliance approvals.",
-    prompt: "What documents and approvals are required to register a company in ANCFZ?",
+    title: "Company Setup & Formation",
+    description: "Free Zone Establishment (FZE vs FZC) registration, shareholder resolutions, and bank accounts.",
+    prompt: "What documents and approvals are required to register an FZE company with corporate bank account assistance?",
   },
   {
     icon: ShieldCheckIcon,
-    title: "Track Application",
-    description: "Inquire about existing ticket progress, requirements, and next steps.",
-    prompt: "Can you help me check the status and requirements for my current ticket?",
+    title: "Track Application & Quotes",
+    description: "Real-time ticket status lookup, issued quotation review, and pending compliance requirements.",
+    prompt: "Can you check the current status, verified quotation, and required next steps for my ticket?",
   },
 ];
 
@@ -448,31 +448,31 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
   const pendingConsent = pendingChatConsent(messages);
 
   return (
-    <main className="flex h-dvh min-h-[24rem] flex-col text-zinc-900">
+    <main className="flex h-dvh min-h-[24rem] flex-col text-slate-900">
       {/* Frosted Glassmorphic Header */}
-      <header className="sticky top-0 z-30 shrink-0 border-b border-white/60 bg-white/70 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.02)] ring-1 ring-zinc-900/5">
+      <header className="sticky top-0 z-30 shrink-0 border-b border-slate-200/70 bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(15,23,42,0.03)] ring-1 ring-slate-900/5">
         <div className="mx-auto flex w-full max-w-4xl items-center justify-between gap-3 px-4 py-3 sm:px-6">
           {/* Agent Identity */}
           <div className="flex items-center gap-3 min-w-0">
-            <div className="relative flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-zinc-950 via-zinc-900 to-zinc-800 text-white shadow-sm ring-2 ring-white/80 border border-white/30 backdrop-blur-md">
-              <SparklesIcon className="size-5 sm:size-5.5 text-zinc-200" />
+            <div className="relative flex size-10 sm:size-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 text-white shadow-md ring-2 ring-white/90 border border-white/20 backdrop-blur-md">
+              <SparklesIcon className="size-5 sm:size-5.5 text-amber-300 animate-pulse-glow" />
               <span
                 aria-hidden="true"
-                className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white ${
-                  stream === "connected" ? "bg-emerald-500" : "bg-amber-500 animate-pulse"
+                className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white shadow-xs ${
+                  stream === "connected" ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]" : "bg-amber-500 animate-pulse"
                 }`}
               />
             </div>
             <div className="min-w-0 flex-1">
               <div className="flex items-center gap-2">
-                <h1 className="truncate text-base font-semibold tracking-tight text-zinc-900 sm:text-lg">
+                <h1 className="truncate text-base font-semibold tracking-tight text-slate-900 sm:text-lg">
                   Sara
                 </h1>
-                <span className="inline-flex items-center rounded-md border border-white/80 bg-white/70 backdrop-blur-md px-1.5 py-0.5 text-[0.68rem] font-medium tracking-wide uppercase text-zinc-800 shadow-2xs">
+                <span className="inline-flex items-center rounded-md border border-amber-200/70 bg-gradient-to-r from-amber-50 to-amber-100/60 px-2 py-0.5 text-[0.68rem] font-semibold tracking-wider uppercase text-amber-900 shadow-2xs">
                   ANCFZ Free Zone
                 </span>
               </div>
-              <p className="truncate text-xs text-zinc-500">Official AI Customer Service Assistant</p>
+              <p className="truncate text-xs text-slate-500">Official AI Customer Service Concierge</p>
             </div>
           </div>
 
@@ -485,13 +485,16 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
                   type="button"
                   onClick={copyTicketNumber}
                   title="Click to copy ticket reference"
-                  className="group inline-flex items-center gap-1.5 rounded-lg border border-white/70 bg-white/60 backdrop-blur-md px-2.5 py-1 text-xs font-mono font-medium text-zinc-700 shadow-2xs transition-all hover:border-zinc-300 hover:bg-white/90"
+                  className="group inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/80 backdrop-blur-md px-2.5 py-1 text-xs font-mono font-medium text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-white active:scale-95"
                 >
-                  <span>{ticket.number}</span>
+                  <span className="tracking-tight">{ticket.number}</span>
                   {copiedTicket ? (
-                    <CheckIcon className="size-3 text-emerald-600" />
+                    <span className="inline-flex items-center gap-0.5 text-emerald-600 font-sans text-[0.7rem] font-semibold">
+                      <CheckIcon className="size-3 text-emerald-600" />
+                      <span>Copied</span>
+                    </span>
                   ) : (
-                    <CopyIcon className="size-3 text-zinc-400 group-hover:text-zinc-600" />
+                    <CopyIcon className="size-3 text-slate-400 group-hover:text-slate-600 transition-colors" />
                   )}
                 </button>
 
@@ -508,17 +511,17 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
             {/* Connection Status Pill */}
             <span
-              className="inline-flex items-center gap-1.5 rounded-lg border border-white/70 bg-white/60 backdrop-blur-md px-2.5 py-1 text-[0.7rem] font-medium text-zinc-600 shadow-2xs"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/80 backdrop-blur-md px-2.5 py-1 text-[0.7rem] font-medium text-slate-600 shadow-2xs"
               role="status"
             >
               <span
                 aria-hidden="true"
                 className={`size-1.5 rounded-full ${
                   stream === "connected"
-                    ? "bg-emerald-500"
+                    ? "bg-emerald-500 shadow-[0_0_6px_rgba(16,185,129,0.5)]"
                     : stream === "reconnecting" || stream === "connecting"
                       ? "bg-amber-500 animate-pulse"
-                      : "bg-zinc-400"
+                      : "bg-slate-400"
                 }`}
               />
               <span className="hidden xs:inline">
@@ -538,9 +541,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
                 type="button"
                 onClick={startNewConversation}
                 title="Start a new conversation"
-                className="inline-flex items-center gap-1 rounded-lg border border-white/70 bg-white/60 backdrop-blur-md px-2.5 py-1 text-xs font-medium text-zinc-700 shadow-2xs transition-all hover:border-zinc-300 hover:bg-white/95 hover:text-zinc-950 focus-visible:outline-2 focus-visible:outline-zinc-800 active:scale-95"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-slate-200/80 bg-white/80 backdrop-blur-md px-2.5 py-1 text-xs font-semibold text-slate-700 shadow-2xs transition-all hover:border-slate-300 hover:bg-white hover:text-slate-950 focus-visible:outline-2 focus-visible:outline-slate-800 active:scale-95"
               >
-                <PlusIcon className="size-3.5 text-zinc-500" />
+                <PlusIcon className="size-3.5 text-slate-500" />
                 <span className="hidden sm:inline">New Chat</span>
               </button>
             )}
@@ -549,9 +552,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
         {/* Ticket subject line if present */}
         {ticket?.subject && (
-          <div className="mx-auto w-full max-w-4xl border-t border-zinc-200/50 bg-white/40 backdrop-blur-md px-4 py-1.5 sm:px-6">
-            <p className="truncate text-xs font-medium text-zinc-600" title={ticket.subject}>
-              <span className="text-zinc-400 font-normal">Subject: </span>
+          <div className="mx-auto w-full max-w-4xl border-t border-slate-200/60 bg-slate-50/70 backdrop-blur-md px-4 py-1.5 sm:px-6">
+            <p className="truncate text-xs font-medium text-slate-600" title={ticket.subject}>
+              <span className="text-slate-400 font-normal">Subject: </span>
               {ticket.subject}
             </p>
           </div>
@@ -605,17 +608,20 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
 
           {/* Glassmorphic Empty State with Bento Prompt Starters */}
           {loadState === "ready" && messages.length === 0 && (
-            <div className="mx-auto max-w-2xl py-4 animate-fade-in">
+            <div className="mx-auto max-w-2xl py-6 sm:py-8 animate-fade-in">
               <div className="text-center">
-                <div className="relative mx-auto mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-zinc-950 via-zinc-900 to-zinc-800 text-white shadow-lg ring-8 ring-white/60 border border-white/30 backdrop-blur-md">
-                  <SparklesIcon className="size-7 text-zinc-100" />
+                <div className="relative mx-auto mb-4 inline-flex size-14 items-center justify-center rounded-2xl bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 text-white shadow-lg ring-8 ring-amber-500/10 border border-white/20 backdrop-blur-md">
+                  <SparklesIcon className="size-7 text-amber-300 animate-pulse-glow" />
                 </div>
-                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-zinc-900">
-                  How can Sara assist you today?
+                <div className="inline-flex items-center gap-1.5 rounded-full border border-amber-200/80 bg-amber-50/80 px-3 py-1 text-[0.72rem] font-semibold tracking-wide uppercase text-amber-900 mb-3 shadow-2xs">
+                  <ShieldCheckIcon className="size-3.5 text-amber-700" />
+                  <span>Official ANCFZ Smart Concierge</span>
+                </div>
+                <h2 className="text-2xl sm:text-3xl font-bold tracking-tight text-slate-900">
+                  How can Sara assist your business today?
                 </h2>
-                <p className="mt-2 text-sm leading-relaxed text-zinc-500 max-w-lg mx-auto">
-                  Your direct AI assistant for the Al Nakheel Commercial Free Zone (ANCFZ). Ask about
-                  licensing, visa procedures, corporate registration, or ticket status.
+                <p className="mt-2.5 text-sm leading-relaxed text-slate-600 max-w-lg mx-auto">
+                  Your dedicated AI assistant for the Al Nakheel Commercial Free Zone. Instant regulatory guidance, tailored license calculations, residency visa procedures, and verified quotes.
                 </p>
               </div>
 
@@ -628,15 +634,15 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
                       key={idx}
                       type="button"
                       onClick={() => setPrefilledPrompt(item.prompt)}
-                      className="group flex flex-col items-start rounded-2xl border border-white/80 bg-white/65 p-4 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)] backdrop-blur-md transition-all hover:-translate-y-0.5 hover:border-white hover:bg-white/90 hover:shadow-[0_12px_32px_rgba(0,0,0,0.06)] ring-1 ring-zinc-900/5 focus-visible:outline-2 focus-visible:outline-zinc-800 active:scale-[0.99]"
+                      className="group flex flex-col items-start rounded-2xl border border-white/80 bg-white/70 p-4.5 text-left shadow-[0_4px_20px_rgba(0,0,0,0.03)] backdrop-blur-md transition-all duration-200 hover:-translate-y-0.5 hover:border-amber-200/80 hover:bg-white/95 hover:shadow-[0_12px_32px_rgba(15,23,42,0.06)] ring-1 ring-slate-900/5 focus-visible:outline-2 focus-visible:outline-slate-800 active:scale-[0.985]"
                     >
-                      <div className="flex size-9 items-center justify-center rounded-xl bg-zinc-100/90 text-zinc-800 shadow-2xs transition-colors group-hover:bg-zinc-900 group-hover:text-white">
+                      <div className="flex size-9.5 items-center justify-center rounded-xl bg-slate-100/90 text-slate-800 shadow-2xs transition-colors duration-200 group-hover:bg-slate-900 group-hover:text-amber-300">
                         <Icon className="size-4.5" />
                       </div>
-                      <h3 className="mt-3 text-sm font-semibold text-zinc-900 group-hover:text-zinc-950 transition-colors">
+                      <h3 className="mt-3 text-sm font-semibold text-slate-900 group-hover:text-amber-900 transition-colors">
                         {item.title}
                       </h3>
-                      <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                      <p className="mt-1 text-xs leading-relaxed text-slate-500 group-hover:text-slate-600">
                         {item.description}
                       </p>
                     </button>
@@ -644,9 +650,9 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
                 })}
               </div>
 
-              <div className="mt-6 flex items-center justify-center gap-2 text-xs text-zinc-400">
-                <ShieldCheckIcon className="size-4 text-zinc-600" />
-                <span>Verified responses powered by published ANCFZ regulations and guidelines</span>
+              <div className="mt-7 flex items-center justify-center gap-2 text-xs text-slate-500">
+                <ShieldCheckIcon className="size-4 text-emerald-600" />
+                <span>256-bit Encrypted Session · Governed by official ANCFZ regulations and guidelines</span>
               </div>
             </div>
           )}
@@ -654,7 +660,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {/* Owner-scoped cursor pagination; never replace newer SSE messages. */}
           {loadState==="ready" && hasOlder && messages.length>0 && (
             <button type="button" disabled={olderLoading} onClick={()=>{void loadOlder();}}
-              className="mb-4 self-center rounded-xl border border-zinc-200 bg-white px-4 py-2 text-xs font-medium text-zinc-800 shadow-sm disabled:opacity-50">
+              className="mb-4 self-center rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-800 shadow-sm transition-colors hover:bg-slate-50 disabled:opacity-50">
               {olderLoading?"Loading earlier messages…":"Load earlier messages"}
             </button>
           )}
@@ -694,16 +700,16 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               conversation timeline, not only in a faint composer-area badge. */}
           {loadState==="ready" && (transactionState||operationNotice) && (
             <div role="status" aria-live="polite"
-              className="mt-5 flex items-start gap-3 pl-1 sm:pl-2">
-              <div className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white">
-                <SparklesIcon className="size-4 animate-pulse"/>
+              className="mt-5 flex items-start gap-3 pl-1 sm:pl-2 animate-message-slide">
+              <div className="mt-1 flex size-9 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm ring-1 ring-white/10">
+                <SparklesIcon className="size-4 text-amber-300 animate-pulse"/>
               </div>
-              <div className="max-w-[min(88%,42rem)] rounded-2xl rounded-tl-xs border border-zinc-200 bg-white p-4 shadow-sm">
-                <p className="flex items-center gap-2 text-sm font-medium text-zinc-900">
-                  {transactionState && <RefreshCwIcon className="size-4 animate-spin" />}
+              <div className="max-w-[min(88%,42rem)] rounded-2xl rounded-tl-xs border border-white/80 bg-white/85 backdrop-blur-md p-4 shadow-sm ring-1 ring-slate-900/5">
+                <p className="flex items-center gap-2 text-sm font-semibold text-slate-900">
+                  {transactionState && <RefreshCwIcon className="size-4 animate-spin text-amber-600" />}
                   {transactionState??operationNotice}
                 </p>
-                {transactionState && <p className="mt-1 text-xs text-zinc-600">
+                {transactionState && <p className="mt-1 text-xs text-slate-600">
                   Message input is paused until this operation finishes.
                   Secure OTP and document controls remain available in the transaction window.
                 </p>}
@@ -716,22 +722,22 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
             <div
               role="status"
               aria-live="polite"
-              className="mt-6 flex items-start gap-3 pl-1 sm:pl-2 animate-fade-in"
+              className="mt-6 flex items-start gap-3 pl-1 sm:pl-2 animate-message-slide"
             >
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-zinc-950 via-zinc-900 to-zinc-800 text-white shadow-sm ring-2 ring-white/80 border border-white/20">
-                <SparklesIcon className="size-4.5 text-zinc-200 animate-pulse" />
+              <div className="flex size-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-tr from-slate-950 via-slate-900 to-slate-800 text-white shadow-sm ring-2 ring-white/90 border border-white/20">
+                <SparklesIcon className="size-4.5 text-amber-300 animate-pulse" />
               </div>
 
               {/* Frosted Glass Thinking Card */}
-              <div className="rounded-2xl rounded-tl-xs border border-white/80 bg-white/75 backdrop-blur-md px-4 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.04)] ring-1 ring-zinc-900/5">
-                <div className="flex items-center gap-2.5">
+              <div className="rounded-2xl rounded-tl-xs border border-white/80 bg-white/80 backdrop-blur-md px-4 py-3 shadow-[0_4px_20px_rgba(0,0,0,0.04)] ring-1 ring-slate-900/5">
+                <div className="flex items-center gap-3">
                   <span aria-hidden="true" className="flex items-center gap-1.5">
-                    <span className="size-2 animate-bounce rounded-full bg-zinc-800" />
-                    <span className="size-2 animate-bounce rounded-full bg-zinc-800 [animation-delay:180ms]" />
-                    <span className="size-2 animate-bounce rounded-full bg-zinc-800 [animation-delay:360ms]" />
+                    <span className="size-2 rounded-full bg-slate-800 animate-wave-1" />
+                    <span className="size-2 rounded-full bg-slate-800 animate-wave-2" />
+                    <span className="size-2 rounded-full bg-slate-800 animate-wave-3" />
                   </span>
-                  <span className="text-xs font-medium text-zinc-800">
-                    {isSending ? "Sending…" : "Thinking…"}
+                  <span className="text-xs font-medium text-slate-700">
+                    {isSending ? "Dispatching your message…" : "Sara is consulting ANCFZ regulations and preparing your answer…"}
                   </span>
                 </div>
               </div>
@@ -741,7 +747,7 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
       </section>
 
       {/* Modern Frosted Glass Composer Island Area */}
-      <footer className="relative shrink-0 border-t border-white/60 bg-white/65 backdrop-blur-xl px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5 shadow-[0_-4px_24px_rgba(0,0,0,0.02)]">
+      <footer className="relative shrink-0 border-t border-white/80 bg-white/70 backdrop-blur-xl px-4 pb-[max(0.75rem,env(safe-area-inset-bottom))] pt-3 sm:px-6 sm:pb-5 shadow-[0_-4px_24px_rgba(15,23,42,0.03)] ring-1 ring-slate-900/5">
         {/* Floating Jump to Latest Button */}
         {showLatest && (
           <button
@@ -752,10 +758,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
               followLatest.current = true;
               setShowLatest(false);
             }}
-            className="absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-white/80 bg-white/85 px-4 py-1.5 text-xs font-medium text-zinc-800 shadow-lg backdrop-blur-md transition-all hover:bg-white hover:shadow-xl active:scale-95"
+            className="absolute -top-11 left-1/2 -translate-x-1/2 inline-flex items-center gap-1.5 rounded-full border border-slate-200/90 bg-white/90 px-4 py-1.5 text-xs font-semibold text-slate-800 shadow-lg backdrop-blur-md transition-all hover:bg-white hover:shadow-xl active:scale-95 animate-fade-in"
           >
             <span>Latest messages</span>
-            <ArrowDownIcon className="size-3.5" />
+            <ArrowDownIcon className="size-3.5 text-slate-500" />
           </button>
         )}
 
@@ -792,10 +798,10 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           )}
 
           {transactionState && (
-            <p className="mb-2 flex items-center gap-2 rounded-lg border border-zinc-200 bg-zinc-100 p-2.5 text-xs font-medium text-zinc-800"
+            <p className="mb-2 flex items-center gap-2 rounded-xl border border-amber-200/80 bg-amber-50/80 backdrop-blur-md p-2.5 text-xs font-semibold text-amber-900 shadow-2xs"
               role="status">
-              <RefreshCwIcon className="size-4 animate-spin" />
-              Sara is completing the current step. Chat will reopen automatically.
+              <RefreshCwIcon className="size-3.5 animate-spin text-amber-700 shrink-0" />
+              <span>Sara is completing the current step. Chat will reopen automatically.</span>
             </p>
           )}
           <ChatComposer
@@ -810,13 +816,13 @@ export function CustomerChat({ agentKey }: { agentKey: string }) {
           {ticket?.status === "closed" && (
             <div
               role="status"
-              className="mt-2 text-center text-xs font-medium text-zinc-500"
+              className="mt-2 text-center text-xs font-medium text-slate-500"
             >
-              This ticket is closed.{" "}
+              This ticket is resolved.{" "}
               <button
                 type="button"
                 onClick={startNewConversation}
-                className="text-zinc-900 underline hover:text-black font-semibold"
+                className="text-slate-900 underline hover:text-black font-semibold"
               >
                 Start a new conversation
               </button>
