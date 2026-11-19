@@ -19,6 +19,8 @@
 | 04-mockgateway-payment-verify.json | Authenticated 2Checkout mock GET order status | /webhook/ancfz/payment-verify | Inactive |
 | 05-mock-otp-table.json | LOCAL synthetic OTP delivery to n8n Data Table | /webhook/ancfz/otp-email | Inactive |
 | 06-mock-otp-prune.json | LOCAL expired test-code cleanup | Scheduled | Inactive |
+| 07-mock-contract-registry.json | Non-authoritative verified TEST contract projection | /webhook/ancfz/contract-registry | Inactive |
+| 08-test-licence-contract-lookup.json | Read-only synthetic TEST licence alias lookup via contract registry | /webhook/ancfz/contract-licence-lookup | Inactive |
 
 The new 2Checkout files intentionally retain the original file paths and fixed workflow/credential IDs for compatible upgrades. The two delivery workflows share the same OTP URL; **only one can be active**.
 
@@ -101,3 +103,8 @@ After compiling the API:
 These are **offline contract checks**; success does not prove external gateway functionality. Run local n8n/Gotenberg and authenticated provider tests separately after configuring private credentials.
 
 **Security:** n8n and Gotenberg must never publish host ports. Do not reset n8n volumes, rotate an already-used N8N_ENCRYPTION_KEY or commit sensitive provider payloads.
+
+
+## TEST licence alias renewal
+
+First install and activate the existing contract registry, then ensure paid TEST contracts have synced into `ANCFZ_POC_CONTRACTS`. The new lookup workflow is an add-on with **no additional Data Table**: `node scripts/setup-n8n-test-licence-lookup.mjs --dry-run|--inspect|--setup` (one option per invocation). It imports inactive and requires the existing private Header Auth credential to be checked and activated manually. The Node backend verifies guest/account ownership in PostgreSQL. See `docs/contract-registry-renewal.md` for test rates and end-to-end gating.
