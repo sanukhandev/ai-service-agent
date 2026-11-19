@@ -95,19 +95,19 @@ export function ChatComposer({
       <label htmlFor="chat-message" className="sr-only">
         Message to Sara
       </label>
-      <div className="relative flex items-end gap-2.5 rounded-2xl border border-white/80 bg-white/75 p-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.06)] backdrop-blur-xl transition-all focus-within:bg-white/95 focus-within:border-zinc-800 focus-within:ring-4 focus-within:ring-zinc-800/10 hover:border-white hover:bg-white/85 ring-1 ring-zinc-900/5">
+      <div className="relative flex items-end gap-2.5 rounded-2xl border border-white/80 bg-white/80 p-2.5 shadow-[0_8px_32px_rgba(15,23,42,0.06)] backdrop-blur-xl ring-1 ring-slate-900/5 transition-all focus-within:border-slate-800 focus-within:bg-white/95 focus-within:ring-4 focus-within:ring-slate-800/10 hover:border-white hover:bg-white/90">
         <textarea
           ref={textareaRef}
           id="chat-message"
           value={draft}
           onChange={(e) => handleInput(e.target.value)}
           onKeyDown={onKeyDown}
-          placeholder="Ask Sara about licenses, company setup, visas, or your ticket..."
+          placeholder="Ask Sara about company setup, trade licenses, visa quotas, or your quotation…"
           maxLength={12000}
           rows={1}
           disabled={disabled || sending}
           aria-describedby="composer-help"
-          className="max-h-44 min-h-[2.75rem] min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-[0.9375rem] leading-relaxed text-zinc-900 outline-none placeholder:text-zinc-400 disabled:cursor-not-allowed disabled:opacity-60"
+          className="max-h-44 min-h-[2.75rem] min-w-0 flex-1 resize-none bg-transparent px-3 py-2 text-[0.9375rem] leading-relaxed text-slate-900 outline-none placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-60"
         />
 
         <div className="flex shrink-0 items-center gap-1.5 pb-0.5">
@@ -118,7 +118,7 @@ export function ChatComposer({
                 setDraft("");
                 if (textareaRef.current) textareaRef.current.style.height = "auto";
               }}
-              className="hidden sm:inline-flex rounded-lg px-2 py-1 text-xs text-zinc-400 hover:bg-zinc-100 hover:text-zinc-700 transition-colors"
+              className="hidden sm:inline-flex rounded-lg px-2 py-1 text-xs font-medium text-slate-400 hover:bg-slate-100 hover:text-slate-700 transition-colors"
             >
               Clear
             </button>
@@ -128,7 +128,7 @@ export function ChatComposer({
             type="submit"
             disabled={disabled || sending || !text}
             aria-label={sending ? "Sending message" : "Send message"}
-            className="flex size-10 sm:size-10.5 shrink-0 items-center justify-center rounded-xl bg-zinc-900 text-white shadow-sm backdrop-blur-xs transition-all hover:bg-zinc-800 hover:shadow-md active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-800 disabled:cursor-not-allowed disabled:bg-zinc-200 disabled:text-zinc-400 disabled:shadow-none"
+            className="flex size-10 sm:size-10.5 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white shadow-sm backdrop-blur-xs transition-all hover:bg-slate-800 hover:shadow-md active:scale-95 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-800 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400 disabled:shadow-none"
           >
             {sending ? (
               <span
@@ -136,29 +136,29 @@ export function ChatComposer({
                 aria-hidden="true"
               />
             ) : (
-              <SendIcon className="size-4.5" />
+              <SendIcon className="size-4.5 text-amber-300" />
             )}
           </button>
         </div>
       </div>
 
-      <div className="mt-2 flex items-center justify-between px-2 text-[0.72rem] text-zinc-400">
-        <span className="hidden sm:inline-flex items-center gap-1">
-          <kbd className="rounded border border-white/80 bg-white/60 backdrop-blur-xs px-1.5 py-0.5 font-sans font-medium text-zinc-600 shadow-2xs">
+      <div className="mt-2 flex items-center justify-between px-2 text-[0.72rem] text-slate-500">
+        <span className="hidden sm:inline-flex items-center gap-1.5 font-medium">
+          <kbd className="rounded border border-slate-200/90 bg-white/70 backdrop-blur-xs px-1.5 py-0.5 font-sans font-semibold text-slate-700 shadow-2xs">
             Enter ↵
           </kbd>{" "}
           to send ·{" "}
-          <kbd className="rounded border border-white/80 bg-white/60 backdrop-blur-xs px-1.5 py-0.5 font-sans font-medium text-zinc-600 shadow-2xs">
+          <kbd className="rounded border border-slate-200/90 bg-white/70 backdrop-blur-xs px-1.5 py-0.5 font-sans font-semibold text-slate-700 shadow-2xs">
             Shift + Enter
           </kbd>{" "}
           for new line
         </span>
-        <span className="sm:hidden text-center w-full">
-          Official ANCFZ Customer Assistant
+        <span className="sm:hidden text-center w-full font-medium">
+          Official ANCFZ Regulatory Concierge
         </span>
         {isNearLimit && (
-          <span className="text-amber-600 font-medium ml-auto">
-            {draft.length} / 12,000 characters
+          <span className="text-amber-600 font-semibold ml-auto">
+            {draft.length.toLocaleString()} / 12,000 characters
           </span>
         )}
       </div>
